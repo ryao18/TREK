@@ -45,7 +45,7 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
         <Link to="/dashboard" className="flex items-center gap-2 transition-colors flex-shrink-0"
           style={{ color: 'var(--text-primary)' }}>
           <Plane className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
-          <span className="font-bold text-sm hidden sm:inline">{t('nav.trip')}</span>
+          <span className="font-bold text-sm hidden sm:inline">NOMAD</span>
         </Link>
 
         {tripTitle && (

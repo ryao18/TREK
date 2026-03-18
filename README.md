@@ -41,11 +41,14 @@ A self-hosted travel planner for organizing trips, places, budgets, packing list
 
 ## Quick Start
 
-### Prerequisites
+```bash
+docker run -d -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/nomad
+```
 
-- Docker & Docker Compose
+Open `http://your-server:3000` — the first user to register becomes the admin.
 
-### 1. Create a `docker-compose.yml`
+<details>
+<summary>Docker Compose (recommended for production)</summary>
 
 ```yaml
 services:
@@ -64,17 +67,11 @@ services:
     restart: unless-stopped
 ```
 
-### 2. Start the app
-
 ```bash
 docker compose up -d
 ```
 
-Done. Open `http://your-server:3000` in your browser.
-
-### 3. First setup
-
-The **first user to register** automatically becomes the admin. No default credentials.
+</details>
 
 ### Updating
 

@@ -59,8 +59,8 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - JWT_SECRET=change-me-to-a-long-random-string
       - PORT=3000
+      # - JWT_SECRET=optional-set-for-persistent-sessions
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -76,11 +76,14 @@ docker compose up -d
 ### Updating
 
 ```bash
-docker compose pull
-docker compose up -d
+docker pull mauriceboe/nomad
+docker rm -f nomad
+docker run -d --name nomad -p 3000:3000 -v /your/data:/app/data -v /your/uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
 ```
 
-Your data is persisted in the `./data` and `./uploads` volumes.
+Or with Docker Compose: `docker compose pull && docker compose up -d`
+
+Your data is persisted in the mounted `data` and `uploads` volumes.
 
 ### Reverse Proxy (recommended)
 

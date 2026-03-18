@@ -45,7 +45,7 @@ A self-hosted travel planner for organizing trips, places, budgets, packing list
 docker run -d -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/nomad
 ```
 
-Open `http://your-server:3000` — the first user to register becomes the admin.
+Open your browser — the first user to register becomes the admin.
 
 <details>
 <summary>Docker Compose (recommended for production)</summary>

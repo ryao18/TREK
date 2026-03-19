@@ -18,6 +18,7 @@ import Navbar from '../components/Layout/Navbar'
 import { useToast } from '../components/shared/Toast'
 import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslation } from '../i18n'
+import { joinTrip, leaveTrip, addListener, removeListener } from '../api/websocket'
 
 const MIN_SIDEBAR = 200
 const MAX_SIDEBAR = 520
@@ -39,7 +40,6 @@ export default function TripPlannerPage() {
     { id: 'dateien', label: t('trip.tabs.files') },
   ]
 
-  // Layout state
   const [activeTab, setActiveTab] = useState('plan')
 
   const handleTabChange = (tabId) => {
@@ -54,7 +54,6 @@ export default function TripPlannerPage() {
   const isResizingLeft = useRef(false)
   const isResizingRight = useRef(false)
 
-  // Content state
   const [selectedPlaceId, setSelectedPlaceId] = useState(null)
   const [showPlaceForm, setShowPlaceForm] = useState(false)
   const [editingPlace, setEditingPlace] = useState(null)
@@ -79,7 +78,18 @@ export default function TripPlannerPage() {
     if (tripId) tripStore.loadReservations(tripId)
   }, [tripId])
 
-  // Resize handlers
+  // WebSocket: join trip and listen for remote events
+  useEffect(() => {
+    if (!tripId) return
+    const handler = useTripStore.getState().handleRemoteEvent
+    joinTrip(tripId)
+    addListener(handler)
+    return () => {
+      leaveTrip(tripId)
+      removeListener(handler)
+    }
+  }, [tripId])
+
   useEffect(() => {
     const onMove = (e) => {
       if (isResizingLeft.current) {
@@ -107,7 +117,6 @@ export default function TripPlannerPage() {
     }
   }, [])
 
-  // Map places — always show all places with coordinates
   const mapPlaces = useCallback(() => {
     return places.filter(p => p.lat && p.lng)
   }, [places])
@@ -219,7 +228,7 @@ export default function TripPlannerPage() {
     return map
   }, [selectedDayId, assignments])
 
-  const mapTileUrl = settings.map_tile_url || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+  const mapTileUrl = settings.map_tile_url || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
   const defaultCenter = [settings.default_lat || 48.8566, settings.default_lng || 2.3522]
   const defaultZoom = settings.default_zoom || 10
 
@@ -241,7 +250,6 @@ export default function TripPlannerPage() {
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', ...fontStyle }}>
       <Navbar tripTitle={trip.title} tripId={tripId} showBack onBack={() => navigate('/dashboard')} onShare={() => setShowMembersModal(true)} />
 
-      {/* Tab bar */}
       <div style={{
         position: 'fixed', top: 56, left: 0, right: 0, zIndex: 40,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -278,13 +286,11 @@ export default function TripPlannerPage() {
         })}
       </div>
 
-      {/* Content — offset by navbar (56px) + tab bar (44px) */}
+      {/* Offset by navbar (56px) + tab bar (44px) */}
       <div style={{ flex: 1, overflow: 'hidden', marginTop: 100, position: 'relative' }}>
 
-        {/* PLAN MODE */}
         {activeTab === 'plan' && (
           <div style={{ position: 'absolute', inset: 0 }}>
-            {/* Map fills entire space */}
             <MapView
               places={mapPlaces()}
               route={route}
@@ -298,7 +304,6 @@ export default function TripPlannerPage() {
               dayOrderMap={dayOrderMap}
             />
 
-            {/* Route info overlay */}
             {routeInfo && (
               <div style={{
                 position: 'absolute', bottom: selectedPlace ? 180 : 20, left: '50%', transform: 'translateX(-50%)',
@@ -313,9 +318,7 @@ export default function TripPlannerPage() {
               </div>
             )}
 
-            {/* LEFT SIDEBAR — glass, absolute, floating rounded */}
             <div className="hidden md:block" style={{ position: 'absolute', left: 10, top: 10, bottom: 10, zIndex: 20 }}>
-              {/* Collapse toggle — am rechten Rand der Sidebar, halb herausstehend */}
               <button onClick={() => setLeftCollapsed(c => !c)}
                 style={{
                   position: leftCollapsed ? 'fixed' : 'absolute', top: leftCollapsed ? 'calc(56px + 44px + 14px)' : 14, left: leftCollapsed ? 10 : undefined, right: leftCollapsed ? undefined : -28, zIndex: 25,
@@ -359,7 +362,6 @@ export default function TripPlannerPage() {
                   reservations={reservations}
                   onAddReservation={(dayId) => { setEditingReservation(null); tripStore.setSelectedDay(dayId); setShowReservationModal(true) }}
                 />
-                {/* Resize handle — right edge */}
                 {!leftCollapsed && (
                   <div
                     onMouseDown={() => { isResizingLeft.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none' }}
@@ -371,9 +373,7 @@ export default function TripPlannerPage() {
               </div>
             </div>
 
-            {/* RIGHT SIDEBAR — glass, absolute, floating rounded */}
             <div className="hidden md:block" style={{ position: 'absolute', right: 10, top: 10, bottom: 10, zIndex: 20 }}>
-              {/* Collapse toggle — am linken Rand der Sidebar, halb herausstehend */}
               <button onClick={() => setRightCollapsed(c => !c)}
                 style={{
                   position: rightCollapsed ? 'fixed' : 'absolute', top: rightCollapsed ? 'calc(56px + 44px + 14px)' : 14, right: rightCollapsed ? 10 : undefined, left: rightCollapsed ? undefined : -28, zIndex: 25,
@@ -399,7 +399,6 @@ export default function TripPlannerPage() {
                 transition: 'width 0.25s ease',
                 opacity: rightCollapsed ? 0 : 1,
               }}>
-                {/* Resize handle — left edge */}
                 {!rightCollapsed && (
                   <div
                     onMouseDown={() => { isResizingRight.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none' }}
@@ -423,19 +422,17 @@ export default function TripPlannerPage() {
               </div>
             </div>
 
-            {/* Mobile controls */}
             <div className="flex md:hidden" style={{ position: 'absolute', top: 12, left: 12, right: 12, justifyContent: 'space-between', zIndex: 30 }}>
               <button onClick={() => setMobileSidebarOpen('left')}
-                style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)', border: 'none', borderRadius: 24, padding: '11px 24px', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minHeight: 44, fontFamily: 'inherit' }}>
+                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(12px)', border: '1px solid var(--border-primary)', borderRadius: 24, padding: '11px 24px', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minHeight: 44, fontFamily: 'inherit' }}>
                 {t('trip.mobilePlan')}
               </button>
               <button onClick={() => setMobileSidebarOpen('right')}
-                style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)', border: 'none', borderRadius: 24, padding: '11px 24px', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minHeight: 44, fontFamily: 'inherit' }}>
+                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(12px)', border: '1px solid var(--border-primary)', borderRadius: 24, padding: '11px 24px', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minHeight: 44, fontFamily: 'inherit' }}>
                 {t('trip.mobilePlaces')}
               </button>
             </div>
 
-            {/* Bottom inspector */}
             {selectedPlace && (
               <PlaceInspector
                 place={selectedPlace}
@@ -453,20 +450,19 @@ export default function TripPlannerPage() {
               />
             )}
 
-            {/* Mobile bottom sheet */}
             {mobileSidebarOpen && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 50 }} onClick={() => setMobileSidebarOpen(null)}>
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '20px 20px 0 0', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{mobileSidebarOpen === 'left' ? t('trip.mobilePlan') : t('trip.mobilePlaces')}</span>
-                    <button onClick={() => setMobileSidebarOpen(null)} style={{ background: 'rgba(0,0,0,0.07)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'var(--bg-card)', borderRadius: '20px 20px 0 0', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border-secondary)' }}>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{mobileSidebarOpen === 'left' ? t('trip.mobilePlan') : t('trip.mobilePlaces')}</span>
+                    <button onClick={() => setMobileSidebarOpen(null)} style={{ background: 'var(--bg-tertiary)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)' }}>
                       <X size={14} />
                     </button>
                   </div>
                   <div style={{ flex: 1, overflow: 'auto' }}>
                     {mobileSidebarOpen === 'left'
                       ? <DayPlanSidebar trip={trip} days={days} places={places} categories={categories} assignments={assignments} selectedDayId={selectedDayId} selectedPlaceId={selectedPlaceId} onSelectDay={(id) => { handleSelectDay(id); setMobileSidebarOpen(null) }} onPlaceClick={handlePlaceClick} onReorder={handleReorder} onUpdateDayTitle={handleUpdateDayTitle} onAssignToDay={handleAssignToDay} onRouteCalculated={(r) => { if (r) { setRoute(r.coordinates); setRouteInfo({ distance: r.distanceText, duration: r.durationText }) } }} reservations={reservations} onAddReservation={(dayId) => { setEditingReservation(null); tripStore.setSelectedDay(dayId); setShowReservationModal(true); setMobileSidebarOpen(null) }} />
-                      : <PlacesSidebar places={places} categories={categories} assignments={assignments} selectedDayId={selectedDayId} selectedPlaceId={selectedPlaceId} onPlaceClick={handlePlaceClick} onAddPlace={() => { setEditingPlace(null); setShowPlaceForm(true); setMobileSidebarOpen(null) }} onAssignToDay={handleAssignToDay} />
+                      : <PlacesSidebar places={places} categories={categories} assignments={assignments} selectedDayId={selectedDayId} selectedPlaceId={selectedPlaceId} onPlaceClick={handlePlaceClick} onAddPlace={() => { setEditingPlace(null); setShowPlaceForm(true); setMobileSidebarOpen(null) }} onAssignToDay={handleAssignToDay} days={days} isMobile />
                     }
                   </div>
                 </div>
@@ -475,7 +471,6 @@ export default function TripPlannerPage() {
           </div>
         )}
 
-        {/* BUCHUNGEN */}
         {activeTab === 'buchungen' && (
           <div style={{ height: '100%', maxWidth: 1200, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' }}>
             <ReservationsPanel
@@ -492,21 +487,18 @@ export default function TripPlannerPage() {
           </div>
         )}
 
-        {/* PACKLISTE */}
         {activeTab === 'packliste' && (
           <div style={{ height: '100%', overflowY: 'auto', maxWidth: 1200, margin: '0 auto', width: '100%', padding: '8px 0' }}>
             <PackingListPanel tripId={tripId} items={packingItems} />
           </div>
         )}
 
-        {/* FINANZPLAN */}
         {activeTab === 'finanzplan' && (
           <div style={{ height: '100%', overflowY: 'auto', maxWidth: 1400, margin: '0 auto', width: '100%', padding: '8px 0' }}>
             <BudgetPanel tripId={tripId} />
           </div>
         )}
 
-        {/* DATEIEN */}
         {activeTab === 'dateien' && (
           <div style={{ height: '100%', overflow: 'hidden' }}>
             <FileManager

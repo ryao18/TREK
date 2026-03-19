@@ -20,7 +20,17 @@ function WeatherIcon({ main, size = 13 }) {
   return <Icon size={size} strokeWidth={1.8} />
 }
 
-const weatherCache = {}
+function getWeatherCache(key) {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (raw === null) return undefined
+    return JSON.parse(raw)
+  } catch { return undefined }
+}
+
+function setWeatherCache(key, value) {
+  try { sessionStorage.setItem(key, JSON.stringify(value)) } catch {}
+}
 
 export default function WeatherWidget({ lat, lng, date, compact = false }) {
   const [weather, setWeather] = useState(null)
@@ -30,24 +40,27 @@ export default function WeatherWidget({ lat, lng, date, compact = false }) {
 
   useEffect(() => {
     if (!lat || !lng || !date) return
-    const cacheKey = `${lat},${lng},${date}`
-    if (weatherCache[cacheKey] !== undefined) {
-      if (weatherCache[cacheKey] === null) setFailed(true)
-      else setWeather(weatherCache[cacheKey])
+    const rLat = Math.round(lat * 100) / 100
+    const rLng = Math.round(lng * 100) / 100
+    const cacheKey = `weather_${rLat}_${rLng}_${date}`
+    const cached = getWeatherCache(cacheKey)
+    if (cached !== undefined) {
+      if (cached === null) setFailed(true)
+      else setWeather(cached)
       return
     }
     setLoading(true)
     weatherApi.get(lat, lng, date)
       .then(data => {
         if (data.error || data.temp === undefined) {
-          weatherCache[cacheKey] = null
+          setWeatherCache(cacheKey, null)
           setFailed(true)
         } else {
-          weatherCache[cacheKey] = data
+          setWeatherCache(cacheKey, data)
           setWeather(data)
         }
       })
-      .catch(() => { weatherCache[cacheKey] = null; setFailed(true) })
+      .catch(() => { setWeatherCache(cacheKey, null); setFailed(true) })
       .finally(() => setLoading(false))
   }, [lat, lng, date])
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const { db, canAccessTrip } = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { broadcast } = require('../websocket');
 
 const router = express.Router({ mergeParams: true });
 
@@ -90,11 +91,23 @@ router.get('/trips/:tripId/days/:dayId/assignments', authenticate, (req, res) =>
     ORDER BY da.order_index ASC, da.created_at ASC
   `).all(dayId);
 
-  const result = assignments.map(a => {
-    const tags = db.prepare(`
-      SELECT t.* FROM tags t JOIN place_tags pt ON t.id = pt.tag_id WHERE pt.place_id = ?
-    `).all(a.place_id);
+  // Batch-load all tags for all places in one query to avoid N+1
+  const placeIds = [...new Set(assignments.map(a => a.place_id))];
+  const tagsByPlaceId = {};
+  if (placeIds.length > 0) {
+    const placeholders = placeIds.map(() => '?').join(',');
+    const allTags = db.prepare(`
+      SELECT t.*, pt.place_id FROM tags t
+      JOIN place_tags pt ON t.id = pt.tag_id
+      WHERE pt.place_id IN (${placeholders})
+    `).all(...placeIds);
+    for (const tag of allTags) {
+      if (!tagsByPlaceId[tag.place_id]) tagsByPlaceId[tag.place_id] = [];
+      tagsByPlaceId[tag.place_id].push({ id: tag.id, name: tag.name, color: tag.color, created_at: tag.created_at });
+    }
+  }
 
+  const result = assignments.map(a => {
     return {
       id: a.id,
       day_id: a.day_id,
@@ -128,7 +141,7 @@ router.get('/trips/:tripId/days/:dayId/assignments', authenticate, (req, res) =>
           color: a.category_color,
           icon: a.category_icon,
         } : null,
-        tags,
+        tags: tagsByPlaceId[a.place_id] || [],
       }
     };
   });
@@ -150,7 +163,6 @@ router.post('/trips/:tripId/days/:dayId/assignments', authenticate, (req, res) =
   const place = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(place_id, tripId);
   if (!place) return res.status(404).json({ error: 'Ort nicht gefunden' });
 
-  // Check for duplicate
   const existing = db.prepare('SELECT id FROM day_assignments WHERE day_id = ? AND place_id = ?').get(dayId, place_id);
   if (existing) return res.status(409).json({ error: 'Ort ist bereits diesem Tag zugewiesen' });
 
@@ -163,6 +175,7 @@ router.post('/trips/:tripId/days/:dayId/assignments', authenticate, (req, res) =
 
   const assignment = getAssignmentWithPlace(result.lastInsertRowid);
   res.status(201).json({ assignment });
+  broadcast(tripId, 'assignment:created', { assignment }, req.headers['x-socket-id']);
 });
 
 // DELETE /api/trips/:tripId/days/:dayId/assignments/:id
@@ -180,6 +193,7 @@ router.delete('/trips/:tripId/days/:dayId/assignments/:id', authenticate, (req, 
 
   db.prepare('DELETE FROM day_assignments WHERE id = ?').run(id);
   res.json({ success: true });
+  broadcast(tripId, 'assignment:deleted', { assignmentId: Number(id), dayId: Number(dayId) }, req.headers['x-socket-id']);
 });
 
 // PUT /api/trips/:tripId/days/:dayId/assignments/reorder
@@ -205,6 +219,7 @@ router.put('/trips/:tripId/days/:dayId/assignments/reorder', authenticate, (req,
     throw e;
   }
   res.json({ success: true });
+  broadcast(tripId, 'assignment:reordered', { dayId: Number(dayId), orderedIds }, req.headers['x-socket-id']);
 });
 
 // PUT /api/trips/:tripId/assignments/:id/move
@@ -226,10 +241,12 @@ router.put('/trips/:tripId/assignments/:id/move', authenticate, (req, res) => {
   const newDay = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(new_day_id, tripId);
   if (!newDay) return res.status(404).json({ error: 'Zieltag nicht gefunden' });
 
+  const oldDayId = assignment.day_id;
   db.prepare('UPDATE day_assignments SET day_id = ?, order_index = ? WHERE id = ?').run(new_day_id, order_index || 0, id);
 
   const updated = getAssignmentWithPlace(id);
   res.json({ assignment: updated });
+  broadcast(tripId, 'assignment:moved', { assignment: updated, oldDayId: Number(oldDayId), newDayId: Number(new_day_id) }, req.headers['x-socket-id']);
 });
 
 module.exports = router;

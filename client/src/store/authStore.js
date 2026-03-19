@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { authApi } from '../api/client'
+import { connect, disconnect } from '../api/websocket'
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -20,6 +21,7 @@ export const useAuthStore = create((set, get) => ({
         isLoading: false,
         error: null,
       })
+      connect(data.token)
       return data
     } catch (err) {
       const error = err.response?.data?.error || 'Anmeldung fehlgeschlagen'
@@ -40,6 +42,7 @@ export const useAuthStore = create((set, get) => ({
         isLoading: false,
         error: null,
       })
+      connect(data.token)
       return data
     } catch (err) {
       const error = err.response?.data?.error || 'Registrierung fehlgeschlagen'
@@ -49,6 +52,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
+    disconnect()
     localStorage.removeItem('auth_token')
     set({
       user: null,
@@ -72,6 +76,7 @@ export const useAuthStore = create((set, get) => ({
         isAuthenticated: true,
         isLoading: false,
       })
+      connect(token)
     } catch (err) {
       localStorage.removeItem('auth_token')
       set({

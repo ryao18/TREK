@@ -8,7 +8,8 @@ import Modal from '../components/shared/Modal'
 import { useToast } from '../components/shared/Toast'
 import CategoryManager from '../components/Admin/CategoryManager'
 import BackupPanel from '../components/Admin/BackupPanel'
-import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus } from 'lucide-react'
+import CustomSelect from '../components/shared/CustomSelect'
 
 export default function AdminPage() {
   const { t } = useTranslation()
@@ -25,6 +26,8 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [editingUser, setEditingUser] = useState(null)
   const [editForm, setEditForm] = useState({ username: '', email: '', role: 'user', password: '' })
+  const [showCreateUser, setShowCreateUser] = useState(false)
+  const [createForm, setCreateForm] = useState({ username: '', email: '', password: '', role: 'user' })
 
   // Registration toggle
   const [allowRegistration, setAllowRegistration] = useState(true)
@@ -135,6 +138,22 @@ export default function AdminPage() {
     }
   }
 
+  const handleCreateUser = async () => {
+    if (!createForm.username.trim() || !createForm.email.trim() || !createForm.password.trim()) {
+      toast.error(t('admin.toast.fieldsRequired'))
+      return
+    }
+    try {
+      const data = await adminApi.createUser(createForm)
+      setUsers(prev => [data.user, ...prev])
+      setShowCreateUser(false)
+      setCreateForm({ username: '', email: '', password: '', role: 'user' })
+      toast.success(t('admin.toast.userCreated'))
+    } catch (err) {
+      toast.error(err.response?.data?.error || t('admin.toast.createError'))
+    }
+  }
+
   const handleEditUser = (user) => {
     setEditingUser(user)
     setEditForm({ username: user.username, email: user.email, role: user.role, password: '' })
@@ -232,8 +251,15 @@ export default function AdminPage() {
           {/* Tab content */}
           {activeTab === 'users' && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              <div className="p-5 border-b border-slate-100">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="font-semibold text-slate-900">{t('admin.tabs.users')} ({users.length})</h2>
+                <button
+                  onClick={() => setShowCreateUser(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  {t('admin.createUser')}
+                </button>
               </div>
 
               {isLoading ? (
@@ -464,6 +490,74 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* Create user modal */}
+      <Modal
+        isOpen={showCreateUser}
+        onClose={() => setShowCreateUser(false)}
+        title={t('admin.createUser')}
+        size="sm"
+        footer={
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setShowCreateUser(false)}
+              className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleCreateUser}
+              className="px-4 py-2 text-sm bg-slate-900 hover:bg-slate-700 text-white rounded-lg"
+            >
+              {t('admin.createUser')}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('settings.username')} *</label>
+            <input
+              type="text"
+              value={createForm.username}
+              onChange={e => setCreateForm(f => ({ ...f, username: e.target.value }))}
+              placeholder={t('settings.username')}
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-400 focus:border-transparent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('common.email')} *</label>
+            <input
+              type="email"
+              value={createForm.email}
+              onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))}
+              placeholder={t('common.email')}
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-400 focus:border-transparent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('common.password')} *</label>
+            <input
+              type="password"
+              value={createForm.password}
+              onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))}
+              placeholder={t('common.password')}
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-400 focus:border-transparent text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('settings.role')}</label>
+            <CustomSelect
+              value={createForm.role}
+              onChange={value => setCreateForm(f => ({ ...f, role: value }))}
+              options={[
+                { value: 'user', label: t('settings.roleUser') },
+                { value: 'admin', label: t('settings.roleAdmin') },
+              ]}
+            />
+          </div>
+        </div>
+      </Modal>
+
       {/* Edit user modal */}
       <Modal
         isOpen={!!editingUser}
@@ -519,14 +613,14 @@ export default function AdminPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('settings.role')}</label>
-              <select
+              <CustomSelect
                 value={editForm.role}
-                onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-400 focus:border-transparent bg-white text-sm"
-              >
-                <option value="user">{t('settings.roleUser')}</option>
-                <option value="admin">{t('settings.roleAdmin')}</option>
-              </select>
+                onChange={value => setEditForm(f => ({ ...f, role: value }))}
+                options={[
+                  { value: 'user', label: t('settings.roleUser') },
+                  { value: 'admin', label: t('settings.roleAdmin') },
+                ]}
+              />
             </div>
           </div>
         )}

@@ -19,6 +19,214 @@ export const useTripStore = create((set, get) => ({
 
   setSelectedDay: (dayId) => set({ selectedDayId: dayId }),
 
+  // Handle remote WebSocket events without making API calls
+  handleRemoteEvent: (event) => {
+    const { type, ...payload } = event
+
+    set(state => {
+      switch (type) {
+        // Places
+        case 'place:created':
+          if (state.places.some(p => p.id === payload.place.id)) return {}
+          return { places: [payload.place, ...state.places] }
+        case 'place:updated':
+          return {
+            places: state.places.map(p => p.id === payload.place.id ? payload.place : p),
+            assignments: Object.fromEntries(
+              Object.entries(state.assignments).map(([dayId, items]) => [
+                dayId,
+                items.map(a => a.place?.id === payload.place.id ? { ...a, place: payload.place } : a)
+              ])
+            ),
+          }
+        case 'place:deleted':
+          return {
+            places: state.places.filter(p => p.id !== payload.placeId),
+            assignments: Object.fromEntries(
+              Object.entries(state.assignments).map(([dayId, items]) => [
+                dayId,
+                items.filter(a => a.place?.id !== payload.placeId)
+              ])
+            ),
+          }
+
+        // Assignments
+        case 'assignment:created': {
+          const dayKey = String(payload.assignment.day_id)
+          const existing = (state.assignments[dayKey] || [])
+          // Skip if already present (by id OR by place_id to handle optimistic temp ids)
+          const placeId = payload.assignment.place?.id || payload.assignment.place_id
+          if (existing.some(a => a.id === payload.assignment.id || (placeId && a.place?.id === placeId))) {
+            // Replace temp entry with server version if needed
+            const hasTempVersion = existing.some(a => a.id < 0 && a.place?.id === placeId)
+            if (hasTempVersion) {
+              return {
+                assignments: {
+                  ...state.assignments,
+                  [dayKey]: existing.map(a => (a.id < 0 && a.place?.id === placeId) ? payload.assignment : a),
+                }
+              }
+            }
+            return {}
+          }
+          return {
+            assignments: {
+              ...state.assignments,
+              [dayKey]: [...existing, payload.assignment],
+            }
+          }
+        }
+        case 'assignment:deleted': {
+          const dayKey = String(payload.dayId)
+          return {
+            assignments: {
+              ...state.assignments,
+              [dayKey]: (state.assignments[dayKey] || []).filter(a => a.id !== payload.assignmentId),
+            }
+          }
+        }
+        case 'assignment:moved': {
+          const oldKey = String(payload.oldDayId)
+          const newKey = String(payload.newDayId)
+          const movedAssignment = payload.assignment
+          return {
+            assignments: {
+              ...state.assignments,
+              [oldKey]: (state.assignments[oldKey] || []).filter(a => a.id !== movedAssignment.id),
+              [newKey]: [...(state.assignments[newKey] || []).filter(a => a.id !== movedAssignment.id), movedAssignment],
+            }
+          }
+        }
+        case 'assignment:reordered': {
+          const dayKey = String(payload.dayId)
+          const currentItems = state.assignments[dayKey] || []
+          const orderedIds = payload.orderedIds || []
+          const reordered = orderedIds.map((id, idx) => {
+            const item = currentItems.find(a => a.id === id)
+            return item ? { ...item, order_index: idx } : null
+          }).filter(Boolean)
+          return {
+            assignments: {
+              ...state.assignments,
+              [dayKey]: reordered,
+            }
+          }
+        }
+
+        // Days
+        case 'day:created':
+          if (state.days.some(d => d.id === payload.day.id)) return {}
+          return { days: [...state.days, payload.day] }
+        case 'day:updated':
+          return {
+            days: state.days.map(d => d.id === payload.day.id ? payload.day : d),
+          }
+        case 'day:deleted': {
+          const removedDayId = String(payload.dayId)
+          const newAssignments = { ...state.assignments }
+          delete newAssignments[removedDayId]
+          const newDayNotes = { ...state.dayNotes }
+          delete newDayNotes[removedDayId]
+          return {
+            days: state.days.filter(d => d.id !== payload.dayId),
+            assignments: newAssignments,
+            dayNotes: newDayNotes,
+          }
+        }
+
+        // Day Notes
+        case 'dayNote:created': {
+          const dayKey = String(payload.dayId)
+          const existingNotes = (state.dayNotes[dayKey] || [])
+          if (existingNotes.some(n => n.id === payload.note.id)) return {}
+          return {
+            dayNotes: {
+              ...state.dayNotes,
+              [dayKey]: [...existingNotes, payload.note],
+            }
+          }
+        }
+        case 'dayNote:updated': {
+          const dayKey = String(payload.dayId)
+          return {
+            dayNotes: {
+              ...state.dayNotes,
+              [dayKey]: (state.dayNotes[dayKey] || []).map(n => n.id === payload.note.id ? payload.note : n),
+            }
+          }
+        }
+        case 'dayNote:deleted': {
+          const dayKey = String(payload.dayId)
+          return {
+            dayNotes: {
+              ...state.dayNotes,
+              [dayKey]: (state.dayNotes[dayKey] || []).filter(n => n.id !== payload.noteId),
+            }
+          }
+        }
+
+        // Packing
+        case 'packing:created':
+          if (state.packingItems.some(i => i.id === payload.item.id)) return {}
+          return { packingItems: [...state.packingItems, payload.item] }
+        case 'packing:updated':
+          return {
+            packingItems: state.packingItems.map(i => i.id === payload.item.id ? payload.item : i),
+          }
+        case 'packing:deleted':
+          return {
+            packingItems: state.packingItems.filter(i => i.id !== payload.itemId),
+          }
+
+        // Budget
+        case 'budget:created':
+          if (state.budgetItems.some(i => i.id === payload.item.id)) return {}
+          return { budgetItems: [...state.budgetItems, payload.item] }
+        case 'budget:updated':
+          return {
+            budgetItems: state.budgetItems.map(i => i.id === payload.item.id ? payload.item : i),
+          }
+        case 'budget:deleted':
+          return {
+            budgetItems: state.budgetItems.filter(i => i.id !== payload.itemId),
+          }
+
+        // Reservations
+        case 'reservation:created':
+          if (state.reservations.some(r => r.id === payload.reservation.id)) return {}
+          return { reservations: [payload.reservation, ...state.reservations] }
+        case 'reservation:updated':
+          return {
+            reservations: state.reservations.map(r => r.id === payload.reservation.id ? payload.reservation : r),
+          }
+        case 'reservation:deleted':
+          return {
+            reservations: state.reservations.filter(r => r.id !== payload.reservationId),
+          }
+
+        // Trip
+        case 'trip:updated':
+          return { trip: payload.trip }
+
+        // Files
+        case 'file:created':
+          if (state.files.some(f => f.id === payload.file.id)) return {}
+          return { files: [payload.file, ...state.files] }
+        case 'file:updated':
+          return {
+            files: state.files.map(f => f.id === payload.file.id ? payload.file : f),
+          }
+        case 'file:deleted':
+          return {
+            files: state.files.filter(f => f.id !== payload.fileId),
+          }
+
+        default:
+          return {}
+      }
+    })
+  },
+
   // Load everything for a trip
   loadTrip: async (tripId) => {
     set({ isLoading: true, error: null })
@@ -56,7 +264,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Refresh just the places
   refreshPlaces: async (tripId) => {
     try {
       const data = await placesApi.list(tripId)
@@ -66,7 +273,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Places
   addPlace: async (tripId, placeData) => {
     try {
       const data = await placesApi.create(tripId, placeData)
@@ -112,13 +318,11 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Assignments
   assignPlaceToDay: async (tripId, dayId, placeId, position) => {
     const state = get()
     const place = state.places.find(p => p.id === parseInt(placeId))
     if (!place) return
 
-    // Check if already assigned
     const existing = (state.assignments[String(dayId)] || []).find(a => a.place?.id === parseInt(placeId))
     if (existing) return
 
@@ -154,11 +358,29 @@ export const useTripStore = create((set, get) => ({
           ),
         }
       }))
-      // Reihenfolge am Server aktualisieren
+      // Reihenfolge am Server aktualisieren und lokalen State mit Server-Antwort synchronisieren
       if (position != null) {
         const updated = get().assignments[String(dayId)] || []
-        const orderedIds = updated.map(a => a.id)
-        try { await assignmentsApi.reorder(tripId, dayId, orderedIds) } catch {}
+        const orderedIds = updated.map(a => a.id).filter(id => id > 0)
+        if (orderedIds.length > 0) {
+          try {
+            await assignmentsApi.reorder(tripId, dayId, orderedIds)
+            // Lokalen State auf die gesendete Reihenfolge setzen
+            set(state => {
+              const items = state.assignments[String(dayId)] || []
+              const reordered = orderedIds.map((id, idx) => {
+                const item = items.find(a => a.id === id)
+                return item ? { ...item, order_index: idx } : null
+              }).filter(Boolean)
+              return {
+                assignments: {
+                  ...state.assignments,
+                  [String(dayId)]: reordered,
+                }
+              }
+            })
+          } catch {}
+        }
       }
       return data.assignment
     } catch (err) {
@@ -251,7 +473,6 @@ export const useTripStore = create((set, get) => ({
     const note = (state.dayNotes[String(fromDayId)] || []).find(n => n.id === noteId)
     if (!note) return
 
-    // Optimistic: remove from old day
     set(s => ({
       dayNotes: {
         ...s.dayNotes,
@@ -271,7 +492,6 @@ export const useTripStore = create((set, get) => ({
         }
       }))
     } catch (err) {
-      // Rollback
       set(s => ({
         dayNotes: {
           ...s.dayNotes,
@@ -286,7 +506,6 @@ export const useTripStore = create((set, get) => ({
     set({ assignments })
   },
 
-  // Packing
   addPackingItem: async (tripId, data) => {
     try {
       const result = await packingApi.create(tripId, data)
@@ -337,7 +556,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Days
   updateDayNotes: async (tripId, dayId, notes) => {
     try {
       await daysApi.update(tripId, dayId, { notes })
@@ -360,7 +578,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Tags and categories
   addTag: async (data) => {
     try {
       const result = await tagsApi.create(data)
@@ -381,7 +598,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Update trip
   updateTrip: async (tripId, data) => {
     try {
       const result = await tripsApi.update(tripId, data)
@@ -400,7 +616,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Budget
   loadBudgetItems: async (tripId) => {
     try {
       const data = await budgetApi.list(tripId)
@@ -443,7 +658,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Files
   loadFiles: async (tripId) => {
     try {
       const data = await filesApi.list(tripId)
@@ -472,7 +686,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Reservations
   loadReservations: async (tripId) => {
     try {
       const data = await reservationsApi.list(tripId)
@@ -528,7 +741,6 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
-  // Day Notes
   addDayNote: async (tripId, dayId, data) => {
     try {
       const result = await dayNotesApi.create(tripId, dayId, data)

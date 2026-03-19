@@ -115,7 +115,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     padding: '8px 14px', fontSize: 13, fontFamily: 'inherit',
     outline: 'none', boxSizing: 'border-box', color: 'var(--text-primary)', background: 'var(--bg-input)',
   }
-  const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 5 }
+  const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={reservation ? t('reservations.editTitle') : t('reservations.newTitle')} size="md">
@@ -130,9 +130,9 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
                 display: 'flex', alignItems: 'center', gap: 5,
                 padding: '6px 11px', borderRadius: 99, border: '1px solid',
                 fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s',
-                background: form.type === value ? '#111827' : 'white',
-                borderColor: form.type === value ? '#111827' : '#e5e7eb',
-                color: form.type === value ? 'white' : '#6b7280',
+                background: form.type === value ? 'var(--text-primary)' : 'var(--bg-card)',
+                borderColor: form.type === value ? 'var(--text-primary)' : 'var(--border-primary)',
+                color: form.type === value ? 'var(--bg-primary)' : 'var(--text-muted)',
               }}>
                 <Icon size={12} /> {t(labelKey)}
               </button>
@@ -231,14 +231,14 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
           <label style={labelStyle}>{t('files.title')}</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {attachedFiles.map(f => (
-              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                <FileText size={13} style={{ color: '#6b7280', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 12.5, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
-                <a href={f.url} target="_blank" rel="noreferrer" style={{ color: '#9ca3af', display: 'flex', flexShrink: 0 }} title={t('common.open')}>
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
+                <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
+                <a href={f.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-faint)', display: 'flex', flexShrink: 0 }} title={t('common.open')}>
                   <ExternalLink size={12} />
                 </a>
                 {onFileDelete && (
-                  <button type="button" onClick={() => onFileDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', padding: 0, flexShrink: 0 }}
+                  <button type="button" onClick={() => onFileDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 0, flexShrink: 0 }}
                     onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                     onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}>
                     <X size={12} />
@@ -247,12 +247,12 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
               </div>
             ))}
             {pendingFiles.map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                <FileText size={13} style={{ color: '#6b7280', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 12.5, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{t('reservations.pendingSave')}</span>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
+                <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-faint)', flexShrink: 0 }}>{t('reservations.pendingSave')}</span>
                 <button type="button" onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', padding: 0, flexShrink: 0 }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 0, flexShrink: 0 }}
                   onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
                   onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}>
                   <X size={12} />
@@ -262,12 +262,12 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
             <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" style={{ display: 'none' }} onChange={handleFileChange} />
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-              border: '1px dashed #d1d5db', borderRadius: 8, background: 'white',
-              fontSize: 12.5, color: '#6b7280', cursor: uploadingFile ? 'default' : 'pointer',
+              border: '1px dashed var(--border-primary)', borderRadius: 8, background: 'var(--bg-card)',
+              fontSize: 12.5, color: 'var(--text-muted)', cursor: uploadingFile ? 'default' : 'pointer',
               fontFamily: 'inherit', transition: 'all 0.12s',
             }}
-              onMouseEnter={e => { if (!uploadingFile) { e.currentTarget.style.borderColor = '#9ca3af'; e.currentTarget.style.color = '#374151' } }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#6b7280' }}>
+              onMouseEnter={e => { if (!uploadingFile) { e.currentTarget.style.borderColor = 'var(--text-faint)'; e.currentTarget.style.color = 'var(--text-secondary)' } }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
               <Paperclip size={13} />
               {uploadingFile ? t('reservations.uploading') : t('reservations.attachFile')}
             </button>
@@ -275,11 +275,11 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4, borderTop: '1px solid #f3f4f6' }}>
-          <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: 'white', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4, borderTop: '1px solid var(--border-secondary)' }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'var(--bg-card)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-secondary)' }}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: '#111827', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
+          <button type="submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
             {isSaving ? t('common.saving') : reservation ? t('common.update') : t('common.add')}
           </button>
         </div>

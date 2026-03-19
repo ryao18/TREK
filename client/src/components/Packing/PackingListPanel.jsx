@@ -40,15 +40,28 @@ const VORSCHLAEGE = [
   { name: 'Kreditkarte', kategorie: 'Finanzen' },
 ]
 
-const KAT_DOTS = {
-  'Dokumente':    '#3b82f6',
-  'Kleidung':     '#a855f7',
-  'Körperpflege': '#ec4899',
-  'Elektronik':   '#22c55e',
-  'Gesundheit':   '#f97316',
-  'Finanzen':     '#16a34a',
+// Cycling color palette — works in light & dark mode
+const KAT_COLORS = [
+  '#3b82f6', // blue
+  '#a855f7', // purple
+  '#ec4899', // pink
+  '#22c55e', // green
+  '#f97316', // orange
+  '#06b6d4', // cyan
+  '#ef4444', // red
+  '#eab308', // yellow
+  '#8b5cf6', // violet
+  '#14b8a6', // teal
+]
+// Stable color assignment: category name → index via simple hash
+function katColor(kat, allCategories) {
+  const idx = allCategories ? allCategories.indexOf(kat) : -1
+  if (idx >= 0) return KAT_COLORS[idx % KAT_COLORS.length]
+  // Fallback: hash-based
+  let h = 0
+  for (let i = 0; i < kat.length; i++) h = ((h << 5) - h + kat.charCodeAt(i)) | 0
+  return KAT_COLORS[Math.abs(h) % KAT_COLORS.length]
 }
-function katDot(kat) { return KAT_DOTS[kat] || '#9ca3af' }
 
 // ── Artikel-Zeile ──────────────────────────────────────────────────────────
 function ArtikelZeile({ item, tripId, categories, onCategoryChange }) {
@@ -91,7 +104,6 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }) {
         transition: 'background 0.1s',
       }}
     >
-      {/* Checkbox */}
       <button onClick={handleToggle} style={{
         flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex',
         color: item.checked ? '#10b981' : 'var(--text-faint)', transition: 'color 0.15s',
@@ -99,7 +111,6 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }) {
         {item.checked ? <CheckSquare size={18} /> : <Square size={18} />}
       </button>
 
-      {/* Name */}
       {editing ? (
         <input
           type="text" value={editName} autoFocus
@@ -122,16 +133,14 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }) {
         </span>
       )}
 
-      {/* Actions — always in DOM, visible on hover */}
       <div style={{ display: 'flex', gap: 2, alignItems: 'center', opacity: hovered ? 1 : 0, transition: 'opacity 0.12s', flexShrink: 0 }}>
-        {/* Category change */}
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setShowCatPicker(p => !p)}
             title={t('packing.changeCategory')}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 5px', borderRadius: 6, display: 'flex', alignItems: 'center', color: 'var(--text-faint)', fontSize: 10, gap: 2 }}
           >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: katDot(item.category || t('packing.defaultCategory')), display: 'inline-block' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: katColor(item.category || t('packing.defaultCategory'), categories), display: 'inline-block' }} />
           </button>
           {showCatPicker && (
             <div style={{
@@ -146,7 +155,7 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }) {
                   border: 'none', cursor: 'pointer', fontSize: 12.5, fontFamily: 'inherit',
                   color: 'var(--text-secondary)', borderRadius: 7, textAlign: 'left',
                 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: katDot(cat), flexShrink: 0 }} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: katColor(cat, categories), flexShrink: 0 }} />
                   {cat}
                 </button>
               ))}
@@ -154,13 +163,11 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }) {
           )}
         </div>
 
-        {/* Edit */}
         <button onClick={() => setEditing(true)} title={t('common.rename')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px', borderRadius: 6, display: 'flex', color: 'var(--text-faint)' }}
           onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
           <Pencil size={13} />
         </button>
 
-        {/* Delete */}
         <button onClick={handleDelete} title={t('common.delete')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px', borderRadius: 6, display: 'flex', color: 'var(--text-faint)' }}
           onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
           <Trash2 size={13} />
@@ -181,7 +188,7 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
   const { t } = useTranslation()
   const abgehakt = items.filter(i => i.checked).length
   const alleAbgehakt = abgehakt === items.length
-  const dot = katDot(kategorie)
+  const dot = katColor(kategorie, allCategories)
 
   const handleSaveKatName = async () => {
     const neu = editKatName.trim()
@@ -207,7 +214,6 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
 
   return (
     <div style={{ marginBottom: 6, background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border-secondary)', overflow: 'visible' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: offen ? '1px solid var(--border-secondary)' : 'none' }}>
         <button onClick={() => setOffen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: 'var(--text-faint)', flexShrink: 0 }}>
           {offen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
@@ -229,16 +235,14 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
           </span>
         )}
 
-        {/* Progress pill */}
         <span style={{
           fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 99,
-          background: alleAbgehakt ? '#dcfce7' : 'var(--bg-tertiary)',
+          background: alleAbgehakt ? 'rgba(22,163,74,0.12)' : 'var(--bg-tertiary)',
           color: alleAbgehakt ? '#16a34a' : 'var(--text-muted)',
         }}>
           {abgehakt}/{items.length}
         </span>
 
-        {/* Kategorie-Menü */}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setShowMenu(m => !m)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 6, display: 'flex', color: 'var(--text-faint)' }}
             onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
@@ -257,7 +261,6 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
         </div>
       </div>
 
-      {/* Items */}
       {offen && (
         <div style={{ padding: '4px 4px 6px' }}>
           {items.map(item => (
@@ -337,7 +340,6 @@ export default function PackingListPanel({ tripId, items }) {
     catch { toast.error(t('packing.toast.addError')) }
   }
 
-  // Rename all items in a category
   const handleRenameCategory = async (oldName, newName) => {
     const toUpdate = items.filter(i => (i.category || t('packing.defaultCategory')) === oldName)
     for (const item of toUpdate) {
@@ -345,14 +347,12 @@ export default function PackingListPanel({ tripId, items }) {
     }
   }
 
-  // Delete all items in a category
   const handleDeleteCategory = async (catItems) => {
     for (const item of catItems) {
       try { await deletePackingItem(tripId, item.id) } catch {}
     }
   }
 
-  // Clear all checked items
   const handleClearChecked = async () => {
     if (!confirm(t('packing.confirm.clearChecked', { count: abgehakt }))) return
     for (const item of items.filter(i => i.checked)) {
@@ -383,23 +383,23 @@ export default function PackingListPanel({ tripId, items }) {
                 fontSize: 11.5, padding: '5px 10px', borderRadius: 99, border: '1px solid rgba(239,68,68,0.3)',
                 background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer', fontFamily: 'inherit',
               }}>
-                {t('packing.clearChecked', { count: abgehakt })}
+                <span className="hidden sm:inline">{t('packing.clearChecked', { count: abgehakt })}</span>
+                <span className="sm:hidden">{t('packing.clearCheckedShort', { count: abgehakt })}</span>
               </button>
             )}
             <button onClick={() => setZeigeVorschlaege(v => !v)} style={{
               display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
               border: '1px solid', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              background: zeigeVorschlaege ? '#111827' : 'var(--bg-card)',
-              borderColor: zeigeVorschlaege ? '#111827' : 'var(--border-primary)',
-              color: zeigeVorschlaege ? 'white' : 'var(--text-muted)',
+              background: zeigeVorschlaege ? 'var(--text-primary)' : 'var(--bg-card)',
+              borderColor: zeigeVorschlaege ? 'var(--text-primary)' : 'var(--border-primary)',
+              color: zeigeVorschlaege ? 'var(--bg-primary)' : 'var(--text-muted)',
             }}>
               <Sparkles size={12} /> {t('packing.suggestions')}
             </button>
           </div>
         </div>
 
-        {/* Fortschrittsbalken */}
-        {items.length > 0 && (
+          {items.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ height: 5, background: 'var(--bg-tertiary)', borderRadius: 99, overflow: 'hidden' }}>
               <div style={{
@@ -414,14 +414,12 @@ export default function PackingListPanel({ tripId, items }) {
           </div>
         )}
 
-        {/* Artikel hinzufügen */}
         <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6 }}>
           <input
             type="text" value={neuerName} onChange={e => setNeuerName(e.target.value)}
             placeholder={t('packing.addPlaceholder')}
             style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 13.5, fontFamily: 'inherit', outline: 'none', color: 'var(--text-primary)' }}
           />
-          {/* Kategorie-Auswahl */}
           <div style={{ position: 'relative' }}>
             <input
               ref={katInputRef}
@@ -443,14 +441,14 @@ export default function PackingListPanel({ tripId, items }) {
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
                   >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: katDot(cat), flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: katColor(cat, allCategories), flexShrink: 0 }} />
                     {cat}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <button type="submit" style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: '#111827', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <button type="submit" style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <Plus size={16} />
           </button>
         </form>
@@ -489,8 +487,8 @@ export default function PackingListPanel({ tripId, items }) {
             <button key={id} onClick={() => setFilter(id)} style={{
               padding: '4px 12px', borderRadius: 99, border: 'none', cursor: 'pointer',
               fontSize: 12, fontFamily: 'inherit', fontWeight: filter === id ? 600 : 400,
-              background: filter === id ? '#111827' : 'transparent',
-              color: filter === id ? 'white' : 'var(--text-muted)',
+              background: filter === id ? 'var(--text-primary)' : 'transparent',
+              color: filter === id ? 'var(--bg-primary)' : 'var(--text-muted)',
             }}>{label}</button>
           ))}
         </div>

@@ -5,6 +5,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { db, canAccessTrip, isOwner } = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { broadcast } = require('../websocket');
 
 const router = express.Router();
 
@@ -134,6 +135,7 @@ router.put('/:id', authenticate, (req, res) => {
 
   const updatedTrip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId: req.user.id, tripId: req.params.id });
   res.json({ trip: updatedTrip });
+  broadcast(req.params.id, 'trip:updated', { trip: updatedTrip }, req.headers['x-socket-id']);
 });
 
 // POST /api/trips/:id/cover
@@ -147,7 +149,11 @@ router.post('/:id/cover', authenticate, uploadCover.single('cover'), (req, res) 
 
   if (trip.cover_image) {
     const oldPath = path.join(__dirname, '../../', trip.cover_image.replace(/^\//, ''));
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    const resolvedPath = path.resolve(oldPath);
+    const uploadsDir = path.resolve(__dirname, '../../uploads');
+    if (resolvedPath.startsWith(uploadsDir) && fs.existsSync(resolvedPath)) {
+      fs.unlinkSync(resolvedPath);
+    }
   }
 
   const coverUrl = `/uploads/covers/${req.file.filename}`;
@@ -159,8 +165,10 @@ router.post('/:id/cover', authenticate, uploadCover.single('cover'), (req, res) 
 router.delete('/:id', authenticate, (req, res) => {
   if (!isOwner(req.params.id, req.user.id))
     return res.status(403).json({ error: 'Nur der Eigentümer kann die Reise löschen' });
+  const deletedTripId = Number(req.params.id);
   db.prepare('DELETE FROM trips WHERE id = ?').run(req.params.id);
   res.json({ success: true });
+  broadcast(deletedTripId, 'trip:deleted', { id: deletedTripId }, req.headers['x-socket-id']);
 });
 
 // ── Member Management ────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Tooltip, Polyline, useMap } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { mapsApi } from '../../api/client'
 import { getCategoryIcon } from '../shared/categoryIcons'
 
@@ -81,7 +84,6 @@ function createPlaceIcon(place, orderNumber, isSelected) {
   })
 }
 
-// Pan/zoom to selected place
 function SelectionController({ places, selectedPlaceId }) {
   const map = useMap()
   const prev = useRef(null)
@@ -99,7 +101,6 @@ function SelectionController({ places, selectedPlaceId }) {
   return null
 }
 
-// Recenter map when default center changes
 function MapController({ center, zoom }) {
   const map = useMap()
   const prevCenter = useRef(center)
@@ -198,51 +199,72 @@ export function MapView({
       <SelectionController places={places} selectedPlaceId={selectedPlaceId} />
       <MapClickHandler onClick={onMapClick} />
 
-      {places.map((place) => {
-        const isSelected = place.id === selectedPlaceId
-        const resolvedPhotoUrl = place.image_url || (place.google_place_id && photoUrls[place.google_place_id]) || null
-        const orderNumber = dayOrderMap[place.id] ?? null
-        const icon = createPlaceIcon({ ...place, image_url: resolvedPhotoUrl }, orderNumber, isSelected)
+      <MarkerClusterGroup
+        chunkedLoading
+        maxClusterRadius={30}
+        disableClusteringAtZoom={11}
+        spiderfyOnMaxZoom
+        showCoverageOnHover={false}
+        zoomToBoundsOnClick
+        iconCreateFunction={(cluster) => {
+          const count = cluster.getChildCount()
+          const size = count < 10 ? 36 : count < 50 ? 42 : 48
+          return L.divIcon({
+            html: `<div class="marker-cluster-custom"
+              style="width:${size}px;height:${size}px;">
+              <span>${count}</span>
+            </div>`,
+            className: 'marker-cluster-wrapper',
+            iconSize: L.point(size, size),
+          })
+        }}
+      >
+        {places.map((place) => {
+          const isSelected = place.id === selectedPlaceId
+          const resolvedPhotoUrl = place.image_url || (place.google_place_id && photoUrls[place.google_place_id]) || null
+          const orderNumber = dayOrderMap[place.id] ?? null
+          const icon = createPlaceIcon({ ...place, image_url: resolvedPhotoUrl }, orderNumber, isSelected)
 
-        return (
-          <Marker
-            key={place.id}
-            position={[place.lat, place.lng]}
-            icon={icon}
-            eventHandlers={{
-              click: () => onMarkerClick && onMarkerClick(place.id),
-            }}
-            zIndexOffset={isSelected ? 1000 : 0}
-          >
-            <Tooltip
-              direction="right"
-              offset={[0, 0]}
-              opacity={1}
-              className="map-tooltip"
+          return (
+            <Marker
+              key={place.id}
+              position={[place.lat, place.lng]}
+              icon={icon}
+              eventHandlers={{
+                click: () => onMarkerClick && onMarkerClick(place.id),
+              }}
+              zIndexOffset={isSelected ? 1000 : 0}
             >
-              <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
-                <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                  {place.name}
-                </div>
-                {place.category_name && (() => {
-                  const CatIcon = getCategoryIcon(place.category_icon)
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
-                      <CatIcon size={10} style={{ color: place.category_color || 'var(--text-muted)', flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{place.category_name}</span>
-                    </div>
-                  )
-                })()}
-                {place.address && (
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2, maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {place.address}
+              <Tooltip
+                direction="right"
+                offset={[0, 0]}
+                opacity={1}
+                className="map-tooltip"
+              >
+                <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                    {place.name}
                   </div>
-                )}
-              </div>
-            </Tooltip>
-          </Marker>
-        )
-      })}
+                  {place.category_name && (() => {
+                    const CatIcon = getCategoryIcon(place.category_icon)
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
+                        <CatIcon size={10} style={{ color: place.category_color || 'var(--text-muted)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{place.category_name}</span>
+                      </div>
+                    )
+                  })()}
+                  {place.address && (
+                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2, maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {place.address}
+                    </div>
+                  )}
+                </div>
+              </Tooltip>
+            </Marker>
+          )
+        })}
+      </MarkerClusterGroup>
 
       {route && route.length > 1 && (
         <Polyline

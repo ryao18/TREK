@@ -5,6 +5,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { db, canAccessTrip } = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { broadcast } = require('../websocket');
 
 const router = express.Router({ mergeParams: true });
 
@@ -106,6 +107,7 @@ router.post('/', authenticate, upload.single('file'), (req, res) => {
     WHERE f.id = ?
   `).get(result.lastInsertRowid);
   res.status(201).json({ file: formatFile(file) });
+  broadcast(tripId, 'file:created', { file: formatFile(file) }, req.headers['x-socket-id']);
 });
 
 // PUT /api/trips/:tripId/files/:id
@@ -139,6 +141,7 @@ router.put('/:id', authenticate, (req, res) => {
     WHERE f.id = ?
   `).get(id);
   res.json({ file: formatFile(updated) });
+  broadcast(tripId, 'file:updated', { file: formatFile(updated) }, req.headers['x-socket-id']);
 });
 
 // DELETE /api/trips/:tripId/files/:id
@@ -158,6 +161,7 @@ router.delete('/:id', authenticate, (req, res) => {
 
   db.prepare('DELETE FROM trip_files WHERE id = ?').run(id);
   res.json({ success: true });
+  broadcast(tripId, 'file:deleted', { fileId: Number(id) }, req.headers['x-socket-id']);
 });
 
 module.exports = router;

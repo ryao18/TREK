@@ -22,13 +22,24 @@ const tmpDir = path.join(__dirname, '../data/tmp');
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : null;
+
+let corsOrigin;
+if (allowedOrigins) {
+  // Explicit whitelist from env var
+  corsOrigin = (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    else callback(new Error('Not allowed by CORS'));
+  };
+} else if (process.env.NODE_ENV === 'production') {
+  // Production: same-origin only (Express serves the static client)
+  corsOrigin = false;
+} else {
+  // Development: allow all origins (needed for Vite dev server)
+  corsOrigin = true;
+}
+
 app.use(cors({
-  origin: allowedOrigins
-    ? (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) callback(null, true);
-        else callback(new Error('Not allowed by CORS'));
-      }
-    : true,
+  origin: corsOrigin,
   credentials: true
 }));
 app.use(express.json());
@@ -101,10 +112,12 @@ app.use((err, req, res, next) => {
 const scheduler = require('./scheduler');
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`NOMAD API running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   scheduler.start();
+  const { setupWebSocket } = require('./websocket');
+  setupWebSocket(server);
 });
 
 module.exports = app;

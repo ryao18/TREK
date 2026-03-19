@@ -8,7 +8,7 @@ function getWeekday(year, month, day) { return new Date(year, month, day).getDay
 
 // ── Datum-Only Picker ────────────────────────────────────────────────────────
 export function CustomDatePicker({ value, onChange, placeholder, style = {} }) {
-  const { locale } = useTranslation()
+  const { locale, t } = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const dropRef = useRef(null)
@@ -67,7 +67,7 @@ export function CustomDatePicker({ value, onChange, placeholder, style = {} }) {
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-faint)'}
         onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = 'var(--border-primary)' }}>
         <Calendar size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
-        <span>{displayValue || placeholder || 'Datum'}</span>
+        <span>{displayValue || placeholder || t('common.date')}</span>
       </button>
 
       {open && ReactDOM.createPortal(

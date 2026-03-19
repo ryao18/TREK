@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Search, Plus, X } from 'lucide-react'
+import ReactDOM from 'react-dom'
+import { Search, Plus, X, CalendarDays } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTranslation } from '../../i18n'
@@ -7,12 +8,13 @@ import CustomSelect from '../shared/CustomSelect'
 
 export default function PlacesSidebar({
   places, categories, assignments, selectedDayId, selectedPlaceId,
-  onPlaceClick, onAddPlace, onAssignToDay,
+  onPlaceClick, onAddPlace, onAssignToDay, days, isMobile,
 }) {
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all') // 'all' | 'ungeplant'
+  const [filter, setFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [dayPickerPlace, setDayPickerPlace] = useState(null)
 
   // Alle geplanten Ort-IDs abrufen (einem Tag zugewiesen)
   const plannedIds = new Set(
@@ -129,7 +131,13 @@ export default function PlacesSidebar({
                   // Backup in window für Cross-Component Drag (dataTransfer geht bei Re-Render verloren)
                   window.__dragData = { placeId: String(place.id) }
                 }}
-                onClick={() => onPlaceClick(isSelected ? null : place.id)}
+                onClick={() => {
+                  if (isMobile && days?.length > 0) {
+                    setDayPickerPlace(place)
+                  } else {
+                    onPlaceClick(isSelected ? null : place.id)
+                  }
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 14px 9px 16px',
@@ -180,6 +188,57 @@ export default function PlacesSidebar({
           })
         )}
       </div>
+
+      {dayPickerPlace && days?.length > 0 && ReactDOM.createPortal(
+        <div
+          onClick={() => setDayPickerPlace(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 99999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-card)', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 500, maxHeight: '60vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border-secondary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{dayPickerPlace.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>{t('places.assignToDay')}</div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px 16px' }}>
+              {days.map((day, i) => {
+                const alreadyAssigned = (assignments[String(day.id)] || []).some(a => a.place?.id === dayPickerPlace.id)
+                return (
+                  <button
+                    key={day.id}
+                    disabled={alreadyAssigned}
+                    onClick={() => { onAssignToDay(dayPickerPlace.id, day.id); setDayPickerPlace(null) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                      padding: '12px 14px', borderRadius: 12, border: 'none', cursor: alreadyAssigned ? 'default' : 'pointer',
+                      background: 'transparent', fontFamily: 'inherit', textAlign: 'left',
+                      opacity: alreadyAssigned ? 0.4 : 1, transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => { if (!alreadyAssigned) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-tertiary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', flexShrink: 0,
+                    }}>{i + 1}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {day.title || `${t('dayplan.dayN', { n: i + 1 })}`}
+                      </div>
+                      {day.date && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{new Date(day.date + 'T00:00:00').toLocaleDateString()}</div>}
+                    </div>
+                    {alreadyAssigned && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }

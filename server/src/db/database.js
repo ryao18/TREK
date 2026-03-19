@@ -21,6 +21,7 @@ function initDb() {
 
   _db = new DatabaseSync(dbPath);
   _db.exec('PRAGMA journal_mode = WAL');
+  _db.exec('PRAGMA busy_timeout = 5000');
   _db.exec('PRAGMA foreign_keys = ON');
 
   // Create all tables
@@ -210,6 +211,26 @@ function initDb() {
       sort_order INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+
+  // Create indexes for performance
+  _db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_places_trip_id ON places(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_places_category_id ON places(category_id);
+    CREATE INDEX IF NOT EXISTS idx_days_trip_id ON days(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_day_assignments_day_id ON day_assignments(day_id);
+    CREATE INDEX IF NOT EXISTS idx_day_assignments_place_id ON day_assignments(place_id);
+    CREATE INDEX IF NOT EXISTS idx_place_tags_place_id ON place_tags(place_id);
+    CREATE INDEX IF NOT EXISTS idx_place_tags_tag_id ON place_tags(tag_id);
+    CREATE INDEX IF NOT EXISTS idx_trip_members_trip_id ON trip_members(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_trip_members_user_id ON trip_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_packing_items_trip_id ON packing_items(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_budget_items_trip_id ON budget_items(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_reservations_trip_id ON reservations(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_trip_files_trip_id ON trip_files(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_day_notes_day_id ON day_notes(day_id);
+    CREATE INDEX IF NOT EXISTS idx_photos_trip_id ON photos(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   `);
 
   // Migrations

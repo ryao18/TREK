@@ -56,7 +56,6 @@ const inputStyle = {
 }
 const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }
 
-// Inline modal for editing place reservation fields
 function PlaceReservationEditModal({ item, tripId, onClose }) {
   const { updatePlace } = useTripStore()
   const toast = useToast()
@@ -148,7 +147,6 @@ function PlaceReservationEditModal({ item, tripId, onClose }) {
   )
 }
 
-// Card for real reservations (reservations table)
 function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateToFiles }) {
   const { toggleReservationStatus } = useTripStore()
   const toast = useToast()
@@ -172,8 +170,8 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         <div style={{
           width: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: confirmed ? '#f0fdf4' : '#fefce8',
-          borderRight: `1px solid ${confirmed ? '#bbf7d0' : '#fef08a'}`,
+          background: confirmed ? 'rgba(22,163,74,0.1)' : 'rgba(161,98,7,0.1)',
+          borderRight: `1px solid ${confirmed ? 'rgba(22,163,74,0.2)' : 'rgba(161,98,7,0.2)'}`,
         }}>
           <TypeIcon size={16} style={{ color: confirmed ? '#16a34a' : '#a16207' }} />
         </div>
@@ -188,7 +186,7 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
               <button onClick={handleToggle} style={{
                 display: 'flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 99,
                 border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 500,
-                background: confirmed ? '#dcfce7' : '#fef9c3',
+                background: confirmed ? 'rgba(22,163,74,0.12)' : 'rgba(161,98,7,0.12)',
                 color: confirmed ? '#16a34a' : '#a16207',
               }}>
                 {confirmed ? <><CheckCircle2 size={11} /> {t('reservations.confirmed')}</> : <><Circle size={11} /> {t('reservations.pending')}</>}
@@ -214,7 +212,7 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
 
           <div style={{ marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {r.confirmation_number && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, color: '#15803d', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 99, padding: '1px 7px', fontWeight: 600 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, color: '#16a34a', background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.2)', borderRadius: 99, padding: '1px 7px', fontWeight: 600 }}>
                 <Hash size={8} />{r.confirmation_number}
               </span>
             )}
@@ -247,7 +245,6 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
   )
 }
 
-// Card for place-level reservations (from day plan)
 function PlaceReservationCard({ item, tripId }) {
   const { updatePlace } = useTripStore()
   const toast = useToast()
@@ -276,8 +273,8 @@ function PlaceReservationCard({ item, tripId }) {
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           <div style={{
             width: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: confirmed ? '#f0fdf4' : '#fefce8',
-            borderRight: `1px solid ${confirmed ? '#bbf7d0' : '#fef08a'}`,
+            background: confirmed ? 'rgba(22,163,74,0.1)' : 'rgba(161,98,7,0.1)',
+            borderRight: `1px solid ${confirmed ? 'rgba(22,163,74,0.2)' : 'rgba(161,98,7,0.2)'}`,
           }}>
             <MapPinned size={16} style={{ color: confirmed ? '#16a34a' : '#a16207' }} />
           </div>
@@ -295,7 +292,7 @@ function PlaceReservationCard({ item, tripId }) {
                 <span style={{
                   display: 'flex', alignItems: 'center', gap: 3, padding: '3px 8px', borderRadius: 99,
                   fontSize: 11, fontWeight: 500,
-                  background: confirmed ? '#dcfce7' : '#fef9c3',
+                  background: confirmed ? 'rgba(22,163,74,0.12)' : 'rgba(161,98,7,0.12)',
                   color: confirmed ? '#16a34a' : '#a16207',
                 }}>
                   {confirmed ? <><CheckCircle2 size={11} /> {t('reservations.confirmed')}</> : <><Circle size={11} /> {t('reservations.pending')}</>}
@@ -344,7 +341,7 @@ function Section({ title, count, children, defaultOpen = true, accent }) {
         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>{title}</span>
         <span style={{
           fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 99,
-          background: accent === 'green' ? '#dcfce7' : 'var(--bg-tertiary)',
+          background: accent === 'green' ? 'rgba(22,163,74,0.12)' : 'var(--bg-tertiary)',
           color: accent === 'green' ? '#16a34a' : 'var(--text-muted)',
         }}>{count}</span>
       </button>
@@ -409,7 +406,7 @@ export default function ReservationsPanel({ tripId, reservations, days, assignme
           border: 'none', background: 'var(--accent)', color: 'var(--accent-text)',
           fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
         }}>
-          <Plus size={13} /> {t('reservations.addManual')}
+          <Plus size={13} /> <span className="hidden sm:inline">{t('reservations.addManual')}</span>
         </button>
       </div>
 

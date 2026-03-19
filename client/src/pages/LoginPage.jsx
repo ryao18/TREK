@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../i18n'
 import { authApi } from '../api/client'
-import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe } from 'lucide-react'
+import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route } from 'lucide-react'
 
 export default function LoginPage() {
   const { t, language } = useTranslation()
@@ -81,38 +81,141 @@ export default function LoginPage() {
       </button>
 
       {/* Left — branding */}
-      <div style={{ display: 'none', width: '45%', background: '#111827', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '60px 48px' }}
+      <div style={{ display: 'none', width: '55%', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '60px 48px', position: 'relative', overflow: 'hidden' }}
         className="lg-panel">
         <style>{`@media(min-width:1024px){.lg-panel{display:flex!important}}`}</style>
 
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48 }}>
-          <div style={{ width: 44, height: 44, background: 'white', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Plane size={22} style={{ color: '#111827' }} />
-          </div>
-          <span style={{ fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>NOMAD</span>
+        {/* Stars */}
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+          {Array.from({ length: 40 }, (_, i) => (
+            <div key={i} className="login-star" style={{
+              position: 'absolute',
+              width: Math.random() > 0.7 ? 2 : 1,
+              height: Math.random() > 0.7 ? 2 : 1,
+              borderRadius: '50%',
+              background: 'white',
+              opacity: 0.15 + Math.random() * 0.25,
+              top: `${Math.random() * 70}%`,
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 4}s`,
+            }} />
+          ))}
         </div>
 
-        <div style={{ maxWidth: 320, textAlign: 'center' }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: 32, fontWeight: 800, color: 'white', lineHeight: 1.2 }}>
+        {/* Animated glow orbs */}
+        <div className="login-orb1" style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="login-orb2" style={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+
+        {/* Animated planes — realistic silhouettes at different sizes/speeds */}
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+          {/* Plane 1 — large, slow, foreground */}
+          <svg className="login-plane1" viewBox="0 0 480 120" style={{ position: 'absolute', width: 48, opacity: 0.12 }}>
+            <g fill="white" transform="translate(240,60) rotate(-12)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <path d="M-100,-5 L-120,-30 L-108,-30 L-90,-8 Z" />
+              <path d="M-100,5 L-120,30 L-108,30 L-90,8 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+
+          {/* Plane 2 — small, faster, higher */}
+          <svg className="login-plane2" viewBox="0 0 480 120" style={{ position: 'absolute', width: 24, opacity: 0.08 }}>
+            <g fill="white" transform="translate(240,60) rotate(-12)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+
+          {/* Plane 3 — medium, mid-speed */}
+          <svg className="login-plane3" viewBox="0 0 480 120" style={{ position: 'absolute', width: 32, opacity: 0.06 }}>
+            <g fill="white" transform="translate(240,60) rotate(-5)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <path d="M-100,-5 L-120,-30 L-108,-30 L-90,-8 Z" />
+              <path d="M-100,5 L-120,30 L-108,30 L-90,8 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+
+          {/* Plane 4 — tiny, fast, high */}
+          <svg className="login-plane4" viewBox="0 0 480 120" style={{ position: 'absolute', width: 16, opacity: 0.07 }}>
+            <g fill="white" transform="translate(240,60) rotate(-10)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+
+          {/* Plane 5 — medium, right to left, lower */}
+          <svg className="login-plane5" viewBox="0 0 480 120" style={{ position: 'absolute', width: 28, opacity: 0.05 }}>
+            <g fill="white" transform="translate(240,60) rotate(8) scale(-1,1)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <path d="M-100,-5 L-120,-30 L-108,-30 L-90,-8 Z" />
+              <path d="M-100,5 L-120,30 L-108,30 L-90,8 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+
+          {/* Plane 6 — tiny distant */}
+          <svg className="login-plane6" viewBox="0 0 480 120" style={{ position: 'absolute', width: 12, opacity: 0.04 }}>
+            <g fill="white" transform="translate(240,60) rotate(-15)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+        </div>
+
+
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: 560, textAlign: 'center' }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48, justifyContent: 'center' }}>
+            <div style={{ width: 48, height: 48, background: 'white', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 30px rgba(255,255,255,0.1)' }}>
+              <Plane size={24} style={{ color: '#0f172a' }} />
+            </div>
+            <span style={{ fontSize: 28, fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>NOMAD</span>
+          </div>
+
+          <h2 style={{ margin: '0 0 12px', fontSize: 36, fontWeight: 800, color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
             {t('login.tagline')}
           </h2>
-          <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.65 }}>
+          <p style={{ margin: '0 0 44px', fontSize: 15, color: 'rgba(255,255,255,0.5)', lineHeight: 1.7 }}>
             {t('login.description')}
           </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {[
-              { Icon: MapPin, label: t('login.features.places') },
-              { Icon: Calendar, label: t('login.features.schedule') },
-              { Icon: Package, label: t('login.features.packing') },
-            ].map(({ Icon, label }) => (
-              <div key={label} style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px 12px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <Icon size={20} style={{ color: 'rgba(255,255,255,0.6)' }} />
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>{label}</div>
+              { Icon: Map, label: t('login.features.maps'), desc: t('login.features.mapsDesc') },
+              { Icon: Zap, label: t('login.features.realtime'), desc: t('login.features.realtimeDesc') },
+              { Icon: Wallet, label: t('login.features.budget'), desc: t('login.features.budgetDesc') },
+              { Icon: Users, label: t('login.features.collab'), desc: t('login.features.collabDesc') },
+              { Icon: CheckSquare, label: t('login.features.packing'), desc: t('login.features.packingDesc') },
+              { Icon: BookMarked, label: t('login.features.bookings'), desc: t('login.features.bookingsDesc') },
+              { Icon: FolderOpen, label: t('login.features.files'), desc: t('login.features.filesDesc') },
+              { Icon: Route, label: t('login.features.routes'), desc: t('login.features.routesDesc') },
+            ].map(({ Icon, label, desc }) => (
+              <div key={label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: '14px 12px', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'left', transition: 'all 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}>
+                <Icon size={17} style={{ color: 'rgba(255,255,255,0.7)', marginBottom: 7 }} />
+                <div style={{ fontSize: 12.5, color: 'white', fontWeight: 600, marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', lineHeight: 1.4 }}>{desc}</div>
               </div>
             ))}
           </div>
+
+          <p style={{ marginTop: 36, fontSize: 11.5, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.03em' }}>
+            {t('login.selfHosted')}
+          </p>
         </div>
       </div>
 
@@ -168,7 +271,7 @@ export default function LoginPage() {
                   <Mail size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
                   <input
                     type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                    placeholder="deine@email.de" style={inputBase}
+                    placeholder={t('login.emailPlaceholder')} style={inputBase}
                     onFocus={e => e.target.style.borderColor = '#111827'}
                     onBlur={e => e.target.style.borderColor = '#e5e7eb'}
                   />
@@ -225,7 +328,61 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes orbFloat1 {
+          0%, 100% { top: 15%; left: 30%; }
+          25% { top: 25%; left: 55%; }
+          50% { top: 45%; left: 40%; }
+          75% { top: 20%; left: 20%; }
+        }
+        @keyframes orbFloat2 {
+          0%, 100% { bottom: 20%; right: 15%; }
+          25% { bottom: 35%; right: 35%; }
+          50% { bottom: 15%; right: 45%; }
+          75% { bottom: 40%; right: 20%; }
+        }
+        .login-orb1 { animation: orbFloat1 20s ease-in-out infinite; }
+        .login-orb2 { animation: orbFloat2 25s ease-in-out infinite; }
+
+        @keyframes twinkle {
+          0%, 100% { opacity: 0.15; }
+          50% { opacity: 0.5; }
+        }
+        .login-star { animation: twinkle 3s ease-in-out infinite; }
+
+        @keyframes plane1Move {
+          0%   { left: -8%; top: 30%; transform: rotate(-8deg); }
+          100% { left: 108%; top: 10%; transform: rotate(-12deg); }
+        }
+        @keyframes plane2Move {
+          0%   { right: -5%; top: 18%; transform: rotate(5deg); }
+          100% { right: 110%; top: 8%; transform: rotate(3deg); }
+        }
+        @keyframes plane3Move {
+          0%   { left: -6%; top: 55%; transform: rotate(-10deg); }
+          100% { left: 110%; top: 35%; transform: rotate(-6deg); }
+        }
+        @keyframes plane4Move {
+          0%   { left: -4%; top: 8%; transform: rotate(-3deg); }
+          100% { left: 110%; top: 5%; transform: rotate(-5deg); }
+        }
+        @keyframes plane5Move {
+          0%   { right: -6%; top: 65%; transform: rotate(3deg); }
+          100% { right: 110%; top: 50%; transform: rotate(-2deg); }
+        }
+        @keyframes plane6Move {
+          0%   { left: -3%; top: 75%; transform: rotate(-7deg); }
+          100% { left: 110%; top: 58%; transform: rotate(-5deg); }
+        }
+        .login-plane1 { animation: plane1Move 24s ease-in-out infinite; }
+        .login-plane2 { animation: plane2Move 18s ease-in-out infinite; animation-delay: 6s; }
+        .login-plane3 { animation: plane3Move 30s ease-in-out infinite; animation-delay: 12s; }
+        .login-plane4 { animation: plane4Move 14s ease-in-out infinite; animation-delay: 3s; }
+        .login-plane5 { animation: plane5Move 22s ease-in-out infinite; animation-delay: 9s; }
+        .login-plane6 { animation: plane6Move 32s ease-in-out infinite; animation-delay: 16s; }
+
+      `}</style>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 const express = require('express');
 const { db, canAccessTrip } = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { broadcast } = require('../websocket');
 
 const router = express.Router({ mergeParams: true });
 
@@ -50,6 +51,7 @@ router.post('/', authenticate, (req, res) => {
 
   const item = db.prepare('SELECT * FROM budget_items WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json({ item });
+  broadcast(tripId, 'budget:created', { item }, req.headers['x-socket-id']);
 });
 
 // PUT /api/trips/:tripId/budget/:id
@@ -86,6 +88,7 @@ router.put('/:id', authenticate, (req, res) => {
 
   const updated = db.prepare('SELECT * FROM budget_items WHERE id = ?').get(id);
   res.json({ item: updated });
+  broadcast(tripId, 'budget:updated', { item: updated }, req.headers['x-socket-id']);
 });
 
 // DELETE /api/trips/:tripId/budget/:id
@@ -100,6 +103,7 @@ router.delete('/:id', authenticate, (req, res) => {
 
   db.prepare('DELETE FROM budget_items WHERE id = ?').run(id);
   res.json({ success: true });
+  broadcast(tripId, 'budget:deleted', { itemId: Number(id) }, req.headers['x-socket-id']);
 });
 
 module.exports = router;

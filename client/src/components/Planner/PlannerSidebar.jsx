@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo, useLayoutEffect } from 'react'
+import { FixedSizeList } from 'react-window'
 import {
   Plus, Search, X, Navigation, RotateCcw, ExternalLink,
   ChevronDown, ChevronRight, ChevronUp, Clock, MapPin,
@@ -65,6 +66,17 @@ export default function PlannerSidebar({
   const tripStore = useTripStore()
   const toast = useToast()
   const dayNotes = tripStore.dayNotes || {}
+  const placesListRef = useRef(null)
+  const [placesListHeight, setPlacesListHeight] = useState(400)
+
+  useLayoutEffect(() => {
+    if (!placesListRef.current) return
+    const ro = new ResizeObserver(([entry]) => {
+      setPlacesListHeight(entry.contentRect.height)
+    })
+    ro.observe(placesListRef.current)
+    return () => ro.disconnect()
+  }, [activeSegment])
 
   // Auto-expand selected day
   useEffect(() => {
@@ -88,12 +100,12 @@ export default function PlannerSidebar({
   const selectedDayAssignments = selectedDayId ? getDayAssignments(selectedDayId) : []
   const selectedDay = selectedDayId ? days.find(d => d.id === selectedDayId) : null
 
-  const filteredPlaces = places.filter(p => {
+  const filteredPlaces = useMemo(() => places.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) ||
       (p.address || '').toLowerCase().includes(search.toLowerCase())
     const matchCat = !categoryFilter || String(p.category_id) === String(categoryFilter)
     return matchSearch && matchCat
-  })
+  }), [places, search, categoryFilter])
 
   const isAssignedToDay = (placeId) =>
     selectedDayId && selectedDayAssignments.some(a => a.place?.id === placeId)
@@ -279,13 +291,11 @@ export default function PlannerSidebar({
     }
   }
 
-  // Inspector: show when a place is selected
   const selectedPlace = selectedPlaceId ? places.find(p => p.id === selectedPlaceId) : null
 
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif" }}>
 
-      {/* Trip header */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0 border-b border-gray-100">
         <button onClick={onEditTrip} className="w-full text-left group">
           <h1 className="font-semibold text-gray-900 text-[15px] leading-tight truncate group-hover:text-slate-600 transition-colors">
@@ -302,7 +312,6 @@ export default function PlannerSidebar({
         </button>
       </div>
 
-      {/* Segmented control */}
       <div className="px-3 py-2 flex-shrink-0 border-b border-gray-100">
         <div className="flex bg-gray-100 rounded-[10px] p-0.5 gap-0.5">
           {SEGMENTS.map(seg => (
@@ -321,13 +330,11 @@ export default function PlannerSidebar({
         </div>
       </div>
 
-      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto min-h-0">
 
         {/* ── PLAN ── */}
         {activeSegment === 'plan' && (
           <div className="pb-4">
-            {/* Alle Orte */}
             <button
               onClick={() => onSelectDay(null)}
               className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors border-b border-gray-50 ${
@@ -368,7 +375,6 @@ export default function PlannerSidebar({
 
                 return (
                   <div key={day.id} className="border-b border-gray-50">
-                    {/* Day header row */}
                     <div
                       className={`flex items-center gap-3 px-4 py-3 cursor-pointer select-none transition-colors ${
                         isSelected ? 'bg-slate-100/60' : 'hover:bg-gray-50/80'
@@ -420,7 +426,6 @@ export default function PlannerSidebar({
                       </button>
                     </div>
 
-                    {/* Expanded items: places + notes interleaved */}
                     {isExpanded && (
                       <div className="bg-gray-50/40">
                         {merged.length === 0 && !dayNoteUi ? (
@@ -509,7 +514,6 @@ export default function PlannerSidebar({
                                 )
                               }
 
-                              // Note card
                               const note = item.data
                               const isEditingThis = dayNoteUi?.mode === 'edit' && dayNoteUi.noteId === note.id
                               if (isEditingThis) {
@@ -576,7 +580,6 @@ export default function PlannerSidebar({
                           </div>
                         )}
 
-                        {/* Inline "add note" form */}
                         {dayNoteUi?.mode === 'add' && (
                           <div className="px-3 py-2 border-t border-amber-100 bg-amber-50/60">
                             <div className="flex gap-2 mb-1.5">
@@ -608,7 +611,6 @@ export default function PlannerSidebar({
                           </div>
                         )}
 
-                        {/* Add note button */}
                         {!dayNoteUi && (
                           <div className="px-4 py-2 border-t border-gray-100/60 flex gap-2">
                             <button
@@ -679,7 +681,6 @@ export default function PlannerSidebar({
               })
             )}
 
-            {/* Budget footer */}
             {totalCost > 0 && (
               <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
                 <span className="text-xs text-gray-500">Gesamtkosten</span>
@@ -691,7 +692,7 @@ export default function PlannerSidebar({
 
         {/* ── ORTE ── */}
         {activeSegment === 'orte' && (
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div className="p-3 space-y-2 border-b border-gray-100">
               <div className="relative">
                 <Search className="absolute left-3 top-[9px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
@@ -738,52 +739,62 @@ export default function PlannerSidebar({
                 </button>
               </div>
             ) : (
-              <div className="divide-y divide-gray-50">
-                {filteredPlaces.map(place => {
-                  const category = categories.find(c => c.id === place.category_id)
-                  const inDay = isAssignedToDay(place.id)
-                  const isSelected = place.id === selectedPlaceId
-                  return (
-                    <div
-                      key={place.id}
-                      onClick={() => onPlaceClick(isSelected ? null : place.id)}
-                      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                        isSelected ? 'bg-slate-50' : 'hover:bg-gray-50'
-                      }`}
-                    >
+              <div ref={placesListRef} style={{ flex: 1, minHeight: 0 }}>
+                <FixedSizeList
+                  height={placesListHeight}
+                  itemCount={filteredPlaces.length}
+                  itemSize={68}
+                  overscanCount={10}
+                  width="100%"
+                >
+                  {({ index, style }) => {
+                    const place = filteredPlaces[index]
+                    const category = categories.find(c => c.id === place.category_id)
+                    const inDay = isAssignedToDay(place.id)
+                    const isSelected = place.id === selectedPlaceId
+                    return (
                       <div
-                        className="w-9 h-9 rounded-[10px] overflow-hidden flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: (category?.color || '#6366f1') + '22' }}
+                        style={style}
+                        key={place.id}
+                        onClick={() => onPlaceClick(isSelected ? null : place.id)}
+                        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors border-b border-gray-50 ${
+                          isSelected ? 'bg-slate-50' : 'hover:bg-gray-50'
+                        }`}
                       >
-                        {place.image_url ? (
-                          <img src={place.image_url} alt={place.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-lg">{category?.icon || '📍'}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-medium text-[13px] text-gray-900 truncate">{place.name}</span>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {inDay
-                              ? <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">✓</span>
-                              : selectedDayId && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); onAssignToDay(place.id) }}
-                                  className="text-[11px] text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors"
-                                >
-                                  + Tag
-                                </button>
-                              )
-                            }
-                          </div>
+                        <div
+                          className="w-9 h-9 rounded-[10px] overflow-hidden flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: (category?.color || '#6366f1') + '22' }}
+                        >
+                          {place.image_url ? (
+                            <img src={place.image_url} alt={place.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-lg">{category?.icon || '📍'}</span>
+                          )}
                         </div>
-                        {category && <p className="text-xs text-gray-500 mt-0.5">{category.icon} {category.name}</p>}
-                        {place.address && <p className="text-xs text-gray-400 truncate">{place.address}</p>}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-medium text-[13px] text-gray-900 truncate">{place.name}</span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {inDay
+                                ? <span className="text-[11px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">✓</span>
+                                : selectedDayId && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); onAssignToDay(place.id) }}
+                                    className="text-[11px] text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors"
+                                  >
+                                    + Tag
+                                  </button>
+                                )
+                              }
+                            </div>
+                          </div>
+                          {category && <p className="text-xs text-gray-500 mt-0.5">{category.icon} {category.name}</p>}
+                          {place.address && <p className="text-xs text-gray-400 truncate">{place.address}</p>}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  }}
+                </FixedSizeList>
               </div>
             )}
           </div>
@@ -878,7 +889,6 @@ export default function PlannerSidebar({
         </div>
       )}
 
-      {/* Reservation modal */}
       <ReservationModal
         isOpen={showReservationModal}
         onClose={() => { setShowReservationModal(false); setEditingReservation(null) }}

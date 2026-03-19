@@ -5,6 +5,14 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Get API key: user's own key, or fall back to any admin's key
+function getMapsKey(userId) {
+  const user = db.prepare('SELECT maps_api_key FROM users WHERE id = ?').get(userId);
+  if (user?.maps_api_key) return user.maps_api_key;
+  const admin = db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
+  return admin?.maps_api_key || null;
+}
+
 // In-memory photo cache: placeId → { photoUrl, attribution, fetchedAt }
 const photoCache = new Map();
 const PHOTO_TTL = 12 * 60 * 60 * 1000; // 12 hours
@@ -15,8 +23,8 @@ router.post('/search', authenticate, async (req, res) => {
 
   if (!query) return res.status(400).json({ error: 'Suchanfrage ist erforderlich' });
 
-  const user = db.prepare('SELECT maps_api_key FROM users WHERE id = ?').get(req.user.id);
-  if (!user || !user.maps_api_key) {
+  const apiKey = getMapsKey(req.user.id);
+  if (!apiKey) {
     return res.status(400).json({ error: 'Google Maps API-Schlüssel nicht konfiguriert. Bitte in den Einstellungen hinzufügen.' });
   }
 
@@ -25,7 +33,7 @@ router.post('/search', authenticate, async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Goog-Api-Key': user.maps_api_key,
+        'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.websiteUri,places.nationalPhoneNumber,places.types',
       },
       body: JSON.stringify({ textQuery: query, languageCode: req.query.lang || 'en' }),
@@ -59,8 +67,8 @@ router.post('/search', authenticate, async (req, res) => {
 router.get('/details/:placeId', authenticate, async (req, res) => {
   const { placeId } = req.params;
 
-  const user = db.prepare('SELECT maps_api_key FROM users WHERE id = ?').get(req.user.id);
-  if (!user || !user.maps_api_key) {
+  const apiKey = getMapsKey(req.user.id);
+  if (!apiKey) {
     return res.status(400).json({ error: 'Google Maps API-Schlüssel nicht konfiguriert' });
   }
 
@@ -69,7 +77,7 @@ router.get('/details/:placeId', authenticate, async (req, res) => {
     const response = await fetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=${lang}`, {
       method: 'GET',
       headers: {
-        'X-Goog-Api-Key': user.maps_api_key,
+        'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri,reviews,editorialSummary',
       },
     });
@@ -121,8 +129,8 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
     return res.json({ photoUrl: cached.photoUrl, attribution: cached.attribution });
   }
 
-  const user = db.prepare('SELECT maps_api_key FROM users WHERE id = ?').get(req.user.id);
-  if (!user?.maps_api_key) {
+  const apiKey = getMapsKey(req.user.id);
+  if (!apiKey) {
     return res.status(400).json({ error: 'Google Maps API-Schlüssel nicht konfiguriert' });
   }
 
@@ -130,11 +138,16 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
     // Fetch place details to get photo reference
     const detailsRes = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
       headers: {
-        'X-Goog-Api-Key': user.maps_api_key,
+        'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': 'photos',
       },
     });
     const details = await detailsRes.json();
+
+    if (!detailsRes.ok) {
+      console.error('Google Places photo details error:', details.error?.message || detailsRes.status);
+      return res.status(404).json({ error: 'Foto konnte nicht abgerufen werden' });
+    }
 
     if (!details.photos?.length) {
       return res.status(404).json({ error: 'Kein Foto verfügbar' });
@@ -146,7 +159,7 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
 
     // Fetch the media URL (skipHttpRedirect returns JSON with photoUri)
     const mediaRes = await fetch(
-      `https://places.googleapis.com/v1/${photoName}/media?maxHeightPx=600&key=${user.maps_api_key}&skipHttpRedirect=true`
+      `https://places.googleapis.com/v1/${photoName}/media?maxHeightPx=600&key=${apiKey}&skipHttpRedirect=true`
     );
     const mediaData = await mediaRes.json();
     const photoUrl = mediaData.photoUri;
@@ -156,6 +169,17 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
     }
 
     photoCache.set(placeId, { photoUrl, attribution, fetchedAt: Date.now() });
+
+    // Persist the photo URL to all places with this google_place_id so future
+    // loads serve image_url directly without hitting the Google API again.
+    try {
+      db.prepare(
+        'UPDATE places SET image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE google_place_id = ? AND (image_url IS NULL OR image_url = ?)'
+      ).run(photoUrl, placeId, '');
+    } catch (dbErr) {
+      console.error('Failed to persist photo URL to database:', dbErr);
+    }
+
     res.json({ photoUrl, attribution });
   } catch (err) {
     console.error('Place photo error:', err);

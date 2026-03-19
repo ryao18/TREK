@@ -661,7 +661,7 @@ export default function DayPlanSidebar({
                                 </div>
                               )}
                             </div>
-                            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1, opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
+                            <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
                               <button onClick={moveUp} disabled={placeIdx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: placeIdx === 0 ? 'default' : 'pointer', color: placeIdx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
                                 <ChevronUp size={12} strokeWidth={2} />
                               </button>
@@ -736,13 +736,13 @@ export default function DayPlanSidebar({
                               <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-faint)', lineHeight: '1.2', marginTop: 2 }}>{note.time}</div>
                             )}
                           </div>
-                          <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1, opacity: isNoteHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
-                            <button onClick={e => { e.stopPropagation(); moveNote(day.id, note.id, 'up') }} disabled={noteIdx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: noteIdx === 0 ? 'default' : 'pointer', color: noteIdx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}><ChevronUp size={12} strokeWidth={2} /></button>
-                            <button onClick={e => { e.stopPropagation(); moveNote(day.id, note.id, 'down') }} disabled={noteIdx === merged.length - 1} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: noteIdx === merged.length - 1 ? 'default' : 'pointer', color: noteIdx === merged.length - 1 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}><ChevronDown size={12} strokeWidth={2} /></button>
-                          </div>
-                          <div style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: isNoteHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
+                          <div className="note-edit-buttons" style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: isNoteHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
                             <button onClick={e => openEditNote(day.id, note, e)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-faint)', display: 'flex' }}><Pencil size={10} /></button>
                             <button onClick={e => deleteNote(day.id, note.id, e)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-faint)', display: 'flex' }}><Trash2 size={10} /></button>
+                          </div>
+                          <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isNoteHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
+                            <button onClick={e => { e.stopPropagation(); moveNote(day.id, note.id, 'up') }} disabled={noteIdx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: noteIdx === 0 ? 'default' : 'pointer', color: noteIdx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}><ChevronUp size={12} strokeWidth={2} /></button>
+                            <button onClick={e => { e.stopPropagation(); moveNote(day.id, note.id, 'down') }} disabled={noteIdx === merged.length - 1} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: noteIdx === merged.length - 1 ? 'default' : 'pointer', color: noteIdx === merged.length - 1 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}><ChevronDown size={12} strokeWidth={2} /></button>
                           </div>
                         </div>
                         </React.Fragment>

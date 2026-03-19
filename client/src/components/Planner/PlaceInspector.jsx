@@ -8,14 +8,31 @@ import { useTranslation } from '../../i18n'
 
 const detailsCache = new Map()
 
+function getSessionCache(key) {
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw ? JSON.parse(raw) : undefined
+  } catch { return undefined }
+}
+
+function setSessionCache(key, value) {
+  try { sessionStorage.setItem(key, JSON.stringify(value)) } catch {}
+}
+
 function useGoogleDetails(googlePlaceId, language) {
   const [details, setDetails] = useState(null)
-  const cacheKey = `${googlePlaceId}_${language}`
+  const cacheKey = `gdetails_${googlePlaceId}_${language}`
   useEffect(() => {
     if (!googlePlaceId) { setDetails(null); return }
+    // In-memory cache (fastest)
     if (detailsCache.has(cacheKey)) { setDetails(detailsCache.get(cacheKey)); return }
+    // sessionStorage cache (survives reload)
+    const cached = getSessionCache(cacheKey)
+    if (cached) { detailsCache.set(cacheKey, cached); setDetails(cached); return }
+    // Fetch from API
     mapsApi.details(googlePlaceId, language).then(data => {
       detailsCache.set(cacheKey, data.place)
+      setSessionCache(cacheKey, data.place)
       setDetails(data.place)
     }).catch(() => {})
   }, [googlePlaceId, language])

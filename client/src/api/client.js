@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getSocketId } from './websocket'
 
 const apiClient = axios.create({
   baseURL: '/api',
@@ -7,12 +8,16 @@ const apiClient = axios.create({
   },
 })
 
-// Request interceptor - add auth token
+// Request interceptor - add auth token and socket ID
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('auth_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+    const sid = getSocketId()
+    if (sid) {
+      config.headers['X-Socket-Id'] = sid
     }
     return config
   },
@@ -112,6 +117,7 @@ export const categoriesApi = {
 
 export const adminApi = {
   users: () => apiClient.get('/admin/users').then(r => r.data),
+  createUser: (data) => apiClient.post('/admin/users', data).then(r => r.data),
   updateUser: (id, data) => apiClient.put(`/admin/users/${id}`, data).then(r => r.data),
   deleteUser: (id) => apiClient.delete(`/admin/users/${id}`).then(r => r.data),
   stats: () => apiClient.get('/admin/stats').then(r => r.data),

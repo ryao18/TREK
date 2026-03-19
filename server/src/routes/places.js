@@ -2,6 +2,7 @@ const express = require('express');
 const fetch = require('node-fetch');
 const { db, getPlaceWithTags, canAccessTrip } = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { broadcast } = require('../websocket');
 
 const router = express.Router({ mergeParams: true });
 
@@ -47,13 +48,26 @@ router.get('/', authenticate, (req, res) => {
 
   const places = db.prepare(query).all(...params);
 
-  const placesWithTags = places.map(p => {
-    const tags = db.prepare(`
-      SELECT t.* FROM tags t
+  // Load all tags for these places in a single query to avoid N+1
+  const placeIds = places.map(p => p.id);
+  const tagsByPlaceId = {};
+  if (placeIds.length > 0) {
+    const placeholders = placeIds.map(() => '?').join(',');
+    const allTags = db.prepare(`
+      SELECT t.*, pt.place_id FROM tags t
       JOIN place_tags pt ON t.id = pt.tag_id
-      WHERE pt.place_id = ?
-    `).all(p.id);
+      WHERE pt.place_id IN (${placeholders})
+    `).all(...placeIds);
 
+    for (const tag of allTags) {
+      const pid = tag.place_id;
+      delete tag.place_id;
+      if (!tagsByPlaceId[pid]) tagsByPlaceId[pid] = [];
+      tagsByPlaceId[pid].push(tag);
+    }
+  }
+
+  const placesWithTags = places.map(p => {
     return {
       ...p,
       category: p.category_id ? {
@@ -62,7 +76,7 @@ router.get('/', authenticate, (req, res) => {
         color: p.category_color,
         icon: p.category_icon,
       } : null,
-      tags,
+      tags: tagsByPlaceId[p.id] || [],
     };
   });
 
@@ -113,6 +127,7 @@ router.post('/', authenticate, (req, res) => {
 
   const place = getPlaceWithTags(placeId);
   res.status(201).json({ place });
+  broadcast(tripId, 'place:created', { place }, req.headers['x-socket-id']);
 });
 
 // GET /api/trips/:tripId/places/:id
@@ -258,6 +273,7 @@ router.put('/:id', authenticate, (req, res) => {
 
   const place = getPlaceWithTags(id);
   res.json({ place });
+  broadcast(tripId, 'place:updated', { place }, req.headers['x-socket-id']);
 });
 
 // DELETE /api/trips/:tripId/places/:id
@@ -276,6 +292,7 @@ router.delete('/:id', authenticate, (req, res) => {
 
   db.prepare('DELETE FROM places WHERE id = ?').run(id);
   res.json({ success: true });
+  broadcast(tripId, 'place:deleted', { placeId: Number(id) }, req.headers['x-socket-id']);
 });
 
 module.exports = router;

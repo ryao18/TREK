@@ -19,9 +19,13 @@ const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, avatarDir),
   filename: (req, file, cb) => cb(null, uuid() + path.extname(file.originalname))
 });
+const ALLOWED_AVATAR_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 const avatarUpload = multer({ storage: avatarStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) cb(null, true);
-  else cb(new Error('Only images allowed'));
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!file.mimetype.startsWith('image/') || !ALLOWED_AVATAR_EXTS.includes(ext)) {
+    return cb(new Error('Only .jpg, .jpeg, .png, .gif, .webp images are allowed'));
+  }
+  cb(null, true);
 }});
 
 // Simple rate limiter
@@ -90,7 +94,7 @@ router.post('/register', authLimiter, (req, res) => {
     return res.status(400).json({ error: 'Invalid email format' });
   }
 
-  const existingUser = db.prepare('SELECT id FROM users WHERE email = ? OR username = ?').get(email, username);
+  const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)').get(email, username);
   if (existingUser) {
     return res.status(409).json({ error: 'A user with this email or username already exists' });
   }
@@ -123,7 +127,7 @@ router.post('/login', authLimiter, (req, res) => {
     return res.status(400).json({ error: 'E-Mail und Passwort sind erforderlich' });
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email);
   if (!user) {
     return res.status(401).json({ error: 'Ungültige E-Mail oder Passwort' });
   }
@@ -134,15 +138,15 @@ router.post('/login', authLimiter, (req, res) => {
   }
 
   const token = generateToken(user);
-  const { password_hash, ...userWithoutPassword } = user;
+  const { password_hash, maps_api_key, openweather_api_key, unsplash_api_key, ...userWithoutSensitive } = user;
 
-  res.json({ token, user: { ...userWithoutPassword, avatar_url: avatarUrl(user) } });
+  res.json({ token, user: { ...userWithoutSensitive, avatar_url: avatarUrl(user) } });
 });
 
 // GET /api/auth/me
 router.get('/me', authenticate, (req, res) => {
   const user = db.prepare(
-    'SELECT id, username, email, role, maps_api_key, openweather_api_key, avatar, created_at FROM users WHERE id = ?'
+    'SELECT id, username, email, role, avatar, created_at FROM users WHERE id = ?'
   ).get(req.user.id);
 
   if (!user) {
@@ -207,13 +211,14 @@ router.put('/me/settings', authenticate, (req, res) => {
   res.json({ success: true, user: { ...updated, avatar_url: avatarUrl(updated) } });
 });
 
-// GET /api/auth/me/settings
+// GET /api/auth/me/settings (admin only — returns API keys)
 router.get('/me/settings', authenticate, (req, res) => {
   const user = db.prepare(
-    'SELECT maps_api_key, openweather_api_key FROM users WHERE id = ?'
+    'SELECT role, maps_api_key, openweather_api_key FROM users WHERE id = ?'
   ).get(req.user.id);
+  if (user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
-  res.json({ settings: user });
+  res.json({ settings: { maps_api_key: user.maps_api_key, openweather_api_key: user.openweather_api_key } });
 });
 
 // POST /api/auth/avatar — upload avatar

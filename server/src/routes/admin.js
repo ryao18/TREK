@@ -11,9 +11,40 @@ router.use(authenticate, adminOnly);
 // GET /api/admin/users
 router.get('/users', (req, res) => {
   const users = db.prepare(
-    'SELECT id, username, email, role, maps_api_key, unsplash_api_key, openweather_api_key, created_at, updated_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, email, role, created_at, updated_at FROM users ORDER BY created_at DESC'
   ).all();
   res.json({ users });
+});
+
+// POST /api/admin/users
+router.post('/users', (req, res) => {
+  const { username, email, password, role } = req.body;
+
+  if (!username?.trim() || !email?.trim() || !password?.trim()) {
+    return res.status(400).json({ error: 'Benutzername, E-Mail und Passwort sind erforderlich' });
+  }
+
+  if (role && !['user', 'admin'].includes(role)) {
+    return res.status(400).json({ error: 'Ungültige Rolle' });
+  }
+
+  const existingUsername = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim());
+  if (existingUsername) return res.status(409).json({ error: 'Benutzername bereits vergeben' });
+
+  const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim());
+  if (existingEmail) return res.status(409).json({ error: 'E-Mail bereits vergeben' });
+
+  const passwordHash = bcrypt.hashSync(password.trim(), 10);
+
+  const result = db.prepare(
+    'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
+  ).run(username.trim(), email.trim(), passwordHash, role || 'user');
+
+  const user = db.prepare(
+    'SELECT id, username, email, role, created_at, updated_at FROM users WHERE id = ?'
+  ).get(result.lastInsertRowid);
+
+  res.status(201).json({ user });
 });
 
 // PUT /api/admin/users/:id

@@ -1,6 +1,7 @@
 const express = require('express');
 const { db, canAccessTrip } = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { broadcast } = require('../websocket');
 
 const router = express.Router({ mergeParams: true });
 
@@ -37,6 +38,7 @@ router.post('/', authenticate, (req, res) => {
 
   const note = db.prepare('SELECT * FROM day_notes WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json({ note });
+  broadcast(tripId, 'dayNote:created', { dayId: Number(dayId), note }, req.headers['x-socket-id']);
 });
 
 // PUT /api/trips/:tripId/days/:dayId/notes/:id
@@ -60,6 +62,7 @@ router.put('/:id', authenticate, (req, res) => {
 
   const updated = db.prepare('SELECT * FROM day_notes WHERE id = ?').get(id);
   res.json({ note: updated });
+  broadcast(tripId, 'dayNote:updated', { dayId: Number(dayId), note: updated }, req.headers['x-socket-id']);
 });
 
 // DELETE /api/trips/:tripId/days/:dayId/notes/:id
@@ -72,6 +75,7 @@ router.delete('/:id', authenticate, (req, res) => {
 
   db.prepare('DELETE FROM day_notes WHERE id = ?').run(id);
   res.json({ success: true });
+  broadcast(tripId, 'dayNote:deleted', { noteId: Number(id), dayId: Number(dayId) }, req.headers['x-socket-id']);
 });
 
 module.exports = router;

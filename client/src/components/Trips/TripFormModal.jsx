@@ -172,13 +172,13 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               <Calendar className="inline w-4 h-4 mr-1" />{t('dashboard.startDate')}
             </label>
-            <CustomDatePicker value={formData.start_date} onChange={v => update('start_date', v)} placeholder="Start" />
+            <CustomDatePicker value={formData.start_date} onChange={v => update('start_date', v)} placeholder={t('dashboard.startDate')} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               <Calendar className="inline w-4 h-4 mr-1" />{t('dashboard.endDate')}
             </label>
-            <CustomDatePicker value={formData.end_date} onChange={v => update('end_date', v)} placeholder="End" />
+            <CustomDatePicker value={formData.end_date} onChange={v => update('end_date', v)} placeholder={t('dashboard.endDate')} />
           </div>
         </div>
 

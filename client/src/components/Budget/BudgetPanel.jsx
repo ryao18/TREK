@@ -37,7 +37,7 @@ function InlineEditCell({ value, onSave, type = 'text', style = {}, placeholder 
     return <input ref={inputRef} type="text" inputMode={type === 'number' ? 'decimal' : 'text'} value={editValue}
       onChange={e => setEditValue(e.target.value)} onBlur={save}
       onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditValue(value ?? ''); setEditing(false) } }}
-      style={{ width: '100%', border: '1px solid #6366f1', borderRadius: 4, padding: '4px 6px', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', ...style }}
+      style={{ width: '100%', border: '1px solid var(--accent)', borderRadius: 4, padding: '4px 6px', fontSize: 13, outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', ...style }}
       placeholder={placeholder} />
   }
 
@@ -50,7 +50,7 @@ function InlineEditCell({ value, onSave, type = 'text', style = {}, placeholder 
       style={{ cursor: 'pointer', padding: '4px 6px', borderRadius: 4, minHeight: 28, display: 'flex', alignItems: 'center',
         justifyContent: style?.textAlign === 'center' ? 'center' : 'flex-start', transition: 'background 0.15s',
         color: display ? 'var(--text-primary)' : 'var(--text-faint)', fontSize: 13, ...style }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.06)'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
       {display || placeholder || '-'}
     </div>
@@ -101,7 +101,7 @@ function AddItemRow({ onAdd, t }) {
       </td>
       <td style={{ padding: '4px 6px', textAlign: 'center' }}>
         <button onClick={handleAdd} disabled={!name.trim()} title={t('reservations.add')}
-          style={{ background: name.trim() ? '#6366f1' : 'var(--border-primary)', border: 'none', borderRadius: 4, color: '#fff',
+          style={{ background: name.trim() ? 'var(--text-primary)' : 'var(--border-primary)', border: 'none', borderRadius: 4, color: 'var(--bg-primary)',
             cursor: name.trim() ? 'pointer' : 'default', padding: '4px 8px', display: 'inline-flex', alignItems: 'center' }}>
           <Plus size={14} />
         </button>
@@ -132,7 +132,6 @@ function PieChart({ segments, size = 200, totalLabel }) {
         background: `conic-gradient(${stops})`,
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
       }} />
-      {/* Center hole */}
       <div style={{
         position: 'absolute', top: '50%', left: '50%',
         transform: 'translate(-50%, -50%)',
@@ -206,14 +205,14 @@ export default function BudgetPanel({ tripId }) {
         </div>
         <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px' }}>{t('budget.emptyTitle')}</h2>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 24px', lineHeight: 1.5 }}>{t('budget.emptyText')}</p>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'stretch', maxWidth: 320, margin: '0 auto' }}>
           <input value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
             placeholder={t('budget.emptyPlaceholder')}
-            style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 14, fontFamily: 'inherit', width: 260, outline: 'none' }} />
+            style={{ flex: 1, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--bg-input)', color: 'var(--text-primary)', minWidth: 0 }} />
           <button onClick={handleAddCategory} disabled={!newCategoryName.trim()}
-            style={{ background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: newCategoryName.trim() ? 1 : 0.5 }}>
-            <Plus size={16} /> {t('budget.createCategory')}
+            style={{ background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', borderRadius: 10, padding: '0 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: newCategoryName.trim() ? 1 : 0.5, flexShrink: 0 }}>
+            <Plus size={16} />
           </button>
         </div>
       </div>
@@ -223,7 +222,6 @@ export default function BudgetPanel({ tripId }) {
   // ── Main Layout ──────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "'Poppins', -apple-system, BlinkMacSystemFont, system-ui, sans-serif" }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Calculator size={20} color="var(--text-primary)" />
@@ -231,10 +229,7 @@ export default function BudgetPanel({ tripId }) {
         </div>
       </div>
 
-      {/* Main: table + sidebar */}
       <div style={{ display: 'flex', gap: 20, padding: '0 16px 40px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-
-        {/* Left: Tables */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {categoryNames.map((cat, ci) => {
             const items = grouped[cat]
@@ -243,7 +238,6 @@ export default function BudgetPanel({ tripId }) {
 
             return (
               <div key={cat} style={{ marginBottom: 16 }}>
-                {/* Category header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#000000', color: '#fff', borderRadius: '10px 10px 0 0', padding: '9px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
@@ -259,7 +253,6 @@ export default function BudgetPanel({ tripId }) {
                   </div>
                 </div>
 
-                {/* Table */}
                 <div style={{ overflowX: 'auto', border: '1px solid var(--border-primary)', borderTop: 'none', borderRadius: '0 0 10px 10px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -317,9 +310,7 @@ export default function BudgetPanel({ tripId }) {
           })}
         </div>
 
-        {/* Right: Sidebar */}
         <div className="w-full md:w-[280px]" style={{ flexShrink: 0, position: 'sticky', top: 16, alignSelf: 'flex-start' }}>
-          {/* Currency selector */}
           <div style={{ marginBottom: 12 }}>
             <CustomSelect
               value={currency}
@@ -329,7 +320,6 @@ export default function BudgetPanel({ tripId }) {
             />
           </div>
 
-          {/* Add category */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             <input
               value={newCategoryName}
@@ -344,7 +334,6 @@ export default function BudgetPanel({ tripId }) {
             </button>
           </div>
 
-          {/* Grand total card */}
           <div style={{
             background: 'linear-gradient(135deg, #000000 0%, #18181b 100%)',
             borderRadius: 16, padding: '24px 20px', color: '#fff', marginBottom: 16,
@@ -364,7 +353,6 @@ export default function BudgetPanel({ tripId }) {
             <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{SYMBOLS[currency] || currency} {currency}</div>
           </div>
 
-          {/* Pie chart card */}
           {pieSegments.length > 0 && (
             <div style={{
               background: 'var(--bg-card)', borderRadius: 16, padding: '20px 16px',
@@ -375,7 +363,6 @@ export default function BudgetPanel({ tripId }) {
 
               <PieChart segments={pieSegments} size={180} totalLabel={t('budget.total')} />
 
-              {/* Legend */}
               <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {pieSegments.map(seg => {
                   const pct = grandTotal > 0 ? ((seg.value / grandTotal) * 100).toFixed(1) : '0.0'
@@ -389,7 +376,6 @@ export default function BudgetPanel({ tripId }) {
                 })}
               </div>
 
-              {/* Category amounts */}
               <div style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {pieSegments.map(seg => (
                   <div key={seg.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -90,7 +90,6 @@ export default function App() {
     <TranslationProvider>
       <ToastContainer />
       {demoMode && isAuthenticated && <DemoBanner />}
-      <div style={demoMode && isAuthenticated ? { paddingTop: 36 } : undefined}>
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
@@ -137,7 +136,6 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </div>
     </TranslationProvider>
   )
 }

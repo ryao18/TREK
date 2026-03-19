@@ -66,9 +66,11 @@ router.get('/app-config', (req, res) => {
   const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'allow_registration'").get();
   const allowRegistration = userCount === 0 || (setting?.value ?? 'true') === 'true';
   const isDemo = process.env.DEMO_MODE === 'true';
+  const { version } = require('../../package.json');
   res.json({
     allow_registration: isDemo ? false : allowRegistration,
     has_users: userCount > 0,
+    version,
     demo_mode: isDemo,
     demo_email: isDemo ? 'demo@nomad.app' : undefined,
     demo_password: isDemo ? 'demo12345' : undefined,

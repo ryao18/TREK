@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -11,7 +11,14 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
   const { t, locale } = useTranslation()
   const navigate = useNavigate()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState(null)
   const dark = settings.dark_mode
+
+  useEffect(() => {
+    import('../../api/client').then(({ authApi }) => {
+      authApi.getAppConfig?.().then(c => setAppVersion(c?.version)).catch(() => {})
+    })
+  }, [])
 
   const handleLogout = () => {
     logout()
@@ -146,6 +153,11 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
                     <LogOut className="w-4 h-4" />
                     {t('nav.logout')}
                   </button>
+                  {appVersion && (
+                    <div className="px-4 py-1.5 text-center" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
+                      NOMAD v{appVersion}
+                    </div>
+                  )}
                 </div>
               </div>
             </>

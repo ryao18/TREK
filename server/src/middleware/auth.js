@@ -53,4 +53,11 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, optionalAuth, adminOnly };
+const demoUploadBlock = (req, res, next) => {
+  if (process.env.DEMO_MODE === 'true' && req.user?.email === 'demo@nomad.app') {
+    return res.status(403).json({ error: 'Uploads are disabled in demo mode. Self-host NOMAD for full functionality.' });
+  }
+  next();
+};
+
+module.exports = { authenticate, optionalAuth, adminOnly, demoUploadBlock };

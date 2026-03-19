@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { db, canAccessTrip } = require('../db/database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, demoUploadBlock } = require('../middleware/auth');
 
 const router = express.Router({ mergeParams: true });
 
@@ -68,7 +68,7 @@ router.get('/', authenticate, (req, res) => {
 });
 
 // POST /api/trips/:tripId/photos
-router.post('/', authenticate, upload.array('photos', 20), (req, res) => {
+router.post('/', authenticate, demoUploadBlock, upload.array('photos', 20), (req, res) => {
   const { tripId } = req.params;
   const { day_id, place_id, caption } = req.body;
 

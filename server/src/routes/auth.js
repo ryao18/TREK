@@ -7,7 +7,7 @@ const fs = require('fs');
 const { v4: uuid } = require('uuid');
 const fetch = require('node-fetch');
 const { db } = require('../db/database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, demoUploadBlock } = require('../middleware/auth');
 
 const router = express.Router();
 const { JWT_SECRET } = require('../config');
@@ -243,7 +243,7 @@ router.get('/me/settings', authenticate, (req, res) => {
 });
 
 // POST /api/auth/avatar — upload avatar
-router.post('/avatar', authenticate, avatarUpload.single('avatar'), (req, res) => {
+router.post('/avatar', authenticate, demoUploadBlock, avatarUpload.single('avatar'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
   const current = db.prepare('SELECT avatar FROM users WHERE id = ?').get(req.user.id);

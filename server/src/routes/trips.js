@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { db, canAccessTrip, isOwner } = require('../db/database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, demoUploadBlock } = require('../middleware/auth');
 const { broadcast } = require('../websocket');
 
 const router = express.Router();
@@ -139,7 +139,7 @@ router.put('/:id', authenticate, (req, res) => {
 });
 
 // POST /api/trips/:id/cover
-router.post('/:id/cover', authenticate, uploadCover.single('cover'), (req, res) => {
+router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cover'), (req, res) => {
   if (!isOwner(req.params.id, req.user.id))
     return res.status(403).json({ error: 'Nur der Eigentümer kann das Titelbild ändern' });
 

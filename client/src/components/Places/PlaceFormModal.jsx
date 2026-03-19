@@ -3,6 +3,7 @@ import Modal from '../shared/Modal'
 import { mapsApi, tagsApi, categoriesApi } from '../../api/client'
 import { useToast } from '../shared/Toast'
 import { useAuthStore } from '../../store/authStore'
+import { useTranslation } from '../../i18n'
 import { Search, Plus, MapPin, Loader } from 'lucide-react'
 
 const STATUSES = [
@@ -23,7 +24,8 @@ export default function PlaceFormModal({
   onTagCreated,
 }) {
   const isEditing = !!place
-  const { user } = useAuthStore()
+  const { user, hasMapsKey } = useAuthStore()
+  const { t } = useTranslation()
   const toast = useToast()
 
   const [categories, setCategories] = useState(initialCategories)
@@ -124,14 +126,17 @@ export default function PlaceFormModal({
     }
   }
 
+  const [searchSource, setSearchSource] = useState(null)
+
   const handleMapSearch = async () => {
     if (!mapQuery.trim()) return
     setMapSearching(true)
     try {
       const data = await mapsApi.search(mapQuery)
       setMapResults(data.places || [])
+      setSearchSource(data.source || 'google')
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Maps search failed')
+      toast.error(err.response?.data?.error || t('places.mapsSearchError'))
     } finally {
       setMapSearching(false)
     }
@@ -218,9 +223,13 @@ export default function PlaceFormModal({
           </div>
         )}
 
-        {/* Google Maps search — always visible when API key is set */}
-        {user?.maps_api_key && (
+        {/* Place search — Google Maps or OpenStreetMap fallback */}
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+            {!hasMapsKey && (
+              <p className="mb-2 text-xs" style={{ color: 'var(--text-faint)' }}>
+                {t('places.osmActive')}
+              </p>
+            )}
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -229,7 +238,7 @@ export default function PlaceFormModal({
                   value={mapQuery}
                   onChange={e => setMapQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleMapSearch()}
-                  placeholder="Google Maps suchen..."
+                  placeholder={t('places.mapsSearchPlaceholder')}
                   className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-400 focus:border-transparent bg-white"
                 />
               </div>
@@ -238,7 +247,7 @@ export default function PlaceFormModal({
                 disabled={mapSearching}
                 className="px-3 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-50"
               >
-                {mapSearching ? <Loader className="w-4 h-4 animate-spin" /> : 'Suchen'}
+                {mapSearching ? <Loader className="w-4 h-4 animate-spin" /> : t('common.search')}
               </button>
             </div>
 
@@ -263,7 +272,6 @@ export default function PlaceFormModal({
               </div>
             )}
           </div>
-        )}
 
         {/* Name */}
         <div>

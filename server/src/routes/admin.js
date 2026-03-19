@@ -11,7 +11,7 @@ router.use(authenticate, adminOnly);
 // GET /api/admin/users
 router.get('/users', (req, res) => {
   const users = db.prepare(
-    'SELECT id, username, email, role, created_at, updated_at FROM users ORDER BY created_at DESC'
+    'SELECT id, username, email, role, created_at, updated_at, last_login FROM users ORDER BY created_at DESC'
   ).all();
   res.json({ users });
 });
@@ -104,10 +104,31 @@ router.get('/stats', (req, res) => {
   const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   const totalTrips = db.prepare('SELECT COUNT(*) as count FROM trips').get().count;
   const totalPlaces = db.prepare('SELECT COUNT(*) as count FROM places').get().count;
-  const totalPhotos = db.prepare('SELECT COUNT(*) as count FROM photos').get().count;
   const totalFiles = db.prepare('SELECT COUNT(*) as count FROM trip_files').get().count;
 
-  res.json({ totalUsers, totalTrips, totalPlaces, totalPhotos, totalFiles });
+  res.json({ totalUsers, totalTrips, totalPlaces, totalFiles });
+});
+
+// GET /api/admin/oidc — get OIDC config
+router.get('/oidc', (req, res) => {
+  const get = (key) => db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key)?.value || '';
+  res.json({
+    issuer: get('oidc_issuer'),
+    client_id: get('oidc_client_id'),
+    client_secret: get('oidc_client_secret'),
+    display_name: get('oidc_display_name'),
+  });
+});
+
+// PUT /api/admin/oidc — update OIDC config
+router.put('/oidc', (req, res) => {
+  const { issuer, client_id, client_secret, display_name } = req.body;
+  const set = (key, val) => db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val || '');
+  set('oidc_issuer', issuer);
+  set('oidc_client_id', client_id);
+  set('oidc_client_secret', client_secret);
+  set('oidc_display_name', display_name);
+  res.json({ success: true });
 });
 
 // POST /api/admin/save-demo-baseline (demo mode only)

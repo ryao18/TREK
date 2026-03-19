@@ -76,7 +76,9 @@ const settingsRoutes = require('./routes/settings');
 const budgetRoutes = require('./routes/budget');
 const backupRoutes = require('./routes/backup');
 
+const oidcRoutes = require('./routes/oidc');
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/oidc', oidcRoutes);
 app.use('/api/trips', tripsRoutes);
 app.use('/api/trips/:tripId/days', daysRoutes);
 app.use('/api/trips/:tripId/places', placesRoutes);

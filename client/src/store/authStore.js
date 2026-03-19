@@ -9,6 +9,7 @@ export const useAuthStore = create((set, get) => ({
   isLoading: false,
   error: null,
   demoMode: localStorage.getItem('demo_mode') === 'true',
+  hasMapsKey: false,
 
   login: async (email, password) => {
     set({ isLoading: true, error: null })
@@ -136,6 +137,8 @@ export const useAuthStore = create((set, get) => ({
     else localStorage.removeItem('demo_mode')
     set({ demoMode: val })
   },
+
+  setHasMapsKey: (val) => set({ hasMapsKey: val }),
 
   demoLogin: async () => {
     set({ isLoading: true, error: null })

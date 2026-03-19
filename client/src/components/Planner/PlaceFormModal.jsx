@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import Modal from '../shared/Modal'
 import CustomSelect from '../shared/CustomSelect'
 import { mapsApi } from '../../api/client'
+import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../shared/Toast'
 import { Search } from 'lucide-react'
 import { useTranslation } from '../../i18n'
@@ -44,6 +45,7 @@ export default function PlaceFormModal({
   const [isSaving, setIsSaving] = useState(false)
   const toast = useToast()
   const { t, language } = useTranslation()
+  const { hasMapsKey } = useAuthStore()
 
   useEffect(() => {
     if (place) {
@@ -139,8 +141,13 @@ export default function PlaceFormModal({
       size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Google Maps Search */}
+        {/* Place Search */}
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+          {!hasMapsKey && (
+            <p className="mb-2 text-xs" style={{ color: 'var(--text-faint)' }}>
+              {t('places.osmActive')}
+            </p>
+          )}
           <div className="flex gap-2">
             <input
               type="text"

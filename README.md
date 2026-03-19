@@ -28,7 +28,8 @@ A self-hosted, real-time collaborative travel planner for organizing trips with 
 
 - **Real-Time Collaboration** — Plan together via WebSocket live sync — changes appear instantly across all connected users
 - **Interactive Map** — Leaflet map with marker clustering, route visualization, and customizable tile sources
-- **Google Places Integration** — Search places, auto-fill details including ratings, reviews, opening hours, and photos (requires API key)
+- **Place Search** — Search via Google Places (with photos, ratings, opening hours) or OpenStreetMap (free, no API key needed)
+- **Single Sign-On (OIDC)** — Login with Google, Apple, Authentik, Keycloak, or any OIDC provider
 - **Drag & Drop Planner** — Organize places into day plans with reordering and cross-day moves
 - **Weather Forecasts** — Current weather and 5-day forecasts with smart caching (requires API key)
 - **Budget Tracking** — Category-based expenses with pie chart, per-person/per-day splitting, and multi-currency support

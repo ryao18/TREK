@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { adminApi, authApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../i18n'
 import Navbar from '../components/Layout/Navbar'
 import Modal from '../components/shared/Modal'
@@ -13,7 +14,8 @@ import CustomSelect from '../components/shared/CustomSelect'
 
 export default function AdminPage() {
   const { demoMode } = useAuthStore()
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
+  const hour12 = useSettingsStore(s => s.settings.time_format) === '12h'
   const TABS = [
     { id: 'users', label: t('admin.tabs.users') },
     { id: 'categories', label: t('admin.tabs.categories') },
@@ -29,6 +31,10 @@ export default function AdminPage() {
   const [editForm, setEditForm] = useState({ username: '', email: '', role: 'user', password: '' })
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [createForm, setCreateForm] = useState({ username: '', email: '', password: '', role: 'user' })
+
+  // OIDC config
+  const [oidcConfig, setOidcConfig] = useState({ issuer: '', client_id: '', client_secret: '', display_name: '' })
+  const [savingOidc, setSavingOidc] = useState(false)
 
   // Registration toggle
   const [allowRegistration, setAllowRegistration] = useState(true)
@@ -49,6 +55,7 @@ export default function AdminPage() {
     loadData()
     loadAppConfig()
     loadApiKeys()
+    adminApi.getOidc().then(setOidcConfig).catch(() => {})
   }, [])
 
   const loadData = async () => {
@@ -238,12 +245,11 @@ export default function AdminPage() {
 
           {/* Stats */}
           {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
               {[
                 { label: t('admin.stats.users'), value: stats.totalUsers, icon: Users },
                 { label: t('admin.stats.trips'), value: stats.totalTrips, icon: Briefcase },
                 { label: t('admin.stats.places'), value: stats.totalPlaces, icon: Map },
-                { label: t('admin.stats.photos'), value: stats.totalPhotos || 0, icon: Camera },
                 { label: t('admin.stats.files'), value: stats.totalFiles || 0, icon: FileText },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className="rounded-xl border p-4" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
@@ -303,6 +309,7 @@ export default function AdminPage() {
                         <th className="px-5 py-3">{t('admin.table.email')}</th>
                         <th className="px-5 py-3">{t('admin.table.role')}</th>
                         <th className="px-5 py-3">{t('admin.table.created')}</th>
+                        <th className="px-5 py-3">{t('admin.table.lastLogin')}</th>
                         <th className="px-5 py-3 text-right">{t('admin.table.actions')}</th>
                       </tr>
                     </thead>
@@ -334,7 +341,10 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="px-5 py-3 text-sm text-slate-500">
-                            {new Date(u.created_at).toLocaleDateString('de-DE')}
+                            {new Date(u.created_at).toLocaleDateString(locale)}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-slate-500">
+                            {u.last_login ? new Date(u.last_login).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12 }) : '—'}
                           </td>
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2 justify-end">
@@ -403,7 +413,10 @@ export default function AdminPage() {
                 <div className="p-6 space-y-4">
                   {/* Google Maps Key */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('admin.mapsKey')}</label>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                      {t('admin.mapsKey')}
+                      <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8' }}>{t('admin.recommended')}</span>
+                    </label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <input
@@ -436,7 +449,7 @@ export default function AdminPage() {
                         {t('admin.validateKey')}
                       </button>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">{t('admin.mapsKeyHint')}</p>
+                    <p className="text-xs text-slate-400 mt-1">{t('admin.mapsKeyHintLong')}</p>
                     {validation.maps === true && (
                       <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
                         <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block"></span>
@@ -507,6 +520,73 @@ export default function AdminPage() {
                     className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400"
                   >
                     {savingKeys ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                    {t('common.save')}
+                  </button>
+                </div>
+              </div>
+
+              {/* OIDC / SSO Configuration */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100">
+                  <h2 className="font-semibold text-slate-900">{t('admin.oidcTitle')}</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">{t('admin.oidcSubtitle')}</p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('admin.oidcDisplayName')}</label>
+                    <input
+                      type="text"
+                      value={oidcConfig.display_name}
+                      onChange={e => setOidcConfig(c => ({ ...c, display_name: e.target.value }))}
+                      placeholder='z.B. Google, Authentik, Keycloak'
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('admin.oidcIssuer')}</label>
+                    <input
+                      type="url"
+                      value={oidcConfig.issuer}
+                      onChange={e => setOidcConfig(c => ({ ...c, issuer: e.target.value }))}
+                      placeholder='https://accounts.google.com'
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">{t('admin.oidcIssuerHint')}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Client ID</label>
+                    <input
+                      type="text"
+                      value={oidcConfig.client_id}
+                      onChange={e => setOidcConfig(c => ({ ...c, client_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Client Secret</label>
+                    <input
+                      type="password"
+                      value={oidcConfig.client_secret}
+                      onChange={e => setOidcConfig(c => ({ ...c, client_secret: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    />
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setSavingOidc(true)
+                      try {
+                        await adminApi.updateOidc(oidcConfig)
+                        toast.success(t('admin.oidcSaved'))
+                      } catch (err) {
+                        toast.error(err.response?.data?.error || t('common.error'))
+                      } finally {
+                        setSavingOidc(false)
+                      }
+                    }}
+                    disabled={savingOidc}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400"
+                  >
+                    {savingOidc ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                     {t('common.save')}
                   </button>
                 </div>

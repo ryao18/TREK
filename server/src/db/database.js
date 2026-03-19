@@ -250,6 +250,9 @@ function initDb() {
     `ALTER TABLE trips ADD COLUMN is_archived INTEGER DEFAULT 0`,
     `ALTER TABLE categories ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`,
     `ALTER TABLE users ADD COLUMN avatar TEXT`,
+    `ALTER TABLE users ADD COLUMN oidc_sub TEXT`,
+    `ALTER TABLE users ADD COLUMN oidc_issuer TEXT`,
+    `ALTER TABLE users ADD COLUMN last_login DATETIME`,
   ];
 
   // Recreate budget_items to allow NULL persons (SQLite can't ALTER NOT NULL)

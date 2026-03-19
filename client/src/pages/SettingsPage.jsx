@@ -6,7 +6,8 @@ import { useTranslation } from '../i18n'
 import Navbar from '../components/Layout/Navbar'
 import CustomSelect from '../components/shared/CustomSelect'
 import { useToast } from '../components/shared/Toast'
-import { Save, Map, Palette, User, Moon, Sun, Shield, Camera, Trash2 } from 'lucide-react'
+import { Save, Map, Palette, User, Moon, Sun, Shield, Camera, Trash2, Lock } from 'lucide-react'
+import { authApi, adminApi } from '../api/client'
 
 const MAP_PRESETS = [
   { name: 'OpenStreetMap', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' },
@@ -31,7 +32,8 @@ function Section({ title, icon: Icon, children }) {
 }
 
 export default function SettingsPage() {
-  const { user, updateProfile, uploadAvatar, deleteAvatar } = useAuthStore()
+  const { user, updateProfile, uploadAvatar, deleteAvatar, logout } = useAuthStore()
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const avatarInputRef = React.useRef(null)
   const { settings, updateSetting, updateSettings } = useSettingsStore()
   const { t, locale } = useTranslation()
@@ -52,6 +54,8 @@ export default function SettingsPage() {
   // Account
   const [username, setUsername] = useState(user?.username || '')
   const [email, setEmail] = useState(user?.email || '')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   useEffect(() => {
     setMapTileUrl(settings.map_tile_url || '')
@@ -344,76 +348,244 @@ export default function SettingsPage() {
               />
             </div>
 
+            {/* Change Password */}
+            <div style={{ paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--border-secondary)' }}>
+              <label className="block text-sm font-medium text-slate-700 mb-3">{t('settings.changePassword')}</label>
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder={t('settings.newPassword')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder={t('settings.confirmPassword')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newPassword) return toast.error(t('settings.passwordRequired'))
+                    if (newPassword.length < 8) return toast.error(t('settings.passwordTooShort'))
+                    if (newPassword !== confirmPassword) return toast.error(t('settings.passwordMismatch'))
+                    try {
+                      await authApi.changePassword({ new_password: newPassword })
+                      toast.success(t('settings.passwordChanged'))
+                      setNewPassword(''); setConfirmPassword('')
+                    } catch (err) {
+                      toast.error(err.response?.data?.error || t('common.error'))
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ border: '1px solid var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-secondary)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}
+                >
+                  <Lock size={14} />
+                  {t('settings.updatePassword')}
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-4">
-              {user?.avatar_url ? (
-                <img src={user.avatar_url} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-              ) : (
-                <div style={{
-                  width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 24, fontWeight: 700,
-                  background: 'var(--bg-hover)', color: 'var(--text-secondary)',
-                }}>
-                  {user?.username?.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="flex flex-col gap-2">
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{
+                    width: 64, height: 64, borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 24, fontWeight: 700,
+                    background: 'var(--bg-hover)', color: 'var(--text-secondary)',
+                  }}>
+                    {user?.username?.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => avatarInputRef.current?.click()}
+                  style={{
+                    position: 'absolute', bottom: -3, right: -3,
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: 'var(--text-primary)', color: 'var(--bg-card)',
+                    border: '2px solid var(--bg-card)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', padding: 0, transition: 'transform 0.15s, opacity 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.opacity = '0.85' }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '1' }}
+                >
+                  <Camera size={14} />
+                </button>
+                {user?.avatar_url && (
+                  <button
+                    onClick={handleAvatarRemove}
+                    style={{
+                      position: 'absolute', top: -2, right: -2,
+                      width: 20, height: 20, borderRadius: '50%',
+                      background: '#ef4444', color: 'white',
+                      border: '2px solid var(--bg-card)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', padding: 0,
+                    }}
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
                 <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   <span className="font-medium" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-secondary)' }}>
                     {user?.role === 'admin' ? <><Shield size={13} /> {t('settings.roleAdmin')}</> : t('settings.roleUser')}
                   </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAvatarUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    onClick={() => avatarInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                    style={{
-                      border: '1px solid var(--border-primary)',
-                      background: 'var(--bg-card)',
-                      color: 'var(--text-secondary)',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}
-                  >
-                    <Camera size={14} />
-                    {t('settings.uploadAvatar')}
-                  </button>
-                  {user?.avatar_url && (
-                    <button
-                      onClick={handleAvatarRemove}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                      style={{
-                        border: '1px solid var(--border-primary)',
-                        background: 'var(--bg-card)',
-                        color: '#ef4444',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-card)'}
-                    >
-                      <Trash2 size={14} />
-                      {t('settings.removeAvatar')}
-                    </button>
+                  {user?.oidc_issuer && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      fontSize: 10, fontWeight: 500, padding: '1px 8px', borderRadius: 99,
+                      background: '#dbeafe', color: '#1d4ed8', marginLeft: 6,
+                    }}>
+                      SSO
+                    </span>
                   )}
                 </div>
+                {user?.oidc_issuer && (
+                  <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: -2 }}>
+                    {t('settings.oidcLinked')} {user.oidc_issuer.replace('https://', '').replace(/\/+$/, '')}
+                  </p>
+                )}
               </div>
             </div>
 
-            <button
-              onClick={saveProfile}
-              disabled={saving.profile}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400"
-            >
-              {saving.profile ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-              {t('settings.saveProfile')}
-            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+              <button
+                onClick={saveProfile}
+                disabled={saving.profile}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400"
+              >
+                {saving.profile ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                {t('settings.saveProfile')}
+              </button>
+              <button
+                onClick={async () => {
+                  if (user?.role === 'admin') {
+                    try {
+                      const data = await adminApi.stats()
+                      const adminUsers = (await adminApi.users()).users.filter(u => u.role === 'admin')
+                      if (adminUsers.length <= 1) {
+                        setShowDeleteConfirm('blocked')
+                        return
+                      }
+                    } catch {}
+                  }
+                  setShowDeleteConfirm(true)
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors text-red-500 hover:bg-red-50"
+                style={{ border: '1px solid #fecaca' }}
+              >
+                <Trash2 size={14} />
+                {t('settings.deleteAccount')}
+              </button>
+            </div>
           </Section>
+
+          {/* Delete Account Confirmation */}
+          {showDeleteConfirm === 'blocked' && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+            }} onClick={() => setShowDeleteConfirm(false)}>
+              <div style={{
+                background: 'var(--bg-card)', borderRadius: 16, padding: '28px 24px',
+                maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Shield size={18} style={{ color: '#d97706' }} />
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{t('settings.deleteBlockedTitle')}</h3>
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 20px' }}>
+                  {t('settings.deleteBlockedMessage')}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                      border: '1px solid var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-secondary)',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    {t('common.ok') || 'OK'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showDeleteConfirm === true && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+            }} onClick={() => setShowDeleteConfirm(false)}>
+              <div style={{
+                background: 'var(--bg-card)', borderRadius: 16, padding: '28px 24px',
+                maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trash2 size={18} style={{ color: '#ef4444' }} />
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{t('settings.deleteAccountTitle')}</h3>
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, margin: '0 0 20px' }}>
+                  {t('settings.deleteAccountWarning')}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                      border: '1px solid var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-secondary)',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await authApi.deleteOwnAccount()
+                        logout()
+                        navigate('/login')
+                      } catch (err) {
+                        toast.error(err.response?.data?.error || t('common.error'))
+                        setShowDeleteConfirm(false)
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                      border: 'none', background: '#ef4444', color: 'white',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    {t('settings.deleteAccountConfirm')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

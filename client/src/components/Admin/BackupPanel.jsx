@@ -191,7 +191,7 @@ export default function BackupPanel() {
             <button
               onClick={handleCreate}
               disabled={isCreating}
-              className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-900 text-sm font-medium disabled:opacity-60"
+              className="flex items-center gap-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2 rounded-lg hover:bg-slate-900 text-sm font-medium disabled:opacity-60"
             >
               {isCreating ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -289,7 +289,7 @@ export default function BackupPanel() {
             </div>
             <button
               onClick={() => handleAutoSettingsChange('enabled', !autoSettings.enabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoSettings.enabled ? 'bg-slate-700' : 'bg-gray-200'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoSettings.enabled ? 'bg-slate-900 dark:bg-slate-100' : 'bg-gray-200 dark:bg-gray-600'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoSettings.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -307,7 +307,7 @@ export default function BackupPanel() {
                       onClick={() => handleAutoSettingsChange('interval', opt.value)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                         autoSettings.interval === opt.value
-                          ? 'bg-slate-700 text-white border-slate-700'
+                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-700'
                           : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                       }`}
                     >
@@ -327,7 +327,7 @@ export default function BackupPanel() {
                       onClick={() => handleAutoSettingsChange('keep_days', opt.value)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                         autoSettings.keep_days === opt.value
-                          ? 'bg-slate-700 text-white border-slate-700'
+                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-700'
                           : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                       }`}
                     >
@@ -344,7 +344,7 @@ export default function BackupPanel() {
             <button
               onClick={handleSaveAutoSettings}
               disabled={autoSettingsSaving || !autoSettingsDirty}
-              className="flex items-center gap-2 bg-slate-700 text-white px-5 py-2 rounded-lg hover:bg-slate-900 text-sm font-medium disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-5 py-2 rounded-lg hover:bg-slate-900 text-sm font-medium disabled:opacity-50 transition-colors"
             >
               {autoSettingsSaving
                 ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

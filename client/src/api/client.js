@@ -53,6 +53,8 @@ export const authApi = {
   updateAppSettings: (data) => apiClient.put('/auth/app-settings', data).then(r => r.data),
   validateKeys: () => apiClient.get('/auth/validate-keys').then(r => r.data),
   travelStats: () => apiClient.get('/auth/travel-stats').then(r => r.data),
+  changePassword: (data) => apiClient.put('/auth/me/password', data).then(r => r.data),
+  deleteOwnAccount: () => apiClient.delete('/auth/me').then(r => r.data),
   demoLogin: () => apiClient.post('/auth/demo-login').then(r => r.data),
 }
 
@@ -123,6 +125,8 @@ export const adminApi = {
   deleteUser: (id) => apiClient.delete(`/admin/users/${id}`).then(r => r.data),
   stats: () => apiClient.get('/admin/stats').then(r => r.data),
   saveDemoBaseline: () => apiClient.post('/admin/save-demo-baseline').then(r => r.data),
+  getOidc: () => apiClient.get('/admin/oidc').then(r => r.data),
+  updateOidc: (data) => apiClient.put('/admin/oidc', data).then(r => r.data),
 }
 
 export const mapsApi = {

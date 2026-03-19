@@ -17,6 +17,34 @@ function getMapsKey(userId) {
 const photoCache = new Map();
 const PHOTO_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
+// Nominatim search (OpenStreetMap) — free fallback when no Google API key
+async function searchNominatim(query, lang) {
+  const params = new URLSearchParams({
+    q: query,
+    format: 'json',
+    addressdetails: '1',
+    limit: '10',
+    'accept-language': lang || 'en',
+  });
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+    headers: { 'User-Agent': 'NOMAD Travel Planner (https://github.com/mauriceboe/NOMAD)' },
+  });
+  if (!response.ok) throw new Error('Nominatim API error');
+  const data = await response.json();
+  return data.map(item => ({
+    google_place_id: null,
+    osm_id: `${item.osm_type}/${item.osm_id}`,
+    name: item.name || item.display_name?.split(',')[0] || '',
+    address: item.display_name || '',
+    lat: parseFloat(item.lat) || null,
+    lng: parseFloat(item.lon) || null,
+    rating: null,
+    website: null,
+    phone: null,
+    source: 'openstreetmap',
+  }));
+}
+
 // POST /api/maps/search
 router.post('/search', authenticate, async (req, res) => {
   const { query } = req.body;
@@ -24,8 +52,16 @@ router.post('/search', authenticate, async (req, res) => {
   if (!query) return res.status(400).json({ error: 'Suchanfrage ist erforderlich' });
 
   const apiKey = getMapsKey(req.user.id);
+
+  // No Google API key → use Nominatim (OpenStreetMap)
   if (!apiKey) {
-    return res.status(400).json({ error: 'Google Maps API-Schlüssel nicht konfiguriert. Bitte in den Einstellungen hinzufügen.' });
+    try {
+      const places = await searchNominatim(query, req.query.lang);
+      return res.json({ places, source: 'openstreetmap' });
+    } catch (err) {
+      console.error('Nominatim search error:', err);
+      return res.status(500).json({ error: 'Fehler bei der OpenStreetMap Suche' });
+    }
   }
 
   try {
@@ -54,9 +90,10 @@ router.post('/search', authenticate, async (req, res) => {
       rating: p.rating || null,
       website: p.websiteUri || null,
       phone: p.nationalPhoneNumber || null,
+      source: 'google',
     }));
 
-    res.json({ places });
+    res.json({ places, source: 'google' });
   } catch (err) {
     console.error('Maps search error:', err);
     res.status(500).json({ error: 'Fehler bei der Google Places Suche' });

@@ -67,10 +67,19 @@ router.get('/app-config', (req, res) => {
   const allowRegistration = userCount === 0 || (setting?.value ?? 'true') === 'true';
   const isDemo = process.env.DEMO_MODE === 'true';
   const { version } = require('../../package.json');
+  const hasGoogleKey = !!db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
+  const oidcDisplayName = db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_display_name'").get()?.value || null;
+  const oidcConfigured = !!(
+    db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_issuer'").get()?.value &&
+    db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_client_id'").get()?.value
+  );
   res.json({
     allow_registration: isDemo ? false : allowRegistration,
     has_users: userCount > 0,
     version,
+    has_maps_key: hasGoogleKey,
+    oidc_configured: oidcConfigured,
+    oidc_display_name: oidcConfigured ? (oidcDisplayName || 'SSO') : undefined,
     demo_mode: isDemo,
     demo_email: isDemo ? 'demo@nomad.app' : undefined,
     demo_password: isDemo ? 'demo12345' : undefined,
@@ -158,6 +167,7 @@ router.post('/login', authLimiter, (req, res) => {
     return res.status(401).json({ error: 'Ungültige E-Mail oder Passwort' });
   }
 
+  db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
   const token = generateToken(user);
   const { password_hash, maps_api_key, openweather_api_key, unsplash_api_key, ...userWithoutSensitive } = user;
 
@@ -167,7 +177,7 @@ router.post('/login', authLimiter, (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticate, (req, res) => {
   const user = db.prepare(
-    'SELECT id, username, email, role, avatar, created_at FROM users WHERE id = ?'
+    'SELECT id, username, email, role, avatar, oidc_issuer, created_at FROM users WHERE id = ?'
   ).get(req.user.id);
 
   if (!user) {
@@ -175,6 +185,30 @@ router.get('/me', authenticate, (req, res) => {
   }
 
   res.json({ user: { ...user, avatar_url: avatarUrl(user) } });
+});
+
+// PUT /api/auth/me/password
+router.put('/me/password', authenticate, (req, res) => {
+  const { new_password } = req.body;
+  if (!new_password) return res.status(400).json({ error: 'New password is required' });
+  if (new_password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+  const hash = bcrypt.hashSync(new_password, 10);
+  db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(hash, req.user.id);
+  res.json({ success: true });
+});
+
+// DELETE /api/auth/me — delete own account
+router.delete('/me', authenticate, (req, res) => {
+  // Prevent deleting last admin
+  if (req.user.role === 'admin') {
+    const adminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").get().count;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last admin account' });
+    }
+  }
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  res.json({ success: true });
 });
 
 // PUT /api/auth/me/maps-key

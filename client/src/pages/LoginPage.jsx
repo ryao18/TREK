@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../i18n'
 import { authApi } from '../api/client'
-import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route } from 'lucide-react'
+import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route, Shield } from 'lucide-react'
 
 export default function LoginPage() {
   const { t, language } = useTranslation()
@@ -28,6 +28,28 @@ export default function LoginPage() {
         if (!config.has_users) setMode('register')
       }
     })
+
+    // Handle OIDC callback token
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('token')
+    const oidcError = params.get('oidc_error')
+    if (token) {
+      localStorage.setItem('auth_token', token)
+      window.history.replaceState({}, '', '/login')
+      login.__fromOidc = true
+      navigate('/dashboard')
+      window.location.reload()
+    }
+    if (oidcError) {
+      const errorMessages = {
+        registration_disabled: language === 'de' ? 'Registrierung ist deaktiviert. Kontaktiere den Administrator.' : 'Registration is disabled. Contact your administrator.',
+        no_email: language === 'de' ? 'Keine E-Mail vom Provider erhalten.' : 'No email received from provider.',
+        token_failed: language === 'de' ? 'Authentifizierung fehlgeschlagen.' : 'Authentication failed.',
+        invalid_state: language === 'de' ? 'Ungueltige Sitzung. Bitte erneut versuchen.' : 'Invalid session. Please try again.',
+      }
+      setError(errorMessages[oidcError] || oidcError)
+      window.history.replaceState({}, '', '/login')
+    }
   }, [])
 
   const handleDemoLogin = async () => {
@@ -338,6 +360,33 @@ export default function LoginPage() {
               </p>
             )}
           </div>
+
+          {/* OIDC / SSO login button */}
+          {appConfig?.oidc_configured && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+                <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>{language === 'de' ? 'oder' : 'or'}</span>
+                <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
+              </div>
+              <a href="/api/auth/oidc/login"
+                style={{
+                  marginTop: 12, width: '100%', padding: '12px',
+                  background: 'white', color: '#374151',
+                  border: '1px solid #d1d5db', borderRadius: 12,
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  textDecoration: 'none', transition: 'all 0.15s',
+                  boxSizing: 'border-box',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#9ca3af' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#d1d5db' }}
+              >
+                <Shield size={16} />
+                {language === 'de' ? `Anmelden mit ${appConfig.oidc_display_name}` : `Sign in with ${appConfig.oidc_display_name}`}
+              </a>
+            </>
+          )}
 
           {/* Demo login button */}
           {appConfig?.demo_mode && (

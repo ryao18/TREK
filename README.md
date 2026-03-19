@@ -2,40 +2,43 @@
 
 **Navigation Organizer for Maps, Activities & Destinations**
 
-A self-hosted travel planner for organizing trips, places, budgets, packing lists, and more.
+A self-hosted, real-time collaborative travel planner for organizing trips with interactive maps, budgets, packing lists, and more.
 
-[![License](https://img.shields.io/github/license/mauriceboe/NOMAD)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/mauriceboe/nomad)](https://hub.docker.com/r/mauriceboe/nomad)
 [![GitHub Stars](https://img.shields.io/github/stars/mauriceboe/NOMAD)](https://github.com/mauriceboe/NOMAD)
 [![Last Commit](https://img.shields.io/github/last-commit/mauriceboe/NOMAD)](https://github.com/mauriceboe/NOMAD/commits)
 
 ## Features
 
-- **Drag & Drop Planner** — Organize places into day plans with drag & drop reordering
-- **Interactive Map** — Leaflet map with place markers, route visualization, and customizable tile sources
-- **Google Places Search** — Search and auto-fill place details including ratings, reviews, and opening hours (requires API key)
-- **Weather Forecasts** — Current weather and 5-day forecasts for your destinations (requires API key)
+- **Real-Time Collaboration** — Plan together via WebSocket live sync — changes appear instantly across all connected users
+- **Interactive Map** — Leaflet map with marker clustering, route visualization, and customizable tile sources
+- **Google Places Integration** — Search places, auto-fill details including ratings, reviews, opening hours, and photos (requires API key)
+- **Drag & Drop Planner** — Organize places into day plans with reordering and cross-day moves
+- **Weather Forecasts** — Current weather and 5-day forecasts with smart caching (requires API key)
 - **Budget Tracking** — Category-based expenses with pie chart, per-person/per-day splitting, and multi-currency support
-- **Packing Lists** — Grouped checklists with progress tracking, drag & drop reordering, and smart suggestions
-- **Reservations** — Track booking status, confirmation numbers, and reservation details
-- **File Storage** — Attach documents, tickets, and PDFs to your trips (up to 50 MB per file)
-- **Photo Gallery** — Upload and manage trip photos with lightbox view
-- **PDF Export** — Export complete trip plans as PDF
-- **Multi-User** — Invite members to collaborate on shared trips
-- **Day Notes** — Add notes to individual days
-- **Admin Panel** — User management, global categories, API key configuration, and backups
+- **Packing Lists** — Categorized checklists with progress tracking, color coding, and smart suggestions
+- **Reservations & Bookings** — Track flights, hotels, restaurants with status, confirmation numbers, and file attachments
+- **Document Manager** — Attach documents, tickets, and PDFs to trips, places, or reservations (up to 50 MB per file)
+- **PDF Export** — Export complete trip plans as PDF with images and notes
+- **Multi-User** — Invite members to collaborate on shared trips with role-based access
+- **Admin Panel** — User management, create users, global categories, API key configuration, and backups
 - **Auto-Backups** — Scheduled backups with configurable interval and retention
+- **Route Optimization** — Auto-optimize place order and export to Google Maps
+- **Day Notes** — Add timestamped notes to individual days
 - **Dark Mode** — Full light and dark theme support
 - **Multilingual** — English and German (i18n)
+- **Mobile Friendly** — Responsive design with touch-optimized controls
 - **Customizable** — Temperature units, time format (12h/24h), map tile sources, default coordinates
 
 ## Tech Stack
 
 - **Backend**: Node.js 22 + Express + SQLite (`node:sqlite`)
 - **Frontend**: React 18 + Vite + Tailwind CSS
+- **Real-Time**: WebSocket (`ws`)
 - **State**: Zustand
 - **Auth**: JWT
-- **Maps**: Leaflet + Google Places API (optional)
+- **Maps**: Leaflet + react-leaflet-cluster + Google Places API (optional)
 - **Weather**: OpenWeatherMap API (optional)
 - **Icons**: lucide-react
 
@@ -60,7 +63,6 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      # - JWT_SECRET=optional-set-for-persistent-sessions
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -97,28 +99,22 @@ nomad.yourdomain.com {
 }
 ```
 
-Optionally restrict CORS by adding to `environment`:
-
-```yaml
-- ALLOWED_ORIGINS=https://nomad.yourdomain.com
-```
-
 ## Optional API Keys
 
-API keys are configured in the **Admin Panel** after login.
+API keys are configured in the **Admin Panel** after login. Keys set by the admin are automatically shared with all users — no per-user configuration needed.
 
-### Google Maps (Place Search)
+### Google Maps (Place Search & Photos)
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project and enable the **Places API (New)**
 3. Create an API key under Credentials
-4. In NOMAD: Admin Panel → API Keys → Google Maps
+4. In NOMAD: Admin Panel → Settings → Google Maps
 
 ### OpenWeatherMap (Weather Forecasts)
 
 1. Sign up at [OpenWeatherMap](https://openweathermap.org/api)
 2. Get a free API key
-3. In NOMAD: Admin Panel → API Keys → OpenWeatherMap
+3. In NOMAD: Admin Panel → Settings → OpenWeatherMap
 
 ## Building from Source
 
@@ -137,4 +133,4 @@ docker build -t nomad .
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)

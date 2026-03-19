@@ -1,0 +1,24 @@
+services:
+  app:
+    image: mauriceboe/nomad:latest
+    container_name: nomad-demo
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DEMO_MODE=true
+      - DEMO_ADMIN_USER=admin
+      - DEMO_ADMIN_EMAIL=admin@nomad.app
+      - DEMO_ADMIN_PASS=${DEMO_ADMIN_PASS:-admin12345}
+      - JWT_SECRET=${JWT_SECRET:-demo-secret-change-me-in-production}
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/auth/app-config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

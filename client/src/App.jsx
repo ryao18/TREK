@@ -12,6 +12,7 @@ import AdminPage from './pages/AdminPage'
 import SettingsPage from './pages/SettingsPage'
 import { ToastContainer } from './components/shared/Toast'
 import { TranslationProvider } from './i18n'
+import DemoBanner from './components/Layout/DemoBanner'
 
 function ProtectedRoute({ children, adminRequired = false }) {
   const { isAuthenticated, user, isLoading } = useAuthStore()
@@ -53,13 +54,19 @@ function RootRedirect() {
 }
 
 export default function App() {
-  const { loadUser, token, isAuthenticated } = useAuthStore()
+  const { loadUser, token, isAuthenticated, demoMode, setDemoMode } = useAuthStore()
   const { loadSettings } = useSettingsStore()
 
   useEffect(() => {
     if (token) {
       loadUser()
     }
+    // Check if demo mode is active
+    import('./api/client').then(({ authApi }) => {
+      authApi.getAppConfig?.().then(config => {
+        if (config?.demo_mode) setDemoMode(true)
+      }).catch(() => {})
+    })
   }, [])
 
   const { settings } = useSettingsStore()
@@ -82,6 +89,8 @@ export default function App() {
   return (
     <TranslationProvider>
       <ToastContainer />
+      {demoMode && isAuthenticated && <DemoBanner />}
+      <div style={demoMode && isAuthenticated ? { paddingTop: 36 } : undefined}>
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
@@ -128,6 +137,7 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </div>
     </TranslationProvider>
   )
 }

@@ -309,6 +309,16 @@ function initDb() {
 // Initialize on module load
 initDb();
 
+// Demo mode: seed admin + demo user + example trips
+if (process.env.DEMO_MODE === 'true') {
+  try {
+    const { seedDemoData } = require('../demo/demo-seed');
+    seedDemoData(_db);
+  } catch (err) {
+    console.error('[Demo] Seed error:', err.message);
+  }
+}
+
 // Proxy so all route modules always use the current _db instance
 // without needing a server restart after reinitialize()
 const db = new Proxy({}, {

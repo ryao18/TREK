@@ -53,6 +53,7 @@ export const authApi = {
   updateAppSettings: (data) => apiClient.put('/auth/app-settings', data).then(r => r.data),
   validateKeys: () => apiClient.get('/auth/validate-keys').then(r => r.data),
   travelStats: () => apiClient.get('/auth/travel-stats').then(r => r.data),
+  demoLogin: () => apiClient.post('/auth/demo-login').then(r => r.data),
 }
 
 export const tripsApi = {

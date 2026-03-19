@@ -102,4 +102,23 @@ function start() {
   console.log(`[Auto-Backup] Geplant: ${settings.interval} (${expression}), Aufbewahrung: ${settings.keep_days === 0 ? 'immer' : settings.keep_days + ' Tage'}`);
 }
 
-module.exports = { start, loadSettings, saveSettings, VALID_INTERVALS };
+// Demo mode: hourly reset of demo user data
+let demoTask = null;
+
+function startDemoReset() {
+  if (demoTask) { demoTask.stop(); demoTask = null; }
+  if (process.env.DEMO_MODE !== 'true') return;
+
+  demoTask = cron.schedule('0 * * * *', () => {
+    try {
+      const { db } = require('./db/database');
+      const { resetDemoUser } = require('./demo/demo-reset');
+      resetDemoUser(db);
+    } catch (err) {
+      console.error('[Demo Reset] Error:', err.message);
+    }
+  });
+  console.log('[Demo] Hourly reset scheduled (at :00 every hour)');
+}
+
+module.exports = { start, startDemoReset, loadSettings, saveSettings, VALID_INTERVALS };

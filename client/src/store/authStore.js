@@ -8,6 +8,7 @@ export const useAuthStore = create((set, get) => ({
   isAuthenticated: !!localStorage.getItem('auth_token'),
   isLoading: false,
   error: null,
+  demoMode: false,
 
   login: async (email, password) => {
     set({ isLoading: true, error: null })
@@ -128,5 +129,29 @@ export const useAuthStore = create((set, get) => ({
   deleteAvatar: async () => {
     await authApi.deleteAvatar()
     set(state => ({ user: { ...state.user, avatar_url: null } }))
+  },
+
+  setDemoMode: (val) => set({ demoMode: val }),
+
+  demoLogin: async () => {
+    set({ isLoading: true, error: null })
+    try {
+      const data = await authApi.demoLogin()
+      localStorage.setItem('auth_token', data.token)
+      set({
+        user: data.user,
+        token: data.token,
+        isAuthenticated: true,
+        isLoading: false,
+        demoMode: true,
+        error: null,
+      })
+      connect(data.token)
+      return data
+    } catch (err) {
+      const error = err.response?.data?.error || 'Demo-Login fehlgeschlagen'
+      set({ isLoading: false, error })
+      throw new Error(error)
+    }
   },
 }))

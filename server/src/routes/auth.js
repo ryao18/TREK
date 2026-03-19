@@ -65,7 +65,26 @@ router.get('/app-config', (req, res) => {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'allow_registration'").get();
   const allowRegistration = userCount === 0 || (setting?.value ?? 'true') === 'true';
-  res.json({ allow_registration: allowRegistration, has_users: userCount > 0 });
+  const isDemo = process.env.DEMO_MODE === 'true';
+  res.json({
+    allow_registration: isDemo ? false : allowRegistration,
+    has_users: userCount > 0,
+    demo_mode: isDemo,
+    demo_email: isDemo ? 'demo@nomad.app' : undefined,
+    demo_password: isDemo ? 'demo12345' : undefined,
+  });
+});
+
+// POST /api/auth/demo-login (demo mode only)
+router.post('/demo-login', (req, res) => {
+  if (process.env.DEMO_MODE !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get('demo@nomad.app');
+  if (!user) return res.status(500).json({ error: 'Demo user not found' });
+  const token = generateToken(user);
+  const { password_hash, maps_api_key, openweather_api_key, unsplash_api_key, ...safe } = user;
+  res.json({ token, user: { ...safe, avatar_url: avatarUrl(user) } });
 });
 
 // POST /api/auth/register

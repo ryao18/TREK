@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [appConfig, setAppConfig] = useState(null)
 
-  const { login, register } = useAuthStore()
+  const { login, register, demoLogin } = useAuthStore()
   const { setLanguageLocal } = useSettingsStore()
   const navigate = useNavigate()
 
@@ -29,6 +29,19 @@ export default function LoginPage() {
       }
     })
   }, [])
+
+  const handleDemoLogin = async () => {
+    setError('')
+    setIsLoading(true)
+    try {
+      await demoLogin()
+      navigate('/dashboard')
+    } catch (err) {
+      setError(err.message || 'Demo-Login fehlgeschlagen')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -315,7 +328,7 @@ export default function LoginPage() {
             </form>
 
             {/* Toggle login/register */}
-            {showRegisterOption && appConfig?.has_users && (
+            {showRegisterOption && appConfig?.has_users && !appConfig?.demo_mode && (
               <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: '#9ca3af' }}>
                 {mode === 'login' ? t('login.noAccount') + ' ' : t('login.hasAccount') + ' '}
                 <button onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError('') }}
@@ -325,6 +338,26 @@ export default function LoginPage() {
               </p>
             )}
           </div>
+
+          {/* Demo login button */}
+          {appConfig?.demo_mode && (
+            <button onClick={handleDemoLogin} disabled={isLoading}
+              style={{
+                marginTop: 16, width: '100%', padding: '14px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                color: '#451a03', border: 'none', borderRadius: 14,
+                fontSize: 15, fontWeight: 700, cursor: isLoading ? 'default' : 'pointer',
+                fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                opacity: isLoading ? 0.7 : 1, transition: 'all 0.2s',
+                boxShadow: '0 2px 12px rgba(245, 158, 11, 0.3)',
+              }}
+              onMouseEnter={e => { if (!isLoading) e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(245, 158, 11, 0.4)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(245, 158, 11, 0.3)' }}
+            >
+              <Plane size={18} />
+              Demo ausprobieren — ohne Registrierung
+            </button>
+          )}
         </div>
       </div>
 

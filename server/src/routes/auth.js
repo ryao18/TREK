@@ -350,7 +350,7 @@ router.get('/travel-stats', authenticate, (req, res) => {
     SELECT COUNT(DISTINCT t.id) as trips,
            COUNT(DISTINCT d.id) as days
     FROM trips t
-    LEFT JOIN days d ON t.id = d.id
+    LEFT JOIN days d ON d.trip_id = t.id
     LEFT JOIN trip_members tm ON t.id = tm.trip_id
     WHERE (t.user_id = ? OR tm.user_id = ?) AND t.is_archived = 0
   `).get(userId, userId);

@@ -78,9 +78,9 @@ export default function AdminPage() {
 
   const loadApiKeys = async () => {
     try {
-      const data = await authApi.me()
-      setMapsKey(data.user?.maps_api_key || '')
-      setWeatherKey(data.user?.openweather_api_key || '')
+      const data = await authApi.getSettings()
+      setMapsKey(data.settings?.maps_api_key || '')
+      setWeatherKey(data.settings?.openweather_api_key || '')
     } catch (err) {
       // ignore
     }
@@ -118,6 +118,8 @@ export default function AdminPage() {
   const handleValidateKeys = async () => {
     setValidating({ maps: true, weather: true })
     try {
+      // Save first so validation uses the current values
+      await updateApiKeys({ maps_api_key: mapsKey, openweather_api_key: weatherKey })
       const result = await authApi.validateKeys()
       setValidation(result)
     } catch (err) {
@@ -130,6 +132,8 @@ export default function AdminPage() {
   const handleValidateKey = async (keyType) => {
     setValidating(prev => ({ ...prev, [keyType]: true }))
     try {
+      // Save first so validation uses the current values
+      await updateApiKeys({ maps_api_key: mapsKey, openweather_api_key: weatherKey })
       const result = await authApi.validateKeys()
       setValidation(prev => ({ ...prev, [keyType]: result[keyType] }))
     } catch (err) {

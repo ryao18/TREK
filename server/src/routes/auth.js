@@ -189,6 +189,9 @@ router.get('/me', authenticate, (req, res) => {
 
 // PUT /api/auth/me/password
 router.put('/me/password', authenticate, (req, res) => {
+  if (process.env.DEMO_MODE === 'true' && req.user.email === 'demo@nomad.app') {
+    return res.status(403).json({ error: 'Password change is disabled in demo mode.' });
+  }
   const { new_password } = req.body;
   if (!new_password) return res.status(400).json({ error: 'New password is required' });
   if (new_password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -200,6 +203,10 @@ router.put('/me/password', authenticate, (req, res) => {
 
 // DELETE /api/auth/me — delete own account
 router.delete('/me', authenticate, (req, res) => {
+  // Block demo user
+  if (process.env.DEMO_MODE === 'true' && req.user.email === 'demo@nomad.app') {
+    return res.status(403).json({ error: 'Account deletion is disabled in demo mode.' });
+  }
   // Prevent deleting last admin
   if (req.user.role === 'admin') {
     const adminCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").get().count;

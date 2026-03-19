@@ -11,6 +11,8 @@ A self-hosted, real-time collaborative travel planner for organizing trips with 
 
 **[Live Demo](https://demo-nomad.pakulat.org)** — Try NOMAD without installing. Resets hourly.
 
+![NOMAD Screenshot](docs/screenshot.png)
+
 ## Features
 
 - **Real-Time Collaboration** — Plan together via WebSocket live sync — changes appear instantly across all connected users

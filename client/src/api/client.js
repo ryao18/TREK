@@ -122,6 +122,7 @@ export const adminApi = {
   updateUser: (id, data) => apiClient.put(`/admin/users/${id}`, data).then(r => r.data),
   deleteUser: (id) => apiClient.delete(`/admin/users/${id}`).then(r => r.data),
   stats: () => apiClient.get('/admin/stats').then(r => r.data),
+  saveDemoBaseline: () => apiClient.post('/admin/save-demo-baseline').then(r => r.data),
 }
 
 export const mapsApi = {

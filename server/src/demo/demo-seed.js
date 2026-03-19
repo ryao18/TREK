@@ -42,6 +42,13 @@ function seedDemoData(db) {
 
   console.log('[Demo] Seeding example trips...');
   seedExampleTrips(db, admin.id, demo.id);
+
+  // Auto-save baseline after first seed
+  const { saveBaseline, hasBaseline } = require('./demo-reset');
+  if (!hasBaseline()) {
+    saveBaseline();
+  }
+
   return { adminId: admin.id, demoId: demo.id };
 }
 

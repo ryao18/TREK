@@ -12,6 +12,7 @@ import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, Ey
 import CustomSelect from '../components/shared/CustomSelect'
 
 export default function AdminPage() {
+  const { demoMode } = useAuthStore()
   const { t } = useTranslation()
   const TABS = [
     { id: 'users', label: t('admin.tabs.users') },
@@ -207,6 +208,29 @@ export default function AdminPage() {
               <p className="text-slate-500 text-sm">{t('admin.subtitle')}</p>
             </div>
           </div>
+
+          {/* Demo Baseline Button */}
+          {demoMode && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-amber-900">Demo Baseline</p>
+                <p className="text-xs text-amber-700">Save current state as the hourly reset point. All admin trips and settings will be preserved.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await adminApi.saveDemoBaseline()
+                    toast.success('Baseline saved! Resets will restore to this state.')
+                  } catch (e) {
+                    toast.error(e.response?.data?.error || 'Failed to save baseline')
+                  }
+                }}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 transition-colors flex-shrink-0 ml-4"
+              >
+                Save Baseline
+              </button>
+            </div>
+          )}
 
           {/* Stats */}
           {stats && (

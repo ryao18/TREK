@@ -111,9 +111,8 @@ function startDemoReset() {
 
   demoTask = cron.schedule('0 * * * *', () => {
     try {
-      const { db } = require('./db/database');
       const { resetDemoUser } = require('./demo/demo-reset');
-      resetDemoUser(db);
+      resetDemoUser();
     } catch (err) {
       console.error('[Demo Reset] Error:', err.message);
     }

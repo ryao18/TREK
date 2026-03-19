@@ -110,4 +110,18 @@ router.get('/stats', (req, res) => {
   res.json({ totalUsers, totalTrips, totalPlaces, totalPhotos, totalFiles });
 });
 
+// POST /api/admin/save-demo-baseline (demo mode only)
+router.post('/save-demo-baseline', (req, res) => {
+  if (process.env.DEMO_MODE !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  try {
+    const { saveBaseline } = require('../demo/demo-reset');
+    saveBaseline();
+    res.json({ success: true, message: 'Demo baseline saved. Hourly resets will restore to this state.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save baseline: ' + err.message });
+  }
+});
+
 module.exports = router;

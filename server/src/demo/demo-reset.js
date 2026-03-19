@@ -1,34 +1,84 @@
-function resetDemoUser(db) {
-  const DEMO_EMAIL = 'demo@nomad.app';
+const fs = require('fs');
+const path = require('path');
 
-  const demo = db.prepare('SELECT id FROM users WHERE email = ?').get(DEMO_EMAIL);
-  if (!demo) {
-    console.log('[Demo Reset] Demo user not found, skipping');
+const dataDir = path.join(__dirname, '../../data');
+const dbPath = path.join(dataDir, 'travel.db');
+const baselinePath = path.join(dataDir, 'travel-baseline.db');
+
+function resetDemoUser() {
+  if (!fs.existsSync(baselinePath)) {
+    console.log('[Demo Reset] No baseline found, skipping. Admin must save baseline first.');
     return;
   }
 
-  const demoId = Number(demo.id);
+  const { db, closeDb, reinitialize } = require('../db/database');
 
-  // Delete all trips OWNED by demo user (shared trips from admin stay)
-  const demoTrips = db.prepare('SELECT id FROM trips WHERE user_id = ?').all(demoId);
-  for (const trip of demoTrips) {
-    // CASCADE handles days, places, assignments, packing, budget, reservations, photos, files, day_notes
-    db.prepare('DELETE FROM trips WHERE id = ?').run(trip.id);
+  // Save admin's current credentials and API keys (these should survive the reset)
+  const adminEmail = process.env.DEMO_ADMIN_EMAIL || 'admin@nomad.app';
+  let adminData = null;
+  try {
+    adminData = db.prepare(
+      'SELECT password_hash, maps_api_key, openweather_api_key, unsplash_api_key, avatar FROM users WHERE email = ?'
+    ).get(adminEmail);
+  } catch (e) {
+    console.error('[Demo Reset] Failed to read admin data:', e.message);
   }
 
-  // Delete demo user's custom categories and tags
-  db.prepare('DELETE FROM categories WHERE user_id = ?').run(demoId);
-  db.prepare('DELETE FROM tags WHERE user_id = ?').run(demoId);
+  // Flush WAL to main DB file
+  try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
 
-  // Reset demo user's settings
-  db.prepare('DELETE FROM settings WHERE user_id = ?').run(demoId);
+  // Close DB connection
+  closeDb();
 
-  const deletedCount = demoTrips.length;
-  if (deletedCount > 0) {
-    console.log(`[Demo Reset] Cleaned ${deletedCount} trips from demo user`);
-  } else {
-    console.log('[Demo Reset] No demo user trips to clean');
+  // Restore baseline
+  try {
+    fs.copyFileSync(baselinePath, dbPath);
+    // Remove WAL/SHM files if they exist (stale from old connection)
+    try { fs.unlinkSync(dbPath + '-wal'); } catch (e) {}
+    try { fs.unlinkSync(dbPath + '-shm'); } catch (e) {}
+  } catch (e) {
+    console.error('[Demo Reset] Failed to restore baseline:', e.message);
+    reinitialize();
+    return;
   }
+
+  // Reinitialize DB connection with restored baseline
+  reinitialize();
+
+  // Restore admin's latest credentials (in case admin changed password/API keys after baseline was saved)
+  if (adminData) {
+    try {
+      const { db: freshDb } = require('../db/database');
+      freshDb.prepare(
+        'UPDATE users SET password_hash = ?, maps_api_key = ?, openweather_api_key = ?, unsplash_api_key = ?, avatar = ? WHERE email = ?'
+      ).run(
+        adminData.password_hash,
+        adminData.maps_api_key,
+        adminData.openweather_api_key,
+        adminData.unsplash_api_key,
+        adminData.avatar,
+        adminEmail
+      );
+    } catch (e) {
+      console.error('[Demo Reset] Failed to restore admin credentials:', e.message);
+    }
+  }
+
+  console.log('[Demo Reset] Database restored from baseline');
 }
 
-module.exports = { resetDemoUser };
+function saveBaseline() {
+  const { db } = require('../db/database');
+
+  // Flush WAL so baseline file is self-contained
+  try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
+
+  fs.copyFileSync(dbPath, baselinePath);
+  console.log('[Demo] Baseline saved');
+}
+
+function hasBaseline() {
+  return fs.existsSync(baselinePath);
+}
+
+module.exports = { resetDemoUser, saveBaseline, hasBaseline };

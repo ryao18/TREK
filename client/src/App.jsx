@@ -13,6 +13,7 @@ import SettingsPage from './pages/SettingsPage'
 import { ToastContainer } from './components/shared/Toast'
 import { TranslationProvider } from './i18n'
 import DemoBanner from './components/Layout/DemoBanner'
+import { authApi } from './api/client'
 
 function ProtectedRoute({ children, adminRequired = false }) {
   const { isAuthenticated, user, isLoading } = useAuthStore()
@@ -61,12 +62,9 @@ export default function App() {
     if (token) {
       loadUser()
     }
-    // Check if demo mode is active
-    import('./api/client').then(({ authApi }) => {
-      authApi.getAppConfig?.().then(config => {
-        if (config?.demo_mode) setDemoMode(true)
-      }).catch(() => {})
-    })
+    authApi.getAppConfig().then(config => {
+      if (config?.demo_mode) setDemoMode(true)
+    }).catch(() => {})
   }, [])
 
   const { settings } = useSettingsStore()

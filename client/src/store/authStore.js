@@ -8,7 +8,7 @@ export const useAuthStore = create((set, get) => ({
   isAuthenticated: !!localStorage.getItem('auth_token'),
   isLoading: false,
   error: null,
-  demoMode: false,
+  demoMode: localStorage.getItem('demo_mode') === 'true',
 
   login: async (email, password) => {
     set({ isLoading: true, error: null })
@@ -131,7 +131,11 @@ export const useAuthStore = create((set, get) => ({
     set(state => ({ user: { ...state.user, avatar_url: null } }))
   },
 
-  setDemoMode: (val) => set({ demoMode: val }),
+  setDemoMode: (val) => {
+    if (val) localStorage.setItem('demo_mode', 'true')
+    else localStorage.removeItem('demo_mode')
+    set({ demoMode: val })
+  },
 
   demoLogin: async () => {
     set({ isLoading: true, error: null })

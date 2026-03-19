@@ -1,11 +1,13 @@
-import React, { useState } from 'react'
-import { Info, Github, Shield, Key, Users, Database, Upload } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Info, Github, Shield, Key, Users, Database, Upload, Clock } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 
 const texts = {
   de: {
     title: 'Willkommen zur NOMAD Demo',
     description: 'Du kannst Reisen ansehen, bearbeiten und eigene erstellen. Alle Aenderungen werden jede Stunde automatisch zurueckgesetzt.',
+    resetIn: 'Naechster Reset in',
+    minutes: 'Minuten',
     uploadNote: 'Datei-Uploads (Fotos, Dokumente, Cover) sind in der Demo deaktiviert.',
     fullVersionTitle: 'In der Vollversion zusaetzlich verfuegbar:',
     features: [
@@ -21,6 +23,8 @@ const texts = {
   en: {
     title: 'Welcome to the NOMAD Demo',
     description: 'You can view, edit and create trips. All changes are automatically reset every hour.',
+    resetIn: 'Next reset in',
+    minutes: 'minutes',
     uploadNote: 'File uploads (photos, documents, covers) are disabled in demo mode.',
     fullVersionTitle: 'Additionally available in the full version:',
     features: [
@@ -39,8 +43,14 @@ const featureIcons = [Upload, Key, Users, Database]
 
 export default function DemoBanner() {
   const [dismissed, setDismissed] = useState(false)
+  const [minutesLeft, setMinutesLeft] = useState(59 - new Date().getMinutes())
   const { language } = useTranslation()
   const t = texts[language] || texts.en
+
+  useEffect(() => {
+    const interval = setInterval(() => setMinutesLeft(59 - new Date().getMinutes()), 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   if (dismissed) return null
 
@@ -74,6 +84,16 @@ export default function DemoBanner() {
         <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, margin: '0 0 12px' }}>
           {t.description}
         </p>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px',
+          background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 12px',
+        }}>
+          <Clock size={15} style={{ flexShrink: 0, color: '#0284c7' }} />
+          <span style={{ fontSize: 13, color: '#0369a1', fontWeight: 600 }}>
+            {t.resetIn} {minutesLeft} {t.minutes}
+          </span>
+        </div>
 
         <p style={{
           fontSize: 13, color: '#b45309', lineHeight: 1.5, margin: '0 0 20px',

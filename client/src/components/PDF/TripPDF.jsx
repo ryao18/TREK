@@ -357,14 +357,10 @@ ${daysHtml}
 </body></html>`
 
   // Open print window
-  const blob = new Blob([html], { type: 'text/html' })
-  const url = URL.createObjectURL(blob)
-
-  // Modal in die App einfügen
   const overlay = document.createElement('div')
   overlay.id = 'pdf-preview-overlay'
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:8px;'
-  overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); URL.revokeObjectURL(url) } }
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove() }
 
   const card = document.createElement('div')
   card.style.cssText = 'width:100%;max-width:1000px;height:95vh;background:var(--bg-card);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);'
@@ -383,13 +379,13 @@ ${daysHtml}
 
   const iframe = document.createElement('iframe')
   iframe.style.cssText = 'flex:1;width:100%;border:none;'
-  iframe.src = url
+  iframe.srcdoc = html
 
   card.appendChild(header)
   card.appendChild(iframe)
   overlay.appendChild(card)
   document.body.appendChild(overlay)
 
-  header.querySelector('#pdf-close-btn').onclick = () => { overlay.remove(); URL.revokeObjectURL(url) }
+  header.querySelector('#pdf-close-btn').onclick = () => overlay.remove()
   header.querySelector('#pdf-print-btn').onclick = () => { iframe.contentWindow?.print() }
 }

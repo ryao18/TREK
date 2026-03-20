@@ -421,23 +421,11 @@ function SidebarContent({ data, stats, countries, selectedCountry, countryDetail
             </div>
           </button>
         )}
-        {/* Next trip */}
-        {nextTrip && (
-          <button onClick={() => onTripClick(nextTrip.id)} className="flex items-center gap-2.5 text-left transition-opacity hover:opacity-75">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(129,140,248,0.12)' }}>
-              <Calendar size={16} style={{ color: accent }} />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: tf }}>{t('atlas.nextTrip')}</p>
-              <p className="text-[13px] font-black" style={{ color: accent }}>{nextTrip.daysUntil} {t('atlas.daysLeft')}</p>
-            </div>
-          </button>
-        )}
         {/* Streak */}
         {streak > 0 && (
           <div className="flex flex-col items-center justify-center px-3">
             <span className="text-2xl font-black tabular-nums leading-none" style={{ color: tp }}>{streak}</span>
-            <span className="text-[9px] font-semibold mt-1.5 uppercase tracking-wide text-center leading-tight" style={{ color: tf }}>
+            <span className="text-[9px] font-semibold mt-1.5 uppercase tracking-wide text-center leading-tight whitespace-nowrap" style={{ color: tf }}>
               {streak === 1 ? t('atlas.yearInRow') : t('atlas.yearsInRow')}
             </span>
           </div>
@@ -446,7 +434,7 @@ function SidebarContent({ data, stats, countries, selectedCountry, countryDetail
         {tripsThisYear > 0 && (
           <div className="flex flex-col items-center justify-center px-3">
             <span className="text-2xl font-black tabular-nums leading-none" style={{ color: tp }}>{tripsThisYear}</span>
-            <span className="text-[9px] font-semibold mt-1.5 uppercase tracking-wide text-center leading-tight" style={{ color: tf }}>
+            <span className="text-[9px] font-semibold mt-1.5 uppercase tracking-wide text-center leading-tight whitespace-nowrap" style={{ color: tf }}>
               {tripsThisYear === 1 ? t('atlas.tripIn') : t('atlas.tripsIn')} {thisYear}
             </span>
           </div>

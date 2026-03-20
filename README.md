@@ -9,7 +9,7 @@ A self-hosted, real-time collaborative travel planner for organizing trips with 
 [![GitHub Stars](https://img.shields.io/github/stars/mauriceboe/NOMAD)](https://github.com/mauriceboe/NOMAD)
 [![Last Commit](https://img.shields.io/github/last-commit/mauriceboe/NOMAD)](https://github.com/mauriceboe/NOMAD/commits)
 
-**[Live Demo](https://demo-nomad.pakulat.org)** — Try NOMAD without installing. Resets hourly. (not newest version)
+**[Live Demo](https://demo-nomad.pakulat.org)** — Try NOMAD without installing. Resets hourly.
 
 ![NOMAD Screenshot](docs/screenshot.png)
 

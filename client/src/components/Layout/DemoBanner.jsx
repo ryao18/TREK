@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Info, Github, Shield, Key, Users, Database, Upload, Clock } from 'lucide-react'
+import { Info, Github, Shield, Key, Users, Database, Upload, Clock, Puzzle, CalendarDays, Globe, ArrowRightLeft, Map, Briefcase, ListChecks, Wallet, FileText, Plane } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 
 const texts = {
@@ -9,14 +9,25 @@ const texts = {
     resetIn: 'Naechster Reset in',
     minutes: 'Minuten',
     uploadNote: 'Datei-Uploads (Fotos, Dokumente, Cover) sind in der Demo deaktiviert.',
-    fullVersionTitle: 'In der Vollversion zusaetzlich verfuegbar:',
+    fullVersionTitle: 'In der Vollversion zusaetzlich:',
     features: [
-      'Datei-Uploads (Fotos, Dokumente, Reise-Cover)',
-      'API-Schluessel verwalten (Google Maps, Wetter)',
-      'Benutzer & Rechte verwalten',
-      'Automatische Backups & Wiederherstellung',
+      'Datei-Uploads (Fotos, Dokumente, Cover)',
+      'API-Schluessel (Google Maps, Wetter)',
+      'Benutzer- & Rechteverwaltung',
+      'Automatische Backups',
     ],
-    selfHost: 'NOMAD ist Open Source — ',
+    addonsTitle: 'Modulare Addons',
+    addons: [
+      ['Vacay', 'Urlaubsplaner mit Kalender, Feiertagen & Fusion'],
+      ['Atlas', 'Weltkarte mit besuchten Laendern & Reisestatistiken'],
+      ['Packliste', 'Checklisten pro Reise'],
+      ['Budget', 'Kostenplanung mit Splitting'],
+      ['Dokumente', 'Dateien an Reisen anhaengen'],
+      ['Widgets', 'Waehrungsrechner & Zeitzonen'],
+    ],
+    whatIs: 'Was ist NOMAD?',
+    whatIsDesc: 'Ein selbst-gehosteter Reiseplaner mit Echtzeit-Kollaboration, interaktiver Karte, OIDC Login und Dark Mode.',
+    selfHost: 'Open Source — ',
     selfHostLink: 'selbst hosten',
     close: 'Verstanden',
   },
@@ -26,20 +37,32 @@ const texts = {
     resetIn: 'Next reset in',
     minutes: 'minutes',
     uploadNote: 'File uploads (photos, documents, covers) are disabled in demo mode.',
-    fullVersionTitle: 'Additionally available in the full version:',
+    fullVersionTitle: 'Additionally in the full version:',
     features: [
-      'File uploads (photos, documents, trip covers)',
+      'File uploads (photos, documents, covers)',
       'API key management (Google Maps, Weather)',
       'User & permission management',
-      'Automatic backups & restore',
+      'Automatic backups',
     ],
-    selfHost: 'NOMAD is open source — ',
+    addonsTitle: 'Modular Addons',
+    addons: [
+      ['Vacay', 'Vacation planner with calendar, holidays & user fusion'],
+      ['Atlas', 'World map with visited countries & travel stats'],
+      ['Packing', 'Checklists per trip'],
+      ['Budget', 'Expense tracking with splitting'],
+      ['Documents', 'Attach files to trips'],
+      ['Widgets', 'Currency converter & timezones'],
+    ],
+    whatIs: 'What is NOMAD?',
+    whatIsDesc: 'A self-hosted travel planner with real-time collaboration, interactive maps, OIDC login and dark mode.',
+    selfHost: 'Open source — ',
     selfHostLink: 'self-host it',
     close: 'Got it',
   },
 }
 
 const featureIcons = [Upload, Key, Users, Database]
+const addonIcons = [CalendarDays, Globe, ListChecks, Wallet, FileText, ArrowRightLeft]
 
 export default function DemoBanner() {
   const [dismissed, setDismissed] = useState(false)
@@ -57,85 +80,125 @@ export default function DemoBanner() {
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
+      padding: 16, overflow: 'auto',
       fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
     }} onClick={() => setDismissed(true)}>
       <div style={{
-        background: 'white', borderRadius: 20, padding: '32px 28px 24px',
-        maxWidth: 440, width: '100%',
+        background: 'white', borderRadius: 20, padding: '28px 24px 20px',
+        maxWidth: 480, width: '100%',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        maxHeight: '90vh', overflow: 'auto',
       }} onClick={e => e.stopPropagation()}>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
-            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            background: '#111827',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Info size={20} style={{ color: 'white' }} />
+            <Plane size={18} style={{ color: 'white' }} />
           </div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
             {t.title}
           </h2>
         </div>
 
-        <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.6, margin: '0 0 12px' }}>
+        <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6, margin: '0 0 12px' }}>
           {t.description}
         </p>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px',
-          background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 12px',
-        }}>
-          <Clock size={15} style={{ flexShrink: 0, color: '#0284c7' }} />
-          <span style={{ fontSize: 13, color: '#0369a1', fontWeight: 600 }}>
-            {t.resetIn} {minutesLeft} {t.minutes}
-          </span>
+        {/* Timer + Upload note */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', gap: 6,
+            background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '8px 10px',
+          }}>
+            <Clock size={13} style={{ flexShrink: 0, color: '#0284c7' }} />
+            <span style={{ fontSize: 11, color: '#0369a1', fontWeight: 600 }}>
+              {t.resetIn} {minutesLeft} {t.minutes}
+            </span>
+          </div>
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', gap: 6,
+            background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 10px',
+          }}>
+            <Upload size={13} style={{ flexShrink: 0, color: '#b45309' }} />
+            <span style={{ fontSize: 11, color: '#b45309' }}>{t.uploadNote}</span>
+          </div>
         </div>
 
-        <p style={{
-          fontSize: 13, color: '#b45309', lineHeight: 1.5, margin: '0 0 20px',
-          background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 12px',
-          display: 'flex', alignItems: 'center', gap: 8,
+        {/* What is NOMAD */}
+        <div style={{
+          background: '#f8fafc', borderRadius: 12, padding: '12px 14px', marginBottom: 16,
+          border: '1px solid #e2e8f0',
         }}>
-          <Upload size={15} style={{ flexShrink: 0 }} />
-          {t.uploadNote}
-        </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Map size={14} style={{ color: '#111827' }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{t.whatIs}</span>
+          </div>
+          <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, margin: 0 }}>{t.whatIsDesc}</p>
+        </div>
 
-        <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {/* Addons */}
+        <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Puzzle size={12} />
+          {t.addonsTitle}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
+          {t.addons.map(([name, desc], i) => {
+            const Icon = addonIcons[i]
+            return (
+              <div key={name} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                background: '#f8fafc', borderRadius: 10, padding: '8px 10px',
+                border: '1px solid #f1f5f9',
+              }}>
+                <Icon size={14} style={{ flexShrink: 0, color: '#111827', marginTop: 1 }} />
+                <div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#111827' }}>{name}</span>
+                  <p style={{ fontSize: 10, color: '#94a3b8', margin: '2px 0 0', lineHeight: 1.3 }}>{desc}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Full version features */}
+        <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Shield size={12} />
           {t.fullVersionTitle}
         </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
           {t.features.map((text, i) => {
             const Icon = featureIcons[i]
             return (
-              <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#4b5563' }}>
-                <Icon size={15} style={{ flexShrink: 0, color: '#d97706' }} />
+              <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#4b5563', padding: '4px 0' }}>
+                <Icon size={13} style={{ flexShrink: 0, color: '#9ca3af' }} />
                 <span>{text}</span>
               </div>
             )
           })}
         </div>
 
+        {/* Footer */}
         <div style={{
-          paddingTop: 16, borderTop: '1px solid #e5e7eb',
+          paddingTop: 14, borderTop: '1px solid #e5e7eb',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#9ca3af' }}>
-            <Github size={14} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#9ca3af' }}>
+            <Github size={13} />
             <span>{t.selfHost}</span>
             <a href="https://github.com/mauriceboe/NOMAD" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#d97706', fontWeight: 600, textDecoration: 'none' }}>
+              style={{ color: '#111827', fontWeight: 600, textDecoration: 'none' }}>
               {t.selfHostLink}
             </a>
           </div>
-
           <button onClick={() => setDismissed(true)} style={{
             background: '#111827', color: 'white', border: 'none',
-            borderRadius: 10, padding: '8px 20px', fontSize: 13,
+            borderRadius: 10, padding: '8px 20px', fontSize: 12,
             fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
           }}>
             {t.close}

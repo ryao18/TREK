@@ -61,9 +61,12 @@ function getCountryFromAddress(address) {
     'malaysia':'MY','colombia':'CO','kolumbien':'CO','peru':'PE','chile':'CL','iran':'IR',
     'iraq':'IQ','irak':'IQ','pakistan':'PK','kenya':'KE','kenia':'KE','nigeria':'NG',
     'saudi arabia':'SA','saudi-arabien':'SA','albania':'AL','albanien':'AL',
+    '日本':'JP','中国':'CN','한국':'KR','대한민국':'KR','ไทย':'TH',
   };
   const normalized = last.toLowerCase();
   if (NAME_TO_CODE[normalized]) return NAME_TO_CODE[normalized];
+  // Try original case (for non-Latin scripts like 日本)
+  if (NAME_TO_CODE[last]) return NAME_TO_CODE[last];
   // Try 2-letter code directly
   if (last.length === 2 && last === last.toUpperCase()) return last;
   return null;
@@ -130,12 +133,16 @@ router.get('/stats', (req, res) => {
   });
 
   // Unique cities (extract city from address — second to last comma segment)
+  // Strip postal codes and normalize to avoid duplicates like "Tokyo" vs "Tokyo 131-0045"
   const citySet = new Set();
   for (const place of places) {
     if (place.address) {
       const parts = place.address.split(',').map(s => s.trim()).filter(Boolean);
-      if (parts.length >= 2) citySet.add(parts[parts.length - 2]);
-      else if (parts.length === 1) citySet.add(parts[0]);
+      let raw = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+      if (raw) {
+        const city = raw.replace(/[\d\-−〒]+/g, '').trim().toLowerCase();
+        if (city) citySet.add(city);
+      }
     }
   }
   const totalCities = citySet.size;

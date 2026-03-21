@@ -133,13 +133,8 @@ export default function TripPlannerPage() {
     return places.filter(p => p.lat && p.lng)
   }, [places])
 
-  const handleSelectDay = useCallback((dayId) => {
-    tripStore.setSelectedDay(dayId)
-    setRouteInfo(null)
-    setFitKey(k => k + 1)
-    setMobileSidebarOpen(null)
-
-    // Auto-show Luftlinien for the selected day
+  const updateRouteForDay = useCallback((dayId) => {
+    if (!dayId) { setRoute(null); setRouteInfo(null); return }
     const da = (tripStore.assignments[String(dayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
     const waypoints = da.map(a => a.place).filter(p => p?.lat && p?.lng)
     if (waypoints.length >= 2) {
@@ -147,12 +142,22 @@ export default function TripPlannerPage() {
     } else {
       setRoute(null)
     }
+    setRouteInfo(null)
   }, [tripStore])
+
+  const handleSelectDay = useCallback((dayId, skipFit) => {
+    const changed = dayId !== selectedDayId
+    tripStore.setSelectedDay(dayId)
+    if (changed && !skipFit) setFitKey(k => k + 1)
+    setMobileSidebarOpen(null)
+    updateRouteForDay(dayId)
+  }, [tripStore, updateRouteForDay, selectedDayId])
 
   const handlePlaceClick = useCallback((placeId) => {
     setSelectedPlaceId(placeId)
     if (placeId) { setLeftCollapsed(false); setRightCollapsed(false) }
-  }, [])
+    updateRouteForDay(selectedDayId)
+  }, [selectedDayId, updateRouteForDay])
 
   const handleMarkerClick = useCallback((placeId) => {
     const opening = placeId !== undefined
@@ -189,16 +194,29 @@ export default function TripPlannerPage() {
     try {
       await tripStore.assignPlaceToDay(tripId, target, placeId, position)
       toast.success(t('trip.toast.assignedToDay'))
+      updateRouteForDay(target)
     } catch (err) { toast.error(err.message) }
-  }, [selectedDayId, tripId, tripStore, toast])
+  }, [selectedDayId, tripId, tripStore, toast, updateRouteForDay])
 
   const handleRemoveAssignment = useCallback(async (dayId, assignmentId) => {
-    try { await tripStore.removeAssignment(tripId, dayId, assignmentId) }
+    try {
+      await tripStore.removeAssignment(tripId, dayId, assignmentId)
+      updateRouteForDay(dayId)
+    }
     catch (err) { toast.error(err.message) }
-  }, [tripId, tripStore, toast])
+  }, [tripId, tripStore, toast, updateRouteForDay])
 
   const handleReorder = useCallback(async (dayId, orderedIds) => {
-    try { await tripStore.reorderAssignments(tripId, dayId, orderedIds) }
+    try {
+      await tripStore.reorderAssignments(tripId, dayId, orderedIds)
+      // Build route directly from orderedIds to avoid stale closure
+      const dayItems = tripStore.assignments[String(dayId)] || []
+      const ordered = orderedIds.map(id => dayItems.find(a => a.id === id)).filter(Boolean)
+      const waypoints = ordered.map(a => a.place).filter(p => p?.lat && p?.lng)
+      if (waypoints.length >= 2) setRoute(waypoints.map(p => [p.lat, p.lng]))
+      else setRoute(null)
+      setRouteInfo(null)
+    }
     catch { toast.error(t('trip.toast.reorderError')) }
   }, [tripId, tripStore, toast])
 

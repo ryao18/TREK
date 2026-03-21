@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
-import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, AlertCircle, CheckCircle2, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, AlertCircle, CheckCircle2, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown, Lock } from 'lucide-react'
 import { downloadTripPDF } from '../PDF/TripPDF'
 import { calculateRoute, generateGoogleMapsUrl, optimizeRoute } from '../Map/RouteCalculator'
 import PlaceAvatar from '../shared/PlaceAvatar'
@@ -79,7 +79,7 @@ export default function DayPlanSidebar({
   onAddReservation,
 }) {
   const toast = useToast()
-  const { t, locale } = useTranslation()
+  const { t, language, locale } = useTranslation()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
   const tripStore = useTripStore()
 
@@ -97,6 +97,8 @@ export default function DayPlanSidebar({
   const [isCalculating, setIsCalculating] = useState(false)
   const [routeInfo, setRouteInfo] = useState(null)
   const [draggingId, setDraggingId] = useState(null)
+  const [lockedIds, setLockedIds] = useState(new Set())
+  const [lockHoverId, setLockHoverId] = useState(null)
   const [dropTargetKey, setDropTargetKey] = useState(null)
   const [dragOverDayId, setDragOverDayId] = useState(null)
   const [hoveredId, setHoveredId] = useState(null)
@@ -291,15 +293,44 @@ export default function DayPlanSidebar({
     finally { setIsCalculating(false) }
   }
 
+  const toggleLock = (assignmentId) => {
+    setLockedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(assignmentId)) next.delete(assignmentId)
+      else next.add(assignmentId)
+      return next
+    })
+  }
+
   const handleOptimize = async () => {
     if (!selectedDayId) return
     const da = getDayAssignments(selectedDayId)
     if (da.length < 3) return
-    const withCoords = da.map(a => a.place).filter(p => p?.lat && p?.lng)
-    const optimized = optimizeRoute(withCoords)
-    const reorderedIds = optimized.map(p => da.find(a => a.place?.id === p.id)?.id).filter(Boolean)
-    for (const a of da) { if (!reorderedIds.includes(a.id)) reorderedIds.push(a.id) }
-    await onReorder(selectedDayId, reorderedIds)
+
+    // Separate locked (stay at their index) and unlocked assignments
+    const locked = new Map() // index -> assignment
+    const unlocked = []
+    da.forEach((a, i) => {
+      if (lockedIds.has(a.id)) locked.set(i, a)
+      else unlocked.push(a)
+    })
+
+    // Optimize only unlocked places
+    const unlockedWithCoords = unlocked.map(a => a.place).filter(p => p?.lat && p?.lng)
+    const optimized = unlockedWithCoords.length >= 2 ? optimizeRoute(unlockedWithCoords) : unlockedWithCoords
+    const optimizedQueue = optimized.map(p => unlocked.find(a => a.place?.id === p.id)).filter(Boolean)
+    // Add unlocked without coords at the end
+    for (const a of unlocked) { if (!optimizedQueue.includes(a)) optimizedQueue.push(a) }
+
+    // Merge: locked stay at their index, fill gaps with optimized
+    const result = new Array(da.length)
+    locked.forEach((a, i) => { result[i] = a })
+    let qi = 0
+    for (let i = 0; i < result.length; i++) {
+      if (!result[i]) result[i] = optimizedQueue[qi++]
+    }
+
+    await onReorder(selectedDayId, result.map(a => a.id))
     toast.success(t('dayplan.toast.routeOptimized'))
   }
 
@@ -608,25 +639,61 @@ export default function DayPlanSidebar({
                               }
                             }}
                             onDragEnd={() => { setDraggingId(null); setDragOverDayId(null); setDropTargetKey(null); dragDataRef.current = null }}
-                            onClick={() => { onPlaceClick(isPlaceSelected ? null : place.id); if (!isPlaceSelected) onSelectDay(day.id) }}
+                            onClick={() => { onPlaceClick(isPlaceSelected ? null : place.id); if (!isPlaceSelected) onSelectDay(day.id, true) }}
                             onMouseEnter={() => setHoveredId(assignment.id)}
                             onMouseLeave={() => setHoveredId(null)}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 8,
                               padding: '7px 8px 7px 10px',
                               cursor: 'pointer',
-                              background: isPlaceSelected ? 'var(--bg-hover)' : (isHovered ? 'var(--bg-hover)' : 'transparent'),
-                              borderLeft: hasReservation
-                                ? `3px solid ${isConfirmed ? '#10b981' : '#f59e0b'}`
-                                : '3px solid transparent',
-                              transition: 'background 0.1s',
+                              background: lockedIds.has(assignment.id)
+                                ? 'rgba(220,38,38,0.08)'
+                                : isPlaceSelected ? 'var(--bg-hover)' : (isHovered ? 'var(--bg-hover)' : 'transparent'),
+                              borderLeft: lockedIds.has(assignment.id)
+                                ? '3px solid #dc2626'
+                                : hasReservation
+                                  ? `3px solid ${isConfirmed ? '#10b981' : '#f59e0b'}`
+                                  : '3px solid transparent',
+                              transition: 'background 0.15s, border-color 0.15s',
                               opacity: isDraggingThis ? 0.4 : 1,
                             }}
                           >
                             <div style={{ flexShrink: 0, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', opacity: isHovered ? 1 : 0.3, transition: 'opacity 0.15s', cursor: 'grab' }}>
                               <GripVertical size={13} strokeWidth={1.8} />
                             </div>
-                            <PlaceAvatar place={place} category={cat} size={28} />
+                            <div
+                              onClick={e => { e.stopPropagation(); toggleLock(assignment.id) }}
+                              onMouseEnter={e => { e.stopPropagation(); setLockHoverId(assignment.id) }}
+                              onMouseLeave={() => setLockHoverId(null)}
+                              style={{ position: 'relative', flexShrink: 0, cursor: 'pointer' }}
+                            >
+                              <PlaceAvatar place={place} category={cat} size={28} />
+                              {/* Hover/locked overlay */}
+                              {(lockHoverId === assignment.id || lockedIds.has(assignment.id)) && (
+                                <div style={{
+                                  position: 'absolute', inset: 0, borderRadius: '50%',
+                                  background: lockedIds.has(assignment.id) ? 'rgba(220,38,38,0.6)' : 'rgba(220,38,38,0.4)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'background 0.15s',
+                                }}>
+                                  <Lock size={14} strokeWidth={2.5} style={{ color: 'white', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))' }} />
+                                </div>
+                              )}
+                              {/* Custom tooltip */}
+                              {lockHoverId === assignment.id && (
+                                <div style={{
+                                  position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)',
+                                  marginLeft: 8, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 50,
+                                  background: 'var(--bg-card, white)', color: 'var(--text-primary, #111827)',
+                                  fontSize: 11, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
+                                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--border-faint, #e5e7eb)',
+                                }}>
+                                  {lockedIds.has(assignment.id)
+                                    ? (language === 'de' ? 'Klicken zum Entsperren' : 'Click to unlock')
+                                    : (language === 'de' ? 'Position bei Routenoptimierung beibehalten' : 'Keep position during route optimization')}
+                                </div>
+                              )}
+                            </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
                                 {cat && (() => {
@@ -810,15 +877,6 @@ export default function DayPlanSidebar({
                       )}
 
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={handleCalculateRoute} disabled={isCalculating} style={{
-                          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                          padding: '6px 0', fontSize: 11, fontWeight: 500, borderRadius: 8, border: 'none',
-                          background: 'var(--accent)', color: 'var(--accent-text)', cursor: 'pointer', fontFamily: 'inherit',
-                          opacity: isCalculating ? 0.6 : 1,
-                        }}>
-                          <Navigation size={12} strokeWidth={2} />
-                          {isCalculating ? t('dayplan.calculating') : t('dayplan.route')}
-                        </button>
                         <button onClick={handleOptimize} style={{
                           flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                           padding: '6px 0', fontSize: 11, fontWeight: 500, borderRadius: 8, border: 'none',

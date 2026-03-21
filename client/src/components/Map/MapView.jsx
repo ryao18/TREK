@@ -97,7 +97,7 @@ function SelectionController({ places, selectedPlaceId }) {
     if (selectedPlaceId && selectedPlaceId !== prev.current) {
       const place = places.find(p => p.id === selectedPlaceId)
       if (place?.lat && place?.lng) {
-        map.setView([place.lat, place.lng], Math.max(map.getZoom(), 15), { animate: true, duration: 0.5 })
+        map.panTo([place.lat, place.lng], { animate: true, duration: 0.5 })
       }
     }
     prev.current = selectedPlaceId

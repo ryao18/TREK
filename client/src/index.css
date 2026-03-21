@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-html { height: 100%; overflow: hidden; }
+html { height: 100%; overflow: hidden; background-color: var(--bg-primary); }
 body { height: 100%; overflow: auto; overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
 
 .atlas-tooltip {

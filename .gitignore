@@ -4,6 +4,9 @@ node_modules/
 # Build output
 client/dist/
 
+# Generated PWA icons (built from SVG via prebuild)
+client/public/icons/*.png
+
 # Database
 *.db
 *.db-shm

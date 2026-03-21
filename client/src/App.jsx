@@ -78,12 +78,16 @@ export default function App() {
     }
   }, [isAuthenticated])
 
-  // Apply dark mode class to <html>
+  // Apply dark mode class to <html> + update PWA theme-color
   useEffect(() => {
     if (settings.dark_mode) {
       document.documentElement.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
+    }
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) {
+      meta.setAttribute('content', settings.dark_mode ? '#121215' : '#ffffff')
     }
   }, [settings.dark_mode])
 

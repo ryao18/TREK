@@ -316,8 +316,8 @@ export default function TripPlannerPage() {
         })}
       </div>
 
-      {/* Offset by navbar (56px) + tab bar (44px) */}
-      <div style={{ position: 'fixed', top: 100, left: 0, right: 0, bottom: 0, overflow: 'hidden', overscrollBehavior: 'contain' }}>
+      {/* Offset by navbar + tab bar (44px) */}
+      <div style={{ position: 'fixed', top: 'calc(var(--nav-h) + 44px)', left: 0, right: 0, bottom: 0, overflow: 'hidden', overscrollBehavior: 'contain' }}>
 
         {activeTab === 'plan' && (
           <div style={{ position: 'absolute', inset: 0 }}>
@@ -454,7 +454,7 @@ export default function TripPlannerPage() {
 
             {/* Mobile sidebar buttons — portal to body to escape Leaflet touch handling */}
             {activeTab === 'plan' && !mobileSidebarOpen && !showPlaceForm && !showMembersModal && !showReservationModal && ReactDOM.createPortal(
-              <div className="flex md:hidden" style={{ position: 'fixed', top: 112, left: 12, right: 12, justifyContent: 'space-between', zIndex: 100, pointerEvents: 'none' }}>
+              <div className="flex md:hidden" style={{ position: 'fixed', top: 'calc(var(--nav-h) + 44px + 12px)', left: 12, right: 12, justifyContent: 'space-between', zIndex: 100, pointerEvents: 'none' }}>
                 <button onClick={() => setMobileSidebarOpen('left')}
                   style={{ pointerEvents: 'auto', background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(12px)', border: '1px solid var(--border-primary)', borderRadius: 24, padding: '11px 24px', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minHeight: 44, fontFamily: 'inherit', touchAction: 'manipulation' }}>
                   {t('trip.mobilePlan')}

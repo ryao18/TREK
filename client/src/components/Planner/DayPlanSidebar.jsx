@@ -205,16 +205,17 @@ export default function DayPlanSidebar({
     catch (err) { toast.error(err.message) }
   }
 
-  const handleMergedDrop = async (dayId, fromType, fromId, toType, toId) => {
+  const handleMergedDrop = async (dayId, fromType, fromId, toType, toId, insertAfter = false) => {
     const m = getMergedItems(dayId)
     const fromIdx = m.findIndex(i => i.type === fromType && i.data.id === fromId)
     const toIdx = m.findIndex(i => i.type === toType && i.data.id === toId)
     if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return
 
-    // Neue Reihenfolge erstellen — VOR dem Ziel einfügen (Standardkonvention)
+    // Neue Reihenfolge erstellen — VOR dem Ziel einfügen (Standard), oder NACH dem Ziel wenn insertAfter
     const newOrder = [...m]
     const [moved] = newOrder.splice(fromIdx, 1)
-    const adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx
+    let adjustedTo = fromIdx < toIdx ? toIdx - 1 : toIdx
+    if (insertAfter) adjustedTo += 1
     newOrder.splice(adjustedTo, 0, moved)
 
     // Orte: neuer order_index über onReorder
@@ -522,9 +523,9 @@ export default function DayPlanSidebar({
                     if (m.length === 0) return
                     const lastItem = m[m.length - 1]
                     if (assignmentId && String(lastItem?.data?.id) !== assignmentId)
-                      handleMergedDrop(day.id, 'place', Number(assignmentId), lastItem.type, lastItem.data.id)
+                      handleMergedDrop(day.id, 'place', Number(assignmentId), lastItem.type, lastItem.data.id, true)
                     else if (noteId && String(lastItem?.data?.id) !== noteId)
-                      handleMergedDrop(day.id, 'note', Number(noteId), lastItem.type, lastItem.data.id)
+                      handleMergedDrop(day.id, 'note', Number(noteId), lastItem.type, lastItem.data.id, true)
                   }}
                 >
                   {merged.length === 0 && !dayNoteUi ? (
@@ -749,10 +750,41 @@ export default function DayPlanSidebar({
                       )
                     })
                   )}
-                  {/* Drop-Indikator am Listenende */}
-                  {!!draggingId && dropTargetKey === `end-${day.id}` && (
-                    <div style={{ height: 2, background: 'var(--text-primary)', borderRadius: 1, margin: '2px 8px' }} />
-                  )}
+                  {/* Drop-Zone am Listenende — immer vorhanden als Drop-Target */}
+                  <div
+                    style={{ minHeight: 8, padding: '2px 8px' }}
+                    onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropTargetKey(`end-${day.id}`) }}
+                    onDragLeave={() => { if (dropTargetKey === `end-${day.id}`) setDropTargetKey(null) }}
+                    onDrop={e => {
+                      e.preventDefault(); e.stopPropagation()
+                      const { placeId, assignmentId, noteId, fromDayId } = getDragData(e)
+                      // Neuer Ort von der Orte-Liste
+                      if (placeId) {
+                        onAssignToDay?.(parseInt(placeId), day.id)
+                        setDropTargetKey(null); window.__dragData = null; return
+                      }
+                      if (!assignmentId && !noteId) { dragDataRef.current = null; window.__dragData = null; return }
+                      if (assignmentId && fromDayId !== day.id) {
+                        tripStore.moveAssignment(tripId, Number(assignmentId), fromDayId, day.id).catch(err => toast.error(err.message))
+                        setDraggingId(null); setDropTargetKey(null); dragDataRef.current = null; return
+                      }
+                      if (noteId && fromDayId !== day.id) {
+                        tripStore.moveDayNote(tripId, fromDayId, day.id, Number(noteId)).catch(err => toast.error(err.message))
+                        setDraggingId(null); setDropTargetKey(null); dragDataRef.current = null; return
+                      }
+                      const m = getMergedItems(day.id)
+                      if (m.length === 0) return
+                      const lastItem = m[m.length - 1]
+                      if (assignmentId && String(lastItem?.data?.id) !== assignmentId)
+                        handleMergedDrop(day.id, 'place', Number(assignmentId), lastItem.type, lastItem.data.id, true)
+                      else if (noteId && String(lastItem?.data?.id) !== noteId)
+                        handleMergedDrop(day.id, 'note', Number(noteId), lastItem.type, lastItem.data.id, true)
+                    }}
+                  >
+                    {dropTargetKey === `end-${day.id}` && (
+                      <div style={{ height: 2, background: 'var(--text-primary)', borderRadius: 1 }} />
+                    )}
+                  </div>
 
                   {/* Routen-Werkzeuge (ausgewählter Tag, 2+ Orte) */}
                   {isSelected && getDayAssignments(day.id).length >= 2 && (

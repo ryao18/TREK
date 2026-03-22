@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="client/public/logo-dark.svg" alt="NOMAD" height="60" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="client/public/logo-light.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="client/public/logo-dark.svg" />
+    <img src="client/public/logo-light.svg" alt="NOMAD" height="60" />
+  </picture>
   <br />
   <em>Navigation Organizer for Maps, Activities & Destinations</em>
 </p>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { adminApi } from '../../api/client'
 import { useTranslation } from '../../i18n'
+import { useSettingsStore } from '../../store/settingsStore'
 import { useToast } from '../shared/Toast'
 import { Puzzle, ListChecks, Wallet, FileText, CalendarDays, Globe, Briefcase } from 'lucide-react'
 
@@ -15,6 +16,7 @@ function AddonIcon({ name, size = 20 }) {
 
 export default function AddonManager() {
   const { t } = useTranslation()
+  const dark = useSettingsStore(s => s.settings.dark_mode)
   const toast = useToast()
   const [addons, setAddons] = useState([])
   const [loading, setLoading] = useState(true)
@@ -67,7 +69,9 @@ export default function AddonManager() {
       <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
         <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
           <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>{t('admin.addons.title')}</h2>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{t('admin.addons.subtitle')}</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+            {t('admin.addons.subtitleBefore')}<img src={dark ? '/text-light.svg' : '/text-dark.svg'} alt="NOMAD" style={{ height: 11, display: 'inline', verticalAlign: 'middle', opacity: 0.7 }} />{t('admin.addons.subtitleAfter')}
+          </p>
         </div>
 
         {addons.length === 0 ? (

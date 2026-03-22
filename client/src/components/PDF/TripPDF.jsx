@@ -1,7 +1,15 @@
 // Trip PDF via browser print window
 import { createElement } from 'react'
 import { getCategoryIcon } from '../shared/categoryIcons'
+import { FileText, Info, Clock, MapPin, Navigation, Train, Plane, Bus, Car, Ship, Coffee, Ticket, Star, Heart, Camera, Flag, Lightbulb, AlertTriangle, ShoppingBag, Bookmark } from 'lucide-react'
 import { mapsApi } from '../../api/client'
+
+const NOTE_ICON_MAP = { FileText, Info, Clock, MapPin, Navigation, Train, Plane, Bus, Car, Ship, Coffee, Ticket, Star, Heart, Camera, Flag, Lightbulb, AlertTriangle, ShoppingBag, Bookmark }
+function noteIconSvg(iconId) {
+  if (!_renderToStaticMarkup) return ''
+  const Icon = NOTE_ICON_MAP[iconId] || FileText
+  return _renderToStaticMarkup(createElement(Icon, { size: 14, strokeWidth: 1.8, color: '#94a3b8' }))
+}
 
 // ── SVG inline icons (for chips) ─────────────────────────────────────────────
 const svgPin   = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#94a3b8" style="flex-shrink:0;margin-top:1px"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="white"/></svg>`
@@ -104,7 +112,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
     const cost = dayCost(assignments, day.id, loc)
 
     const merged = []
-    assigned.forEach(a => merged.push({ type: 'place', k: a.sort_order ?? 0, data: a }))
+    assigned.forEach(a => merged.push({ type: 'place', k: a.order_index ?? a.sort_order ?? 0, data: a }))
     notes.forEach(n    => merged.push({ type: 'note',  k: n.sort_order ?? 0, data: n }))
     merged.sort((a, b) => a.k - b.k)
 
@@ -117,12 +125,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
             return `
               <div class="note-card">
                 <div class="note-line"></div>
-                <svg class="note-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round">
-                  <rect x="4" y="3" width="16" height="18" rx="2"/>
-                  <line x1="8" y1="8" x2="16" y2="8"/>
-                  <line x1="8" y1="12" x2="16" y2="12"/>
-                  <line x1="8" y1="16" x2="13" y2="16"/>
-                </svg>
+                <span class="note-icon">${noteIconSvg(note.icon)}</span>
                 <div class="note-body">
                   <div class="note-text">${escHtml(note.text)}</div>
                   ${note.time ? `<div class="note-time">${escHtml(note.time)}</div>` : ''}
@@ -200,6 +203,24 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
   body { font-family: 'Poppins', sans-serif; background: #fff; color: #1e293b; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   svg { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
+  /* Footer on every printed page */
+  .pdf-footer {
+    position: fixed;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    opacity: 0.3;
+  }
+  .pdf-footer span {
+    font-size: 7px;
+    color: #64748b;
+    letter-spacing: 0.5px;
+  }
+
   /* ── Cover ─────────────────────────────────────── */
   .cover {
     width: 100%; min-height: 100vh;
@@ -215,8 +236,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
   .cover-dim { position: absolute; inset: 0; background: rgba(8,12,28,0.55); }
   .cover-brand {
     position: absolute; top: 36px; right: 52px;
-    font-size: 9px; font-weight: 600; letter-spacing: 2.5px;
-    color: rgba(255,255,255,0.3); text-transform: uppercase;
+    z-index: 2;
   }
   .cover-body { position: relative; z-index: 1; }
   .cover-circle {
@@ -316,11 +336,17 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
 </head>
 <body>
 
+<!-- Footer on every page -->
+<div class="pdf-footer">
+  <span>made with</span>
+  <img src="${absUrl('/logo-dark.svg')}" style="height:10px;opacity:0.6;" />
+</div>
+
 <!-- Cover -->
 <div class="cover">
   ${coverImg ? `<div class="cover-bg" style="background-image:url('${escHtml(coverImg)}')"></div>` : ''}
   <div class="cover-dim"></div>
-  <div class="cover-brand">NOMAD</div>
+  <div class="cover-brand"><img src="${absUrl('/logo-light.svg')}" style="height:28px;opacity:0.5;" /></div>
   <div class="cover-body">
     ${coverImg
       ? `<div class="cover-circle"><img src="${escHtml(coverImg)}" /></div>`

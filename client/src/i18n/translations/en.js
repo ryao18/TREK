@@ -252,6 +252,8 @@ const en = {
   'admin.tabs.addons': 'Addons',
   'admin.addons.title': 'Addons',
   'admin.addons.subtitle': 'Enable or disable features to customize your NOMAD experience.',
+  'admin.addons.subtitleBefore': 'Enable or disable features to customize your ',
+  'admin.addons.subtitleAfter': ' experience.',
   'admin.addons.enabled': 'Enabled',
   'admin.addons.disabled': 'Disabled',
   'admin.addons.type.trip': 'Trip',

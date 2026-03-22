@@ -74,8 +74,42 @@ const GRADIENTS = [
 ]
 function tripGradient(id) { return GRADIENTS[id % GRADIENTS.length] }
 
+// ── Liquid Glass hover effect ────────────────────────────────────────────────
+function LiquidGlass({ children, dark, style, className = '', onClick }) {
+  const ref = useRef(null)
+  const glareRef = useRef(null)
+  const borderRef = useRef(null)
+
+  const onMove = (e) => {
+    if (!ref.current || !glareRef.current || !borderRef.current) return
+    const rect = ref.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    glareRef.current.style.background = `radial-gradient(circle 250px at ${x}px ${y}px, ${dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'} 0%, transparent 70%)`
+    glareRef.current.style.opacity = '1'
+    borderRef.current.style.opacity = '1'
+    borderRef.current.style.maskImage = `radial-gradient(circle 120px at ${x}px ${y}px, black 0%, transparent 100%)`
+    borderRef.current.style.WebkitMaskImage = `radial-gradient(circle 120px at ${x}px ${y}px, black 0%, transparent 100%)`
+  }
+  const onLeave = () => {
+    if (glareRef.current) glareRef.current.style.opacity = '0'
+    if (borderRef.current) borderRef.current.style.opacity = '0'
+  }
+
+  return (
+    <div ref={ref} onMouseMove={onMove} onMouseLeave={onLeave} onClick={onClick} className={className}
+      style={{ position: 'relative', overflow: 'hidden', ...style }}>
+      <div ref={glareRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0, transition: 'opacity 0.3s', borderRadius: 'inherit', zIndex: 1 }} />
+      <div ref={borderRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0, transition: 'opacity 0.3s', borderRadius: 'inherit', zIndex: 1,
+        border: dark ? '1.5px solid rgba(255,255,255,0.4)' : '1.5px solid rgba(0,0,0,0.12)',
+      }} />
+      {children}
+    </div>
+  )
+}
+
 // ── Spotlight Card (next upcoming trip) ─────────────────────────────────────
-function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale }) {
+function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, dark }) {
   const status = getTripStatus(trip)
 
   const coverBg = trip.cover_image
@@ -83,7 +117,7 @@ function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale }
     : tripGradient(trip.id)
 
   return (
-    <div style={{ marginBottom: 32, borderRadius: 20, overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.13)', position: 'relative', cursor: 'pointer' }}
+    <LiquidGlass dark={dark} style={{ marginBottom: 32, borderRadius: 20, boxShadow: '0 8px 40px rgba(0,0,0,0.13)', cursor: 'pointer' }}
       onClick={() => onClick(trip)}>
       {/* Cover / Background */}
       <div style={{ height: 300, background: coverBg, position: 'relative' }}>
@@ -151,7 +185,7 @@ function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale }
           </div>
         </div>
       </div>
-    </div>
+    </LiquidGlass>
   )
 }
 
@@ -170,9 +204,9 @@ function TripCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale }) {
       onMouseLeave={() => setHovered(false)}
       onClick={() => onClick(trip)}
       style={{
-        background: 'var(--bg-card)', borderRadius: 16, overflow: 'hidden', cursor: 'pointer',
-        border: '1px solid var(--border-primary)', transition: 'all 0.18s',
-        boxShadow: hovered ? '0 8px 28px rgba(0,0,0,0.10)' : '0 1px 4px rgba(0,0,0,0.04)',
+        background: hovered ? 'var(--bg-tertiary)' : 'var(--bg-card)', borderRadius: 16, overflow: 'hidden', cursor: 'pointer',
+        border: `1px solid ${hovered ? 'var(--text-faint)' : 'var(--border-primary)'}`, transition: 'all 0.18s',
+        boxShadow: hovered ? '0 8px 28px rgba(0,0,0,0.15)' : '0 1px 4px rgba(0,0,0,0.04)',
         transform: hovered ? 'translateY(-2px)' : 'none',
       }}
     >
@@ -354,6 +388,7 @@ export default function DashboardPage() {
   const { t, locale } = useTranslation()
   const { demoMode } = useAuthStore()
   const { settings, updateSetting } = useSettingsStore()
+  const dark = settings.dark_mode
   const showCurrency = settings.dashboard_currency !== 'off'
   const showTimezone = settings.dashboard_timezone !== 'off'
   const showSidebar = showCurrency || showTimezone
@@ -575,7 +610,7 @@ export default function DashboardPage() {
           {!isLoading && spotlight && (
             <SpotlightCard
               trip={spotlight}
-              t={t} locale={locale}
+              t={t} locale={locale} dark={dark}
               onEdit={tr => { setEditingTrip(tr); setShowForm(true) }}
               onDelete={handleDelete}
               onArchive={handleArchive}
@@ -635,8 +670,8 @@ export default function DashboardPage() {
           {/* Widgets sidebar */}
           {showSidebar && (
             <div className="hidden lg:flex flex-col gap-4" style={{ position: 'sticky', top: 80, flexShrink: 0, width: 280 }}>
-              {showCurrency && <CurrencyWidget />}
-              {showTimezone && <TimezoneWidget />}
+              {showCurrency && <LiquidGlass dark={dark} style={{ borderRadius: 16 }}><CurrencyWidget /></LiquidGlass>}
+              {showTimezone && <LiquidGlass dark={dark} style={{ borderRadius: 16 }}><TimezoneWidget /></LiquidGlass>}
             </div>
           )}
           </div>

@@ -67,6 +67,8 @@ export default function LoginPage() {
     }
   }
 
+  const [showTakeoff, setShowTakeoff] = useState(false)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
@@ -79,10 +81,10 @@ export default function LoginPage() {
       } else {
         await login(email, password)
       }
-      navigate('/dashboard')
+      setShowTakeoff(true)
+      setTimeout(() => navigate('/dashboard'), 2600)
     } catch (err) {
       setError(err.message || t('login.error'))
-    } finally {
       setIsLoading(false)
     }
   }
@@ -93,6 +95,157 @@ export default function LoginPage() {
     width: '100%', padding: '11px 12px 11px 40px', border: '1px solid #e5e7eb',
     borderRadius: 12, fontSize: 14, fontFamily: 'inherit', outline: 'none',
     color: '#111827', background: 'white', boxSizing: 'border-box', transition: 'border-color 0.15s',
+  }
+
+  if (showTakeoff) {
+    return (
+      <div className="takeoff-overlay" style={{ position: 'fixed', inset: 0, zIndex: 99999, overflow: 'hidden' }}>
+        {/* Sky gradient */}
+        <div className="takeoff-sky" style={{ position: 'absolute', inset: 0 }} />
+
+        {/* Stars */}
+        {Array.from({ length: 60 }, (_, i) => (
+          <div key={i} className="takeoff-star" style={{
+            position: 'absolute',
+            width: Math.random() > 0.7 ? 3 : 1.5,
+            height: Math.random() > 0.7 ? 3 : 1.5,
+            borderRadius: '50%',
+            background: 'white',
+            top: `${Math.random() * 100}%`,
+            left: `${Math.random() * 100}%`,
+            animationDelay: `${0.3 + Math.random() * 0.5}s, ${Math.random() * 1}s`,
+          }} />
+        ))}
+
+        {/* Clouds rushing past */}
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className="takeoff-cloud" style={{
+            position: 'absolute',
+            width: 120 + i * 40,
+            height: 40 + i * 10,
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.15)',
+            filter: 'blur(8px)',
+            right: -200,
+            top: `${25 + i * 12}%`,
+            animationDelay: `${0.3 + i * 0.25}s`,
+          }} />
+        ))}
+
+        {/* Speed lines */}
+        {Array.from({ length: 12 }, (_, i) => (
+          <div key={i} className="takeoff-speedline" style={{
+            position: 'absolute',
+            width: 80 + Math.random() * 120,
+            height: 1.5,
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+            top: `${10 + Math.random() * 80}%`,
+            right: -200,
+            animationDelay: `${0.5 + i * 0.12}s`,
+          }} />
+        ))}
+
+        {/* Plane */}
+        <div className="takeoff-plane" style={{ position: 'absolute', left: '50%', bottom: '10%', transform: 'translate(-50%, 0)' }}>
+          <svg viewBox="0 0 480 120" style={{ width: 200, filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.3))' }}>
+            <g fill="white" transform="translate(240,60) rotate(-12)">
+              <ellipse cx="0" cy="0" rx="120" ry="12" />
+              <path d="M-20,-10 L-60,-55 L-40,-55 L0,-15 Z" />
+              <path d="M-20,10 L-60,55 L-40,55 L0,15 Z" />
+              <path d="M-100,-5 L-120,-30 L-108,-30 L-90,-8 Z" />
+              <path d="M-100,5 L-120,30 L-108,30 L-90,8 Z" />
+              <ellipse cx="60" cy="0" rx="18" ry="8" />
+            </g>
+          </svg>
+        </div>
+
+        {/* Contrail */}
+        <div className="takeoff-trail" style={{
+          position: 'absolute', left: '50%', bottom: '8%',
+          width: 3, height: 0, background: 'linear-gradient(to top, transparent, rgba(255,255,255,0.5))',
+          transformOrigin: 'bottom center',
+        }} />
+
+        {/* Logo fade in + burst */}
+        <div className="takeoff-logo" style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        }}>
+          <img src="/logo-light.svg" alt="NOMAD" style={{ height: 72 }} />
+          <p style={{ margin: 0, fontSize: 20, color: 'rgba(255,255,255,0.6)', fontFamily: "'MuseoModerno', sans-serif", textTransform: 'lowercase' }}>{t('login.tagline')}</p>
+        </div>
+
+
+        <style>{`
+          .takeoff-sky {
+            background: linear-gradient(to top, #1a1a2e 0%, #16213e 30%, #0f3460 60%, #0a0a23 100%);
+            animation: skyShift 2.6s ease-in-out forwards;
+          }
+          @keyframes skyShift {
+            0%   { background: linear-gradient(to top, #0a0a23 0%, #0f172a 40%, #111827 100%); }
+            100% { background: linear-gradient(to top, #000011 0%, #000016 50%, #000011 100%); }
+          }
+
+          .takeoff-star {
+            opacity: 0;
+            animation: starAppear 0.5s ease-out forwards, starTwinkle 2s ease-in-out infinite alternate;
+          }
+          @keyframes starAppear {
+            0%   { opacity: 0; transform: scale(0); }
+            100% { opacity: 0.7; transform: scale(1); }
+          }
+          @keyframes starTwinkle {
+            0%   { opacity: 0.3; }
+            100% { opacity: 0.9; }
+          }
+
+          .takeoff-cloud {
+            animation: cloudRush 0.6s ease-in forwards;
+          }
+          @keyframes cloudRush {
+            0%   { right: -200px; opacity: 0; }
+            20%  { opacity: 0.4; }
+            100% { right: 120%; opacity: 0; }
+          }
+
+          .takeoff-speedline {
+            animation: speedRush 0.4s ease-in forwards;
+          }
+          @keyframes speedRush {
+            0%   { right: -200px; opacity: 0; }
+            30%  { opacity: 0.6; }
+            100% { right: 120%; opacity: 0; }
+          }
+
+          .takeoff-plane {
+            animation: planeUp 1s ease-in forwards;
+          }
+          @keyframes planeUp {
+            0%   { transform: translate(-50%, 0) rotate(0deg) scale(1); bottom: 8%; left: 50%; opacity: 1; }
+            100% { transform: translate(-50%, 0) rotate(-22deg) scale(0.15); bottom: 120%; left: 58%; opacity: 0; }
+          }
+
+          .takeoff-trail {
+            animation: trailGrow 0.9s ease-out 0.15s forwards;
+          }
+          @keyframes trailGrow {
+            0%   { height: 0; opacity: 0; transform: translateX(-50%) rotate(-5deg); }
+            30%  { height: 150px; opacity: 0.6; }
+            60%  { height: 350px; opacity: 0.4; }
+            100% { height: 600px; opacity: 0; transform: translateX(-50%) rotate(-8deg); }
+          }
+
+          .takeoff-logo {
+            opacity: 0;
+            animation: logoReveal 0.5s ease-out 0.9s forwards;
+          }
+          @keyframes logoReveal {
+            0%   { opacity: 0; transform: translate(-50%, -40%) scale(0.9); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          }
+        `}</style>
+      </div>
+    )
   }
 
   return (
@@ -215,14 +368,11 @@ export default function LoginPage() {
 
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 560, textAlign: 'center' }}>
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48, justifyContent: 'center' }}>
-            <div style={{ width: 48, height: 48, background: 'white', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 30px rgba(255,255,255,0.1)' }}>
-              <Plane size={24} style={{ color: '#0f172a' }} />
-            </div>
-            <span style={{ fontSize: 28, fontWeight: 800, color: 'white', letterSpacing: '-0.02em' }}>NOMAD</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 48 }}>
+            <img src="/logo-light.svg" alt="NOMAD" style={{ height: 64 }} />
           </div>
 
-          <h2 style={{ margin: '0 0 12px', fontSize: 36, fontWeight: 800, color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: 36, fontWeight: 700, color: 'white', lineHeight: 1.15, letterSpacing: '-0.02em', fontFamily: "'MuseoModerno', sans-serif", textTransform: 'lowercase' }}>
             {t('login.tagline')}
           </h2>
           <p style={{ margin: '0 0 44px', fontSize: 15, color: 'rgba(255,255,255,0.5)', lineHeight: 1.7 }}>
@@ -261,13 +411,11 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: 400 }}>
 
           {/* Mobile logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 36, justifyContent: 'center' }}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 36 }}
             className="mobile-logo">
             <style>{`@media(min-width:1024px){.mobile-logo{display:none!important}}`}</style>
-            <div style={{ width: 36, height: 36, background: '#111827', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Plane size={18} style={{ color: 'white' }} />
-            </div>
-            <span style={{ fontSize: 22, fontWeight: 800, color: '#111827', letterSpacing: '-0.02em' }}>NOMAD</span>
+            <img src="/logo-dark.svg" alt="NOMAD" style={{ height: 48 }} />
+            <p style={{ margin: 0, fontSize: 18, color: '#9ca3af', fontFamily: "'MuseoModerno', sans-serif", textTransform: 'lowercase' }}>{t('login.tagline')}</p>
           </div>
 
           <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e5e7eb', padding: '36px 32px', boxShadow: '0 2px 16px rgba(0,0,0,0.06)' }}>
@@ -346,7 +494,7 @@ export default function LoginPage() {
               >
                 {isLoading
                   ? <><div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />{mode === 'register' ? t('login.creating') : t('login.signingIn')}</>
-                  : mode === 'register' ? t('login.createAccount') : t('login.signIn')
+                  : <><Plane size={16} />{mode === 'register' ? t('login.createAccount') : t('login.signIn')}</>
                 }
               </button>
             </form>

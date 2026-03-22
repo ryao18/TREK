@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import ReactDOM from 'react-dom'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -72,10 +73,9 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
           </button>
         )}
 
-        <Link to="/dashboard" className="flex items-center gap-2 transition-colors flex-shrink-0"
-          style={{ color: 'var(--text-primary)' }}>
-          <Plane className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
-          <span className="font-bold text-sm hidden sm:inline">NOMAD</span>
+        <Link to="/dashboard" className="flex items-center transition-colors flex-shrink-0">
+          <img src={dark ? '/icons/icon-white.svg' : '/icons/icon-dark.svg'} alt="NOMAD" className="sm:hidden" style={{ height: 22, width: 22 }} />
+          <img src={dark ? '/logo-light.svg' : '/logo-dark.svg'} alt="NOMAD" className="hidden sm:block" style={{ height: 28 }} />
         </Link>
 
         {/* Global addon nav items */}
@@ -169,11 +169,10 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
             <ChevronDown className="w-4 h-4" style={{ color: 'var(--text-faint)' }} />
           </button>
 
-          {userMenuOpen && (
+          {userMenuOpen && ReactDOM.createPortal(
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-2 w-52 rounded-xl shadow-xl border z-20 overflow-hidden"
-                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setUserMenuOpen(false)} />
+              <div className="w-52 rounded-xl shadow-xl border overflow-hidden" style={{ position: 'fixed', top: 'var(--nav-h)', right: 8, zIndex: 9999, background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
                 <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
                   <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{user.username}</p>
                   <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
@@ -213,13 +212,17 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
                     {t('nav.logout')}
                   </button>
                   {appVersion && (
-                    <div className="px-4 py-1.5 text-center" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-                      NOMAD v{appVersion}
+                    <div className="px-4 pt-2 pb-2.5 text-center" style={{ marginTop: 4, borderTop: '1px solid var(--border-secondary)' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--bg-tertiary)', borderRadius: 99, padding: '4px 12px' }}>
+                        <img src={dark ? '/text-light.svg' : '/text-dark.svg'} alt="NOMAD" style={{ height: 10, opacity: 0.5 }} />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-faint)' }}>v{appVersion}</span>
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-            </>
+            </>,
+            document.body
           )}
         </div>
       )}

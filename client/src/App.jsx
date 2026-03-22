@@ -87,7 +87,7 @@ export default function App() {
     }
     const meta = document.querySelector('meta[name="theme-color"]')
     if (meta) {
-      meta.setAttribute('content', settings.dark_mode ? '#121215' : '#ffffff')
+      meta.setAttribute('content', settings.dark_mode ? '#09090b' : '#ffffff')
     }
   }, [settings.dark_mode])
 

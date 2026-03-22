@@ -252,6 +252,8 @@ const de = {
   'admin.tabs.addons': 'Addons',
   'admin.addons.title': 'Addons',
   'admin.addons.subtitle': 'Aktiviere oder deaktiviere Funktionen, um NOMAD nach deinen Wünschen anzupassen.',
+  'admin.addons.subtitleBefore': 'Aktiviere oder deaktiviere Funktionen, um ',
+  'admin.addons.subtitleAfter': ' nach deinen Wünschen anzupassen.',
   'admin.addons.enabled': 'Aktiviert',
   'admin.addons.disabled': 'Deaktiviert',
   'admin.addons.type.trip': 'Trip',

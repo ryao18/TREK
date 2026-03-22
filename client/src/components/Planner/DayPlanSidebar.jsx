@@ -462,7 +462,7 @@ export default function DayPlanSidebar({
                   outlineOffset: -2,
                   borderRadius: isDragTarget ? 8 : 0,
                 }}
-                onMouseEnter={e => { if (!isSelected && !isDragTarget) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                onMouseEnter={e => { if (!isSelected && !isDragTarget) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isDragTarget ? 'rgba(17,24,39,0.07)' : 'transparent' }}
               >
                 {/* Tages-Badge */}
@@ -536,7 +536,7 @@ export default function DayPlanSidebar({
               {/* Aufgeklappte Orte + Notizen */}
               {isExpanded && (
                 <div
-                  style={{ background: 'var(--bg-hover)' }}
+                  style={{ background: 'var(--bg-hover)', paddingTop: 6 }}
                   onDragOver={e => { e.preventDefault(); if (draggingId) setDropTargetKey(`end-${day.id}`) }}
                   onDrop={e => {
                     e.preventDefault()
@@ -614,7 +614,7 @@ export default function DayPlanSidebar({
                               dragDataRef.current = { assignmentId: String(assignment.id), fromDayId: String(day.id) }
                               setDraggingId(assignment.id)
                             }}
-                            onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOverDayId(null); setDropTargetKey(`place-${assignment.id}`) }}
+                            onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOverDayId(null); if (dropTargetKey !== `place-${assignment.id}`) setDropTargetKey(`place-${assignment.id}`) }}
                             onDrop={e => {
                               e.preventDefault(); e.stopPropagation()
                               const { placeId, assignmentId: fromAssignmentId, noteId, fromDayId } = getDragData(e)
@@ -754,7 +754,7 @@ export default function DayPlanSidebar({
                           draggable
                           onDragStart={e => { e.dataTransfer.setData('noteId', String(note.id)); e.dataTransfer.setData('fromDayId', String(day.id)); e.dataTransfer.effectAllowed = 'move'; dragDataRef.current = { noteId: String(note.id), fromDayId: String(day.id) }; setDraggingId(`note-${note.id}`) }}
                           onDragEnd={() => { setDraggingId(null); setDropTargetKey(null); dragDataRef.current = null }}
-                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropTargetKey(`note-${note.id}`) }}
+                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dropTargetKey !== `note-${note.id}`) setDropTargetKey(`note-${note.id}`) }}
                           onDrop={e => {
                             e.preventDefault(); e.stopPropagation()
                             const { noteId: fromNoteId, assignmentId: fromAssignmentId, fromDayId } = getDragData(e)
@@ -819,9 +819,8 @@ export default function DayPlanSidebar({
                   )}
                   {/* Drop-Zone am Listenende — immer vorhanden als Drop-Target */}
                   <div
-                    style={{ minHeight: 8, padding: '2px 8px' }}
-                    onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropTargetKey(`end-${day.id}`) }}
-                    onDragLeave={() => { if (dropTargetKey === `end-${day.id}`) setDropTargetKey(null) }}
+                    style={{ minHeight: 12, padding: '2px 8px' }}
+                    onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dropTargetKey !== `end-${day.id}`) setDropTargetKey(`end-${day.id}`) }}
                     onDrop={e => {
                       e.preventDefault(); e.stopPropagation()
                       const { placeId, assignmentId, noteId, fromDayId } = getDragData(e)

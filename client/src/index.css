@@ -326,6 +326,15 @@ body {
   color: var(--text-faint);
 }
 
+/* Brand images: no save/copy/drag */
+img[alt="NOMAD"] {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
 /* Weiche Übergänge */
 .transition-smooth {
   transition: all 0.2s ease;

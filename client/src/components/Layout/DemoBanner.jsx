@@ -4,6 +4,8 @@ import { useTranslation } from '../../i18n'
 
 const texts = {
   de: {
+    titleBefore: 'Willkommen bei ',
+    titleAfter: '',
     title: 'Willkommen zur NOMAD Demo',
     description: 'Du kannst Reisen ansehen, bearbeiten und eigene erstellen. Alle Aenderungen werden jede Stunde automatisch zurueckgesetzt.',
     resetIn: 'Naechster Reset in',
@@ -34,6 +36,8 @@ const texts = {
     close: 'Verstanden',
   },
   en: {
+    titleBefore: 'Welcome to ',
+    titleAfter: '',
     title: 'Welcome to the NOMAD Demo',
     description: 'You can view, edit and create trips. All changes are automatically reset every hour.',
     resetIn: 'Next reset in',
@@ -98,15 +102,9 @@ export default function DemoBanner() {
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: '#111827',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Plane size={18} style={{ color: 'white' }} />
-          </div>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
-            {t.title}
+          <img src="/icons/icon-dark.svg" alt="" style={{ width: 36, height: 36, borderRadius: 10 }} />
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 5 }}>
+            {t.titleBefore}<img src="/text-dark.svg" alt="NOMAD" style={{ height: 18 }} />{t.titleAfter}
           </h2>
         </div>
 
@@ -141,7 +139,9 @@ export default function DemoBanner() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <Map size={14} style={{ color: '#111827' }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{t.whatIs}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {language === 'de' ? 'Was ist ' : 'What is '}<img src="/text-dark.svg" alt="NOMAD" style={{ height: 13, marginRight: -2 }} />?
+            </span>
           </div>
           <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, margin: 0 }}>{t.whatIsDesc}</p>
         </div>

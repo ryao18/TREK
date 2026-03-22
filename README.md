@@ -22,6 +22,7 @@
 </p>
 
 ![NOMAD Screenshot](docs/screenshot.png)
+![NOMAD Screenshot 2](docs/screenshot-2.png)
 
 <details>
 <summary>More Screenshots</summary>
@@ -29,7 +30,7 @@
 | | |
 |---|---|
 | ![Plan Detail](docs/screenshot-plan-detail.png) | ![Bookings](docs/screenshot-bookings.png) |
-| ![Packing List](docs/screenshot-packing.png) | ![Budget](docs/screenshot-budget.png) |
+| ![Budget](docs/screenshot-budget.png) | ![Packing List](docs/screenshot-packing.png) |
 | ![Files](docs/screenshot-files.png) | |
 
 </details>

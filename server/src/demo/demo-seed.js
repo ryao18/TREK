@@ -69,7 +69,7 @@ function seedExampleTrips(db, adminId, demoId) {
   const insertBudget = db.prepare('INSERT INTO budget_items (trip_id, category, name, total_price, persons, note) VALUES (?, ?, ?, ?, ?, ?)');
   const insertReservation = db.prepare('INSERT INTO reservations (trip_id, day_id, title, reservation_time, confirmation_number, status, type, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const insertMember = db.prepare('INSERT OR IGNORE INTO trip_members (trip_id, user_id, invited_by) VALUES (?, ?, ?)');
-  const insertNote = db.prepare('INSERT INTO day_notes (day_id, text, time, icon, sort_order) VALUES (?, ?, ?, ?, ?)');
+  const insertNote = db.prepare('INSERT INTO day_notes (day_id, trip_id, text, time, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
 
   // Category IDs: 1=Hotel, 2=Restaurant, 3=Attraction, 5=Transport, 7=Bar/Cafe, 8=Beach, 9=Nature, 6=Entertainment
 
@@ -104,18 +104,18 @@ function seedExampleTrips(db, adminId, demoId) {
   // Day 1: Hotel Check-in, Shibuya
   insertAssignment.run(t1days[0], t1pIds[0], 0);
   insertAssignment.run(t1days[0], t1pIds[2], 1);
-  insertNote.run(t1days[0], 'Pick up Pocket WiFi at airport', '13:00', 'Info', 0.5);
+  insertNote.run(t1days[0], t1, 'Pick up Pocket WiFi at airport', '13:00', 'Info', 0.5);
   // Day 2: Tsukiji, Senso-ji, Akihabara
   insertAssignment.run(t1days[1], t1pIds[3], 0);
   insertAssignment.run(t1days[1], t1pIds[1], 1);
   insertAssignment.run(t1days[1], t1pIds[5], 2);
   // Day 3: Meiji Shrine, free afternoon
   insertAssignment.run(t1days[2], t1pIds[4], 0);
-  insertNote.run(t1days[2], 'Explore Harajuku after the shrine', '12:00', 'MapPin', 1);
+  insertNote.run(t1days[2], t1, 'Explore Harajuku after the shrine', '12:00', 'MapPin', 1);
   // Day 4: Shinkansen to Kyoto, Hotel
   insertAssignment.run(t1days[3], t1pIds[6], 0);
   insertAssignment.run(t1days[3], t1pIds[7], 1);
-  insertNote.run(t1days[3], 'Sit on right side for Mt. Fuji views!', '08:30', 'Train', 0.5);
+  insertNote.run(t1days[3], t1, 'Sit on right side for Mt. Fuji views!', '08:30', 'Train', 0.5);
   // Day 5: Fushimi Inari, Nishiki Market
   insertAssignment.run(t1days[4], t1pIds[8], 0);
   insertAssignment.run(t1days[4], t1pIds[11], 1);
@@ -124,7 +124,7 @@ function seedExampleTrips(db, adminId, demoId) {
   insertAssignment.run(t1days[5], t1pIds[10], 1);
   // Day 7: Gion
   insertAssignment.run(t1days[6], t1pIds[12], 0);
-  insertNote.run(t1days[6], 'Last evening — farewell dinner at Pontocho Alley', '19:00', 'Star', 1);
+  insertNote.run(t1days[6], t1, 'Last evening — farewell dinner at Pontocho Alley', '19:00', 'Star', 1);
 
   // Packing
   const t1packing = [
@@ -181,13 +181,13 @@ function seedExampleTrips(db, adminId, demoId) {
   insertAssignment.run(t2days[1], t2pIds[1], 0);
   insertAssignment.run(t2days[1], t2pIds[6], 1);
   insertAssignment.run(t2days[1], t2pIds[3], 2);
-  insertNote.run(t2days[1], 'Tickets already booked for 10:00 AM slot', '09:30', 'Ticket', 0.5);
+  insertNote.run(t2days[1], t2, 'Tickets already booked for 10:00 AM slot', '09:30', 'Ticket', 0.5);
   // Day 3: Park Guell, Gothic Quarter
   insertAssignment.run(t2days[2], t2pIds[2], 0);
   insertAssignment.run(t2days[2], t2pIds[5], 1);
   // Day 4: Beach morning, departure
   insertAssignment.run(t2days[3], t2pIds[4], 0);
-  insertNote.run(t2days[3], 'Flight departs at 18:30 — leave hotel by 15:00', '14:00', 'Plane', 1);
+  insertNote.run(t2days[3], t2, 'Flight departs at 18:30 — leave hotel by 15:00', '14:00', 'Plane', 1);
 
   // Packing
   ['Passport', 'Sunscreen SPF50', 'Swimwear', 'Sunglasses', 'Comfortable sandals', 'Beach towel'].forEach((name, i) => {
@@ -238,7 +238,7 @@ function seedExampleTrips(db, adminId, demoId) {
   insertAssignment.run(t3days[1], t3pIds[1], 0);
   insertAssignment.run(t3days[1], t3pIds[5], 1);
   insertAssignment.run(t3days[1], t3pIds[7], 2);
-  insertNote.run(t3days[1], 'First ferry at 8:30 AM — arrive early at Battery Park', '08:00', 'Ship', 0.5);
+  insertNote.run(t3days[1], t3, 'First ferry at 8:30 AM — arrive early at Battery Park', '08:00', 'Ship', 0.5);
   // Day 3: Central Park, Met Museum, Top of the Rock sunset
   insertAssignment.run(t3days[2], t3pIds[2], 0);
   insertAssignment.run(t3days[2], t3pIds[6], 1);
@@ -246,9 +246,9 @@ function seedExampleTrips(db, adminId, demoId) {
   // Day 4: Empire State Building, Chelsea Market, shopping
   insertAssignment.run(t3days[3], t3pIds[4], 0);
   insertAssignment.run(t3days[3], t3pIds[9], 1);
-  insertNote.run(t3days[3], 'SoHo and 5th Avenue shopping in the afternoon', '14:00', 'ShoppingBag', 1.5);
+  insertNote.run(t3days[3], t3, 'SoHo and 5th Avenue shopping in the afternoon', '14:00', 'ShoppingBag', 1.5);
   // Day 5: Free morning, departure
-  insertNote.run(t3days[4], 'Flight departs JFK at 17:00 — last bagel at Russ & Daughters!', '10:00', 'Plane', 0);
+  insertNote.run(t3days[4], t3, 'Flight departs JFK at 17:00 — last bagel at Russ & Daughters!', '10:00', 'Plane', 0);
 
   // Packing
   const t3packing = [

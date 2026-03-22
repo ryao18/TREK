@@ -59,7 +59,8 @@ export default function LoginPage() {
     setIsLoading(true)
     try {
       await demoLogin()
-      navigate('/dashboard')
+      setShowTakeoff(true)
+      setTimeout(() => navigate('/dashboard'), 2600)
     } catch (err) {
       setError(err.message || 'Demo-Login fehlgeschlagen')
     } finally {

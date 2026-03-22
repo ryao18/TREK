@@ -77,7 +77,7 @@
 
 ## Tech Stack
 
-- **Backend**: Node.js 22 + Express + SQLite (`node:sqlite`)
+- **Backend**: Node.js 22 + Express + SQLite (`better-sqlite3`)
 - **Frontend**: React 18 + Vite + Tailwind CSS
 - **PWA**: vite-plugin-pwa + Workbox
 - **Real-Time**: WebSocket (`ws`)

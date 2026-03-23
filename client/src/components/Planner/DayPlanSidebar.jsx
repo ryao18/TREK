@@ -855,17 +855,6 @@ export default function DayPlanSidebar({
                   {/* Routen-Werkzeuge (ausgewählter Tag, 2+ Orte) */}
                   {isSelected && getDayAssignments(day.id).length >= 2 && (
                     <div style={{ padding: '10px 16px 12px', borderTop: '1px solid var(--border-faint)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                      <div style={{ display: 'flex', background: 'var(--bg-hover)', borderRadius: 8, padding: 2, gap: 2 }}>
-                        {TRANSPORT_MODES.map(m => (
-                          <button key={m.value} onClick={() => setTransportMode(m.value)} style={{
-                            flex: 1, padding: '4px 0', fontSize: 11, fontWeight: transportMode === m.value ? 600 : 400,
-                            background: transportMode === m.value ? 'var(--bg-card)' : 'transparent',
-                            border: 'none', borderRadius: 6, cursor: 'pointer', color: transportMode === m.value ? 'var(--text-primary)' : 'var(--text-muted)',
-                            boxShadow: transportMode === m.value ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                            fontFamily: 'inherit',
-                          }}>{m.label}</button>
-                        ))}
-                      </div>
 
                       {routeInfo && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: 12, fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-hover)', borderRadius: 8, padding: '5px 10px' }}>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react'
+import React, { useMemo, useState, useCallback, useRef } from 'react'
 import { useVacayStore } from '../../store/vacayStore'
 import { useTranslation } from '../../i18n'
 import { isWeekend } from './holidays'
@@ -28,22 +28,75 @@ export default function VacayCalendar() {
   const blockWeekends = plan?.block_weekends !== false
   const companyHolidaysEnabled = plan?.company_holidays_enabled !== false
 
+  // Drag-to-paint state
+  const isDragging = useRef(false)
+  const dragAction = useRef(null) // 'add' or 'remove'
+  const dragProcessed = useRef(new Set())
+
+  const isDayBlocked = useCallback((dateStr) => {
+    if (holidays[dateStr]) return true
+    if (blockWeekends && isWeekend(dateStr)) return true
+    if (companyHolidaysEnabled && companyHolidaySet.has(dateStr) && !companyMode) return true
+    return false
+  }, [holidays, blockWeekends, companyHolidaySet, companyHolidaysEnabled, companyMode])
+
+  const handleCellMouseDown = useCallback((dateStr) => {
+    if (isDayBlocked(dateStr) && !companyMode) return
+    isDragging.current = true
+    dragProcessed.current = new Set([dateStr])
+
+    if (companyMode) {
+      dragAction.current = companyHolidaySet.has(dateStr) ? 'remove' : 'add'
+      toggleCompanyHoliday(dateStr)
+    } else {
+      const hasEntry = (entryMap[dateStr] || []).some(e => e.user_id === (selectedUserId || undefined))
+      dragAction.current = hasEntry ? 'remove' : 'add'
+      toggleEntry(dateStr, selectedUserId || undefined)
+    }
+  }, [companyMode, isDayBlocked, toggleEntry, toggleCompanyHoliday, entryMap, companyHolidaySet, selectedUserId])
+
+  const handleCellMouseEnter = useCallback((dateStr) => {
+    if (!isDragging.current) return
+    if (dragProcessed.current.has(dateStr)) return
+    if (isDayBlocked(dateStr) && !companyMode) return
+    dragProcessed.current.add(dateStr)
+
+    if (companyMode) {
+      const isSet = companyHolidaySet.has(dateStr)
+      if ((dragAction.current === 'add' && !isSet) || (dragAction.current === 'remove' && isSet)) {
+        toggleCompanyHoliday(dateStr)
+      }
+    } else {
+      const hasEntry = (entryMap[dateStr] || []).some(e => e.user_id === (selectedUserId || undefined))
+      if ((dragAction.current === 'add' && !hasEntry) || (dragAction.current === 'remove' && hasEntry)) {
+        toggleEntry(dateStr, selectedUserId || undefined)
+      }
+    }
+  }, [companyMode, isDayBlocked, toggleEntry, toggleCompanyHoliday, entryMap, companyHolidaySet, selectedUserId])
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false
+    dragAction.current = null
+    dragProcessed.current.clear()
+  }, [])
+
+  // Also handle click for single taps (touch/accessibility)
   const handleCellClick = useCallback(async (dateStr) => {
+    // Already handled by mousedown for mouse users, this is fallback for touch
+    if (isDragging.current) return
     if (companyMode) {
       if (!companyHolidaysEnabled) return
       await toggleCompanyHoliday(dateStr)
       return
     }
-    if (holidays[dateStr]) return
-    if (blockWeekends && isWeekend(dateStr)) return
-    if (companyHolidaysEnabled && companyHolidaySet.has(dateStr)) return
+    if (isDayBlocked(dateStr)) return
     await toggleEntry(dateStr, selectedUserId || undefined)
-  }, [companyMode, toggleEntry, toggleCompanyHoliday, holidays, companyHolidaySet, blockWeekends, companyHolidaysEnabled, selectedUserId])
+  }, [companyMode, toggleEntry, toggleCompanyHoliday, companyHolidaysEnabled, isDayBlocked, selectedUserId])
 
   const selectedUser = users.find(u => u.id === selectedUserId)
 
   return (
-    <div>
+    <div onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} style={{ userSelect: 'none' }}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {Array.from({ length: 12 }, (_, i) => (
           <VacayMonthCard
@@ -55,6 +108,8 @@ export default function VacayCalendar() {
             companyHolidaysEnabled={companyHolidaysEnabled}
             entryMap={entryMap}
             onCellClick={handleCellClick}
+            onCellMouseDown={handleCellMouseDown}
+            onCellMouseEnter={handleCellMouseEnter}
             companyMode={companyMode}
             blockWeekends={blockWeekends}
           />

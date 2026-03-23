@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useTripStore } from '../../store/tripStore'
 import { useTranslation } from '../../i18n'
-import { Plus, Trash2, Calculator, Wallet } from 'lucide-react'
+import { Plus, Trash2, Calculator, Wallet, ArrowRightLeft } from 'lucide-react'
 import CustomSelect from '../shared/CustomSelect'
+import { exchangeApi } from '../../api/client'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'JPY', 'CHF', 'CZK', 'PLN', 'SEK', 'NOK', 'DKK', 'TRY', 'THB', 'AUD', 'CAD']
@@ -153,6 +154,15 @@ export default function BudgetPanel({ tripId }) {
   const { t, locale } = useTranslation()
   const [newCategoryName, setNewCategoryName] = useState('')
   const currency = trip?.currency || 'EUR'
+  const [rates, setRates] = useState(null)
+  const [convertTo, setConvertTo] = useState(() => {
+    const saved = localStorage.getItem('budget_convert_to')
+    return saved || (currency === 'EUR' ? 'USD' : 'EUR')
+  })
+
+  useEffect(() => {
+    exchangeApi.getRates().then(setRates).catch(() => {})
+  }, [])
 
   const fmt = (v, cur) => fmtNum(v, locale, cur)
 
@@ -351,6 +361,38 @@ export default function BudgetPanel({ tripId }) {
               {Number(grandTotal).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{SYMBOLS[currency] || currency} {currency}</div>
+
+            {/* Live exchange rate conversion */}
+            {rates && (() => {
+              const fromRate = currency === 'EUR' ? 1 : rates.rates?.[currency]
+              const toRate = convertTo === 'EUR' ? 1 : rates.rates?.[convertTo]
+              const converted = fromRate && toRate ? (grandTotal / fromRate) * toRate : null
+              return converted != null ? (
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <ArrowRightLeft size={12} style={{ color: 'rgba(255,255,255,0.4)' }} />
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('budget.converted')}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 20, fontWeight: 700 }}>
+                      {Number(converted).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <select
+                      value={convertTo}
+                      onChange={e => { setConvertTo(e.target.value); localStorage.setItem('budget_convert_to', e.target.value) }}
+                      style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, padding: '2px 4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      {CURRENCIES.filter(c => c !== currency).map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                    1 {currency} = {((toRate / fromRate) || 0).toFixed(4)} {convertTo}
+                  </div>
+                </div>
+              ) : null
+            })()}
           </div>
 
           {pieSegments.length > 0 && (

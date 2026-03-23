@@ -9,7 +9,7 @@ const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli',
 
 export default function VacayMonthCard({
   year, month, holidays, companyHolidaySet, companyHolidaysEnabled = true, entryMap,
-  onCellClick, companyMode, blockWeekends
+  onCellClick, onCellMouseDown, onCellMouseEnter, companyMode, blockWeekends
 }) {
   const { language } = useTranslation()
   const weekdays = language === 'de' ? WEEKDAYS_DE : WEEKDAYS_EN
@@ -69,9 +69,13 @@ export default function VacayMonthCard({
                     borderRight: '1px solid var(--border-secondary)',
                     cursor: isBlocked ? 'default' : 'pointer',
                   }}
-                  onClick={() => onCellClick(dateStr)}
-                  onMouseEnter={e => { if (!isBlocked) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                  onMouseDown={(e) => { e.preventDefault(); onCellMouseDown?.(dateStr) }}
+                  onMouseEnter={(e) => {
+                    onCellMouseEnter?.(dateStr)
+                    if (!isBlocked) e.currentTarget.style.background = 'var(--bg-hover)'
+                  }}
                   onMouseLeave={e => { e.currentTarget.style.background = weekend ? 'var(--bg-secondary)' : 'transparent' }}
+                  onTouchStart={() => onCellClick(dateStr)}
                 >
                   {holiday && <div className="absolute inset-0.5 rounded" style={{ background: 'rgba(239,68,68,0.12)' }} />}
                   {isCompany && <div className="absolute inset-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)' }} />}

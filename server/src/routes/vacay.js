@@ -453,10 +453,28 @@ router.post('/entries/toggle', (req, res) => {
   const { date, target_user_id } = req.body;
   if (!date) return res.status(400).json({ error: 'date required' });
   const planId = getActivePlanId(req.user.id);
+  const planUsers = getPlanUsers(planId);
+
+  // Toggle for all users in plan
+  if (target_user_id === 'all') {
+    const actions = [];
+    for (const u of planUsers) {
+      const existing = db.prepare('SELECT id FROM vacay_entries WHERE user_id = ? AND date = ? AND plan_id = ?').get(u.id, date, planId);
+      if (existing) {
+        db.prepare('DELETE FROM vacay_entries WHERE id = ?').run(existing.id);
+        actions.push({ user_id: u.id, action: 'removed' });
+      } else {
+        db.prepare('INSERT INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)').run(planId, u.id, date, '');
+        actions.push({ user_id: u.id, action: 'added' });
+      }
+    }
+    notifyPlanUsers(planId, req.user.id);
+    return res.json({ action: 'toggled_all', actions });
+  }
+
   // Allow toggling for another user if they are in the same plan
   let userId = req.user.id;
   if (target_user_id && parseInt(target_user_id) !== req.user.id) {
-    const planUsers = getPlanUsers(planId);
     const tid = parseInt(target_user_id);
     if (!planUsers.find(u => u.id === tid)) {
       return res.status(403).json({ error: 'User not in plan' });

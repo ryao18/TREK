@@ -90,7 +90,12 @@
 ## Quick Start
 
 ```bash
-docker run -d -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/nomad
+mkdir -p /opt/nomad && cd /opt/nomad
+docker run -d --name nomad -p 3000:3000 \
+  -v /opt/nomad/data:/app/data \
+  -v /opt/nomad/uploads:/app/uploads \
+  --restart unless-stopped \
+  mauriceboe/nomad:latest
 ```
 
 The app runs on port `3000`. The first user to register becomes the admin.
@@ -118,8 +123,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
     volumes:
-      - ./data:/app/data
-      - ./uploads:/app/uploads
+      - /opt/nomad/data:/app/data
+      - /opt/nomad/uploads:/app/uploads
     restart: unless-stopped
 ```
 
@@ -143,9 +148,7 @@ docker run -d --name nomad -p 3000:3000 \
 
 Or with Docker Compose: `docker compose pull && docker compose up -d`
 
-> **Important:** Make sure the `-v` paths point to your actual data directory (e.g. `/opt/nomad/data`). Using wrong paths will start NOMAD with an empty database.
-
-Your data is persisted in the mounted `data` and `uploads` volumes.
+Your data is persisted in the mounted `/opt/nomad/data` and `/opt/nomad/uploads` volumes.
 
 ### Reverse Proxy (recommended)
 

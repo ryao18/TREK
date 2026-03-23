@@ -132,12 +132,18 @@ docker compose up -d
 ### Updating
 
 ```bash
-docker pull mauriceboe/nomad
+docker pull mauriceboe/nomad:latest
 docker rm -f nomad
-docker run -d --name nomad -p 3000:3000 -v /your/data:/app/data -v /your/uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
+docker run -d --name nomad -p 3000:3000 \
+  -v /opt/nomad/data:/app/data \
+  -v /opt/nomad/uploads:/app/uploads \
+  --restart unless-stopped \
+  mauriceboe/nomad:latest
 ```
 
 Or with Docker Compose: `docker compose pull && docker compose up -d`
+
+> **Important:** Make sure the `-v` paths point to your actual data directory (e.g. `/opt/nomad/data`). Using wrong paths will start NOMAD with an empty database.
 
 Your data is persisted in the mounted `data` and `uploads` volumes.
 

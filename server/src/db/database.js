@@ -35,6 +35,10 @@ function initDb() {
       maps_api_key TEXT,
       unsplash_api_key TEXT,
       openweather_api_key TEXT,
+      avatar TEXT,
+      oidc_sub TEXT,
+      oidc_issuer TEXT,
+      last_login DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -55,6 +59,8 @@ function initDb() {
       start_date TEXT,
       end_date TEXT,
       currency TEXT DEFAULT 'EUR',
+      cover_image TEXT,
+      is_archived INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -65,6 +71,7 @@ function initDb() {
       day_number INTEGER NOT NULL,
       date TEXT,
       notes TEXT,
+      title TEXT,
       UNIQUE(trip_id, day_number)
     );
 
@@ -73,6 +80,7 @@ function initDb() {
       name TEXT NOT NULL,
       color TEXT DEFAULT '#6366f1',
       icon TEXT DEFAULT '📍',
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -153,6 +161,7 @@ function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       place_id INTEGER REFERENCES places(id) ON DELETE SET NULL,
+      reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL,
       filename TEXT NOT NULL,
       original_name TEXT NOT NULL,
       file_size INTEGER,
@@ -171,6 +180,8 @@ function initDb() {
       location TEXT,
       confirmation_number TEXT,
       notes TEXT,
+      status TEXT DEFAULT 'pending',
+      type TEXT DEFAULT 'other',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -314,16 +325,17 @@ function initDb() {
   const versionRow = _db.prepare('SELECT version FROM schema_version').get();
   let currentVersion = versionRow?.version ?? 0;
 
-  // Existing DBs already have all pre-v2.5.2 columns — detect and skip
+  // Existing or fresh DBs may already have columns the migrations add.
+  // Detect by checking for a column from migration 1 (unsplash_api_key).
   if (currentVersion === 0) {
-    const hasLastLogin = _db.prepare(
-      "SELECT 1 FROM pragma_table_info('users') WHERE name = 'last_login'"
+    const hasUnsplash = _db.prepare(
+      "SELECT 1 FROM pragma_table_info('users') WHERE name = 'unsplash_api_key'"
     ).get();
-    if (hasLastLogin) {
-      // DB was already fully migrated by the old try/catch pattern
+    if (hasUnsplash) {
+      // All columns from CREATE TABLE already exist — skip ALTER migrations
       currentVersion = 19;
       _db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(currentVersion);
-      console.log('[DB] Existing database detected, setting schema version to', currentVersion);
+      console.log('[DB] Schema already up-to-date, setting version to', currentVersion);
     } else {
       _db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(0);
     }

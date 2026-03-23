@@ -1,5 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { execSync } = require('child_process');
+const path = require('path');
 const { db } = require('../db/database');
 const { authenticate, adminOnly } = require('../middleware/auth');
 
@@ -149,6 +151,78 @@ router.post('/save-demo-baseline', (req, res) => {
     res.json({ success: true, message: 'Demo baseline saved. Hourly resets will restore to this state.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save baseline: ' + err.message });
+  }
+});
+
+// ── Version check ──────────────────────────────────────────
+
+router.get('/version-check', async (req, res) => {
+  const { version: currentVersion } = require('../../package.json');
+  try {
+    const resp = await fetch(
+      'https://api.github.com/repos/mauriceboe/NOMAD/releases/latest',
+      { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'NOMAD-Server' } }
+    );
+    if (!resp.ok) return res.json({ current: currentVersion, latest: currentVersion, update_available: false });
+    const data = await resp.json();
+    const latest = (data.tag_name || '').replace(/^v/, '');
+    const update_available = latest && latest !== currentVersion && compareVersions(latest, currentVersion) > 0;
+    res.json({ current: currentVersion, latest, update_available, release_url: data.html_url || '' });
+  } catch {
+    res.json({ current: currentVersion, latest: currentVersion, update_available: false });
+  }
+});
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0, nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+// POST /api/admin/update — pull latest code, install deps, restart
+router.post('/update', async (req, res) => {
+  const rootDir = path.resolve(__dirname, '../../..');
+  const serverDir = path.resolve(__dirname, '../..');
+  const clientDir = path.join(rootDir, 'client');
+  const steps = [];
+
+  try {
+    // 1. git pull
+    const pullOutput = execSync('git pull origin main', { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
+    steps.push({ step: 'git pull', success: true, output: pullOutput.trim() });
+
+    // 2. npm install server
+    execSync('npm install --production', { cwd: serverDir, timeout: 120000, encoding: 'utf8' });
+    steps.push({ step: 'npm install (server)', success: true });
+
+    // 3. npm install + build client (production only)
+    if (process.env.NODE_ENV === 'production') {
+      execSync('npm install', { cwd: clientDir, timeout: 120000, encoding: 'utf8' });
+      execSync('npm run build', { cwd: clientDir, timeout: 120000, encoding: 'utf8' });
+      steps.push({ step: 'npm install + build (client)', success: true });
+    }
+
+    // Read new version
+    delete require.cache[require.resolve('../../package.json')];
+    const { version: newVersion } = require('../../package.json');
+    steps.push({ step: 'version', version: newVersion });
+
+    // 4. Send response before restart
+    res.json({ success: true, steps, restarting: true });
+
+    // 5. Graceful restart — exit and let process manager (Docker/systemd/pm2) restart
+    setTimeout(() => {
+      console.log('[Update] Restarting after update...');
+      process.exit(0);
+    }, 1000);
+  } catch (err) {
+    steps.push({ step: 'error', success: false, output: err.message });
+    res.status(500).json({ success: false, steps });
   }
 });
 

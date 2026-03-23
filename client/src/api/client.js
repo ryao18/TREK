@@ -129,6 +129,8 @@ export const adminApi = {
   updateOidc: (data) => apiClient.put('/admin/oidc', data).then(r => r.data),
   addons: () => apiClient.get('/admin/addons').then(r => r.data),
   updateAddon: (id, data) => apiClient.put(`/admin/addons/${id}`, data).then(r => r.data),
+  checkVersion: () => apiClient.get('/admin/version-check').then(r => r.data),
+  installUpdate: () => apiClient.post('/admin/update', {}, { timeout: 300000 }).then(r => r.data),
 }
 
 export const addonsApi = {

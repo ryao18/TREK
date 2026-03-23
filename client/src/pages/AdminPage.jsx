@@ -10,7 +10,7 @@ import { useToast } from '../components/shared/Toast'
 import CategoryManager from '../components/Admin/CategoryManager'
 import BackupPanel from '../components/Admin/BackupPanel'
 import AddonManager from '../components/Admin/AddonManager'
-import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus } from 'lucide-react'
+import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, AlertTriangle, RefreshCw } from 'lucide-react'
 import CustomSelect from '../components/shared/CustomSelect'
 
 export default function AdminPage() {
@@ -49,6 +49,12 @@ export default function AdminPage() {
   const [validating, setValidating] = useState({})
   const [validation, setValidation] = useState({})
 
+  // Version check & update
+  const [updateInfo, setUpdateInfo] = useState(null)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [updateResult, setUpdateResult] = useState(null) // 'success' | 'error'
+
   const { user: currentUser, updateApiKeys } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
@@ -58,6 +64,9 @@ export default function AdminPage() {
     loadAppConfig()
     loadApiKeys()
     adminApi.getOidc().then(setOidcConfig).catch(() => {})
+    adminApi.checkVersion().then(data => {
+      if (data.update_available) setUpdateInfo(data)
+    }).catch(() => {})
   }, [])
 
   const loadData = async () => {
@@ -92,6 +101,26 @@ export default function AdminPage() {
       setWeatherKey(data.settings?.openweather_api_key || '')
     } catch (err) {
       // ignore
+    }
+  }
+
+  const handleInstallUpdate = async () => {
+    setUpdating(true)
+    setUpdateResult(null)
+    try {
+      await adminApi.installUpdate()
+      setUpdateResult('success')
+      // Server is restarting — poll until it comes back, then reload
+      const poll = setInterval(async () => {
+        try {
+          await authApi.getAppConfig()
+          clearInterval(poll)
+          window.location.reload()
+        } catch { /* still restarting */ }
+      }, 2000)
+    } catch {
+      setUpdateResult('error')
+      setUpdating(false)
     }
   }
 
@@ -221,6 +250,43 @@ export default function AdminPage() {
               <p className="text-slate-500 text-sm">{t('admin.subtitle')}</p>
             </div>
           </div>
+
+          {/* Update Banner */}
+          {updateInfo && (
+            <div className="mb-6 p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-amber-500 dark:bg-amber-600">
+                  <ArrowUpCircle className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{t('admin.update.available')}</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    {t('admin.update.text').replace('{version}', `v${updateInfo.latest}`).replace('{current}', `v${updateInfo.current}`)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {updateInfo.release_url && (
+                  <a
+                    href={updateInfo.release_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {t('admin.update.button')}
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowUpdateModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
+                >
+                  <Download className="w-4 h-4" />
+                  {t('admin.update.install')}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Demo Baseline Button */}
           {demoMode && (
@@ -744,6 +810,137 @@ export default function AdminPage() {
           </div>
         )}
       </Modal>
+
+      {/* Update confirmation popup — matches backup restore style */}
+      {showUpdateModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => { if (!updating) setShowUpdateModal(false) }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 440, borderRadius: 16, overflow: 'hidden' }}
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
+          >
+            {updateResult === 'success' ? (
+              <>
+                <div style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <CheckCircle size={20} style={{ color: 'white' }} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.success')}</h3>
+                  </div>
+                </div>
+                <div style={{ padding: '20px 24px', textAlign: 'center' }}>
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('admin.update.reloadHint')}</p>
+                </div>
+              </>
+            ) : updateResult === 'error' ? (
+              <>
+                <div style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <XCircle size={20} style={{ color: 'white' }} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.failed')}</h3>
+                  </div>
+                </div>
+                <div style={{ padding: '0 24px 20px', display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+                  <button
+                    onClick={() => { setShowUpdateModal(false); setUpdateResult(null) }}
+                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
+                    style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Red header */}
+                <div style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <AlertTriangle size={20} style={{ color: 'white' }} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.confirmTitle')}</h3>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                      v{updateInfo?.current} → v{updateInfo?.latest}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div style={{ padding: '20px 24px' }}>
+                  <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                    {updateInfo && t('admin.update.confirmText').replace('{current}', `v${updateInfo.current}`).replace('{version}', `v${updateInfo.latest}`)}
+                  </p>
+
+                  <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
+                    className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                  >
+                    <div className="flex items-start gap-2">
+                      <CheckCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>{t('admin.update.dataInfo')}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
+                    className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                  >
+                    <div className="flex items-start gap-2">
+                      <Download className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>
+                        {t('admin.update.backupHint')}{' '}
+                        <button
+                          onClick={() => { setShowUpdateModal(false); setActiveTab('backup') }}
+                          className="underline font-semibold hover:text-blue-950 dark:hover:text-blue-100"
+                        >{t('admin.update.backupLink')}</button>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
+                    className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                  >
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>{t('admin.update.warning')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '0 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setShowUpdateModal(false)}
+                    disabled={updating}
+                    className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40"
+                    style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={handleInstallUpdate}
+                    disabled={updating}
+                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200 disabled:opacity-60 flex items-center gap-2"
+                    style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    {updating ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Download size={14} />
+                    )}
+                    {updating ? t('admin.update.installing') : t('admin.update.confirm')}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

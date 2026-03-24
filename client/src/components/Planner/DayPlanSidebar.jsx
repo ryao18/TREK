@@ -932,6 +932,7 @@ export default function DayPlanSidebar({
               ref={noteInputRef}
               type="text"
               value={ui.text}
+              maxLength={150}
               onChange={e => setNoteUi(prev => ({ ...prev, [dayId]: { ...prev[dayId], text: e.target.value } }))}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveNote(Number(dayId)) } if (e.key === 'Escape') cancelNote(Number(dayId)) }}
               placeholder={t('dayplan.noteTitle')}

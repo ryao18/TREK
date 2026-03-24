@@ -119,7 +119,7 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
           )}
           {/* Row 2: Location + Assignment */}
           {(r.location || linked) && (
-            <div style={{ display: 'grid', gridTemplateColumns: r.location && linked ? '1fr 1fr' : '1fr', gap: 8, paddingTop: 6, borderTop: '1px solid var(--border-faint)' }}>
+            <div className={`grid grid-cols-1 ${r.location && linked ? 'sm:grid-cols-2' : ''} gap-2`} style={{ paddingTop: 6, borderTop: '1px solid var(--border-faint)' }}>
               {r.location && (
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{t('reservations.locationAddress')}</div>
@@ -223,16 +223,6 @@ export default function ReservationsPanel({ tripId, reservations, days, assignme
           <Plus size={13} /> <span className="hidden sm:inline">{t('reservations.addManual')}</span>
         </button>
       </div>
-
-      {/* Hint */}
-      {showHint && (
-        <div style={{ margin: '12px 24px 4px', padding: '8px 12px', borderRadius: 10, background: 'var(--bg-hover)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          <Lightbulb size={12} style={{ flexShrink: 0, marginTop: 1, color: 'var(--text-faint)' }} />
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5, flex: 1 }}>{t('reservations.placeHint')}</p>
-          <button onClick={() => { setShowHint(false); localStorage.setItem('hideReservationHint', '1') }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', color: 'var(--text-faint)', fontSize: 14, lineHeight: 1, flexShrink: 0 }}>×</button>
-        </div>
-      )}
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>

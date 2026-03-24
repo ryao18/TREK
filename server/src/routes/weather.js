@@ -298,17 +298,16 @@ router.get('/detailed', authenticate, async (req, res) => {
     const dateStr = targetDate.toISOString().slice(0, 10);
     const descriptions = lang === 'de' ? WMO_DESCRIPTION_DE : WMO_DESCRIPTION_EN;
 
-    // Beyond 16-day forecast window → archive API (daily only, no hourly)
+    // Beyond 16-day forecast window → archive API with hourly data from same date last year
     if (diffDays > 16) {
       const refYear = targetDate.getFullYear() - 1;
-      const month = targetDate.getMonth() + 1;
-      const day = targetDate.getDate();
-      const startDate = new Date(refYear, month - 1, day - 2);
-      const endDate = new Date(refYear, month - 1, day + 2);
-      const startStr = startDate.toISOString().slice(0, 10);
-      const endStr = endDate.toISOString().slice(0, 10);
+      const refDateStr = `${refYear}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
 
-      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${startStr}&end_date=${endStr}&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_sum&timezone=auto`;
+      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
+        + `&start_date=${refDateStr}&end_date=${refDateStr}`
+        + `&hourly=temperature_2m,precipitation,weathercode,windspeed_10m,relativehumidity_2m`
+        + `&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_sum,windspeed_10m_max,sunrise,sunset`
+        + `&timezone=auto`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -317,36 +316,51 @@ router.get('/detailed', authenticate, async (req, res) => {
       }
 
       const daily = data.daily;
+      const hourly = data.hourly;
       if (!daily || !daily.time || daily.time.length === 0) {
         return res.json({ error: 'no_forecast' });
       }
 
-      let sumMax = 0, sumMin = 0, sumPrecip = 0, count = 0;
-      for (let i = 0; i < daily.time.length; i++) {
-        if (daily.temperature_2m_max[i] != null && daily.temperature_2m_min[i] != null) {
-          sumMax += daily.temperature_2m_max[i];
-          sumMin += daily.temperature_2m_min[i];
-          sumPrecip += daily.precipitation_sum[i] || 0;
-          count++;
+      const idx = 0;
+      const code = daily.weathercode?.[idx];
+      const avgMax = daily.temperature_2m_max[idx];
+      const avgMin = daily.temperature_2m_min[idx];
+
+      // Build hourly array
+      const hourlyData = [];
+      if (hourly?.time) {
+        for (let i = 0; i < hourly.time.length; i++) {
+          const hour = new Date(hourly.time[i]).getHours();
+          const hCode = hourly.weathercode?.[i];
+          hourlyData.push({
+            hour,
+            temp: Math.round(hourly.temperature_2m[i]),
+            precipitation: hourly.precipitation?.[i] || 0,
+            precipitation_probability: 0, // archive has no probability
+            main: WMO_MAP[hCode] || 'Clouds',
+            wind: Math.round(hourly.windspeed_10m?.[i] || 0),
+            humidity: hourly.relativehumidity_2m?.[i] || 0,
+          });
         }
       }
 
-      if (count === 0) {
-        return res.json({ error: 'no_forecast' });
-      }
-
-      const avgMax = sumMax / count;
-      const avgMin = sumMin / count;
-      const avgTemp = (avgMax + avgMin) / 2;
-      const avgPrecip = sumPrecip / count;
+      // Format sunrise/sunset
+      let sunrise = null, sunset = null;
+      if (daily.sunrise?.[idx]) sunrise = daily.sunrise[idx].split('T')[1]?.slice(0, 5);
+      if (daily.sunset?.[idx]) sunset = daily.sunset[idx].split('T')[1]?.slice(0, 5);
 
       const result = {
         type: 'climate',
-        temp: Math.round(avgTemp),
+        temp: Math.round((avgMax + avgMin) / 2),
         temp_max: Math.round(avgMax),
         temp_min: Math.round(avgMin),
-        main: estimateCondition(avgTemp, avgPrecip),
-        precipitation_sum: Math.round(avgPrecip * 10) / 10,
+        main: WMO_MAP[code] || estimateCondition((avgMax + avgMin) / 2, daily.precipitation_sum?.[idx] || 0),
+        description: descriptions[code] || '',
+        precipitation_sum: Math.round((daily.precipitation_sum?.[idx] || 0) * 10) / 10,
+        wind_max: Math.round(daily.windspeed_10m_max?.[idx] || 0),
+        sunrise,
+        sunset,
+        hourly: hourlyData,
       };
 
       setCache(ck, result, TTL_CLIMATE_MS);

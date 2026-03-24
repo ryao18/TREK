@@ -1,16 +1,18 @@
 import React, { useState } from 'react'
 import ReactDOM from 'react-dom'
-import { Search, Plus, X, CalendarDays } from 'lucide-react'
+import { Search, Plus, X, CalendarDays, Pencil, Trash2, ExternalLink, Navigation } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTranslation } from '../../i18n'
 import CustomSelect from '../shared/CustomSelect'
+import { useContextMenu, ContextMenu } from '../shared/ContextMenu'
 
 export default function PlacesSidebar({
   places, categories, assignments, selectedDayId, selectedPlaceId,
-  onPlaceClick, onAddPlace, onAssignToDay, days, isMobile,
+  onPlaceClick, onAddPlace, onAssignToDay, onEditPlace, onDeletePlace, days, isMobile,
 }) {
   const { t } = useTranslation()
+  const ctxMenu = useContextMenu()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -138,6 +140,14 @@ export default function PlacesSidebar({
                     onPlaceClick(isSelected ? null : place.id)
                   }
                 }}
+                onContextMenu={e => ctxMenu.open(e, [
+                  onEditPlace && { label: t('common.edit'), icon: Pencil, onClick: () => onEditPlace(place) },
+                  selectedDayId && { label: t('planner.addToDay'), icon: CalendarDays, onClick: () => onAssignToDay(place.id, selectedDayId) },
+                  place.website && { label: t('inspector.website'), icon: ExternalLink, onClick: () => window.open(place.website, '_blank') },
+                  (place.lat && place.lng) && { label: 'Google Maps', icon: Navigation, onClick: () => window.open(`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`, '_blank') },
+                  { divider: true },
+                  onDeletePlace && { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => { if (confirm(t('trip.confirm.deletePlace'))) onDeletePlace(place.id) } },
+                ])}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 14px 9px 16px',
@@ -237,6 +247,7 @@ export default function PlacesSidebar({
         </div>,
         document.body
       )}
+      <ContextMenu menu={ctxMenu.menu} onClose={ctxMenu.close} />
     </div>
   )
 }

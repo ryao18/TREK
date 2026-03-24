@@ -463,6 +463,9 @@ export default function TripPlannerPage() {
                   reservations={reservations}
                   onAddReservation={(dayId) => { setEditingReservation(null); tripStore.setSelectedDay(dayId); setShowReservationModal(true) }}
                   onDayDetail={(day) => { setShowDayDetail(day); setSelectedPlaceId(null); setSelectedAssignmentId(null) }}
+                  onRemoveAssignment={handleRemoveAssignment}
+                  onEditPlace={(place) => { setEditingPlace(place); setShowPlaceForm(true) }}
+                  onDeletePlace={(placeId) => handleDeletePlace(placeId)}
                   accommodations={tripAccommodations}
                 />
                 {!leftCollapsed && (
@@ -520,6 +523,8 @@ export default function TripPlannerPage() {
                     onPlaceClick={handlePlaceClick}
                     onAddPlace={() => { setEditingPlace(null); setShowPlaceForm(true) }}
                     onAssignToDay={handleAssignToDay}
+                    onEditPlace={(place) => { setEditingPlace(place); setShowPlaceForm(true) }}
+                    onDeletePlace={(placeId) => handleDeletePlace(placeId)}
                   />
                 </div>
               </div>

@@ -6,6 +6,7 @@ const RES_ICONS = { flight: Plane, hotel: Hotel, restaurant: Utensils, train: Tr
 import { downloadTripPDF } from '../PDF/TripPDF'
 import { calculateRoute, generateGoogleMapsUrl, optimizeRoute } from '../Map/RouteCalculator'
 import PlaceAvatar from '../shared/PlaceAvatar'
+import { useContextMenu, ContextMenu } from '../shared/ContextMenu'
 import WeatherWidget from '../Weather/WeatherWidget'
 import { useToast } from '../shared/Toast'
 import { getCategoryIcon } from '../shared/categoryIcons'
@@ -79,12 +80,13 @@ export default function DayPlanSidebar({
   selectedDayId, selectedPlaceId, selectedAssignmentId,
   onSelectDay, onPlaceClick, onDayDetail, accommodations = [],
   onReorder, onUpdateDayTitle, onRouteCalculated,
-  onAssignToDay,
+  onAssignToDay, onRemoveAssignment, onEditPlace, onDeletePlace,
   reservations = [],
   onAddReservation,
 }) {
   const toast = useToast()
   const { t, language, locale } = useTranslation()
+  const ctxMenu = useContextMenu()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
   const tripStore = useTripStore()
 
@@ -455,7 +457,7 @@ export default function DayPlanSidebar({
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '11px 14px 11px 16px',
                   cursor: 'pointer',
-                  background: isDragTarget ? 'rgba(17,24,39,0.07)' : (isSelected ? 'var(--bg-hover)' : 'transparent'),
+                  background: isDragTarget ? 'rgba(17,24,39,0.07)' : (isSelected ? 'var(--bg-tertiary)' : 'transparent'),
                   transition: 'background 0.12s',
                   userSelect: 'none',
                   outline: isDragTarget ? '2px dashed rgba(17,24,39,0.25)' : 'none',
@@ -648,6 +650,14 @@ export default function DayPlanSidebar({
                             }}
                             onDragEnd={() => { setDraggingId(null); setDragOverDayId(null); setDropTargetKey(null); dragDataRef.current = null }}
                             onClick={() => { onPlaceClick(isPlaceSelected ? null : place.id, isPlaceSelected ? null : assignment.id); if (!isPlaceSelected) onSelectDay(day.id, true) }}
+                            onContextMenu={e => ctxMenu.open(e, [
+                              onEditPlace && { label: t('common.edit'), icon: Pencil, onClick: () => onEditPlace(place) },
+                              onRemoveAssignment && { label: t('planner.removeFromDay'), icon: Trash2, onClick: () => onRemoveAssignment(day.id, assignment.id) },
+                              place.website && { label: t('inspector.website'), icon: ExternalLink, onClick: () => window.open(place.website, '_blank') },
+                              (place.lat && place.lng) && { label: 'Google Maps', icon: Navigation, onClick: () => window.open(`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`, '_blank') },
+                              { divider: true },
+                              onDeletePlace && { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => { if (confirm(t('trip.confirm.deletePlace'))) onDeletePlace(place.id) } },
+                            ])}
                             onMouseEnter={() => setHoveredId(assignment.id)}
                             onMouseLeave={() => setHoveredId(null)}
                             style={{
@@ -790,6 +800,11 @@ export default function DayPlanSidebar({
                               handleMergedDrop(day.id, 'place', Number(fromAssignmentId), 'note', note.id)
                             }
                           }}
+                          onContextMenu={e => ctxMenu.open(e, [
+                            { label: t('common.edit'), icon: Pencil, onClick: () => openEditNote(day.id, note) },
+                            { divider: true },
+                            { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => deleteNote(day.id, note.id) },
+                          ])}
                           onMouseEnter={() => setHoveredId(`note-${note.id}`)}
                           onMouseLeave={() => setHoveredId(null)}
                           style={{
@@ -810,12 +825,11 @@ export default function DayPlanSidebar({
                             <NoteIcon size={13} strokeWidth={1.8} color="var(--text-muted)" />
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-primary)',
-                              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-word' }}>
                               {note.text}
                             </span>
                             {note.time && (
-                              <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-faint)', lineHeight: '1.2', marginTop: 2 }}>{note.time}</div>
+                              <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-faint)', lineHeight: '1.3', marginTop: 2, wordBreak: 'break-word' }}>{note.time}</div>
                             )}
                           </div>
                           <div className="note-edit-buttons" style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: isNoteHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
@@ -965,6 +979,7 @@ export default function DayPlanSidebar({
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{totalCost.toFixed(2)} {currency}</span>
         </div>
       )}
+      <ContextMenu menu={ctxMenu.menu} onClose={ctxMenu.close} />
     </div>
   )
 }

@@ -85,6 +85,9 @@ export default function CustomTimePicker({ value, onChange, placeholder = '00:00
       const h = Math.min(23, Math.max(0, parseInt(s.slice(0, 2))))
       const m = Math.min(59, Math.max(0, parseInt(s.slice(2))))
       onChange(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'))
+    } else if (/^\d{1,2}$/.test(clean)) {
+      const h = Math.min(23, Math.max(0, parseInt(clean)))
+      onChange(String(h).padStart(2, '0') + ':00')
     }
   }
 

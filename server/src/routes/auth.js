@@ -80,6 +80,7 @@ router.get('/app-config', (req, res) => {
     has_maps_key: hasGoogleKey,
     oidc_configured: oidcConfigured,
     oidc_display_name: oidcConfigured ? (oidcDisplayName || 'SSO') : undefined,
+    allowed_file_types: db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get()?.value || 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv',
     demo_mode: isDemo,
     demo_email: isDemo ? 'demo@nomad.app' : undefined,
     demo_password: isDemo ? 'demo12345' : undefined,
@@ -368,9 +369,12 @@ router.put('/app-settings', authenticate, (req, res) => {
   const user = db.prepare('SELECT role FROM users WHERE id = ?').get(req.user.id);
   if (user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
-  const { allow_registration } = req.body;
+  const { allow_registration, allowed_file_types } = req.body;
   if (allow_registration !== undefined) {
     db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allow_registration', ?)").run(String(allow_registration));
+  }
+  if (allowed_file_types !== undefined) {
+    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allowed_file_types', ?)").run(String(allowed_file_types));
   }
   res.json({ success: true });
 });

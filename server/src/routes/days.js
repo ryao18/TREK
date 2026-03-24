@@ -117,6 +117,18 @@ router.get('/', authenticate, (req, res) => {
 
   // Group assignments by day_id
   const assignmentsByDayId = {};
+  // Load all participants for all assignments
+  const allAssignmentIds = allAssignments.map(a => a.id)
+  const allParticipants = allAssignmentIds.length > 0
+    ? db.prepare(`SELECT ap.assignment_id, ap.user_id, u.username, u.avatar FROM assignment_participants ap JOIN users u ON ap.user_id = u.id WHERE ap.assignment_id IN (${allAssignmentIds.map(() => '?').join(',')})`)
+      .all(...allAssignmentIds)
+    : []
+  const participantsByAssignment = {}
+  for (const p of allParticipants) {
+    if (!participantsByAssignment[p.assignment_id]) participantsByAssignment[p.assignment_id] = []
+    participantsByAssignment[p.assignment_id].push({ user_id: p.user_id, username: p.username, avatar: p.avatar })
+  }
+
   for (const a of allAssignments) {
     if (!assignmentsByDayId[a.day_id]) assignmentsByDayId[a.day_id] = [];
     assignmentsByDayId[a.day_id].push({
@@ -124,6 +136,7 @@ router.get('/', authenticate, (req, res) => {
       day_id: a.day_id,
       order_index: a.order_index,
       notes: a.notes,
+      participants: participantsByAssignment[a.id] || [],
       created_at: a.created_at,
       place: {
         id: a.place_id,

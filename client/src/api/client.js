@@ -95,6 +95,8 @@ export const assignmentsApi = {
   reorder: (tripId, dayId, orderedIds) => apiClient.put(`/trips/${tripId}/days/${dayId}/assignments/reorder`, { orderedIds }).then(r => r.data),
   move: (tripId, assignmentId, newDayId, orderIndex) => apiClient.put(`/trips/${tripId}/assignments/${assignmentId}/move`, { new_day_id: newDayId, order_index: orderIndex }).then(r => r.data),
   update: (tripId, dayId, id, data) => apiClient.put(`/trips/${tripId}/days/${dayId}/assignments/${id}`, data).then(r => r.data),
+  getParticipants: (tripId, id) => apiClient.get(`/trips/${tripId}/assignments/${id}/participants`).then(r => r.data),
+  setParticipants: (tripId, id, userIds) => apiClient.put(`/trips/${tripId}/assignments/${id}/participants`, { user_ids: userIds }).then(r => r.data),
 }
 
 export const packingApi = {

@@ -43,6 +43,10 @@ export default function AdminPage() {
   // Registration toggle
   const [allowRegistration, setAllowRegistration] = useState(true)
 
+  // File types
+  const [allowedFileTypes, setAllowedFileTypes] = useState('jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv')
+  const [savingFileTypes, setSavingFileTypes] = useState(false)
+
   // API Keys
   const [mapsKey, setMapsKey] = useState('')
   const [weatherKey, setWeatherKey] = useState('')
@@ -91,6 +95,7 @@ export default function AdminPage() {
     try {
       const config = await authApi.getAppConfig()
       setAllowRegistration(config.allow_registration)
+      if (config.allowed_file_types) setAllowedFileTypes(config.allowed_file_types)
     } catch (err) {
       // ignore
     }
@@ -490,6 +495,39 @@ export default function AdminPage() {
                       />
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Allowed File Types */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100">
+                  <h2 className="font-semibold text-slate-900">{t('admin.fileTypes')}</h2>
+                  <p className="text-xs text-slate-400 mt-1">{t('admin.fileTypesHint')}</p>
+                </div>
+                <div className="p-6">
+                  <input
+                    type="text"
+                    value={allowedFileTypes}
+                    onChange={e => setAllowedFileTypes(e.target.value)}
+                    placeholder="jpg,png,pdf,doc,docx,xls,xlsx,txt,csv"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                  />
+                  <p className="text-xs text-slate-400 mt-2">{t('admin.fileTypesFormat')}</p>
+                  <button
+                    onClick={async () => {
+                      setSavingFileTypes(true)
+                      try {
+                        await authApi.updateAppSettings({ allowed_file_types: allowedFileTypes })
+                        toast.success(t('admin.fileTypesSaved'))
+                      } catch { toast.error(t('common.error')) }
+                      finally { setSavingFileTypes(false) }
+                    }}
+                    disabled={savingFileTypes}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400 mt-3"
+                  >
+                    {savingFileTypes ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                    {t('common.save')}
+                  </button>
                 </div>
               </div>
 

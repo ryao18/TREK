@@ -21,7 +21,7 @@ import { useToast } from '../components/shared/Toast'
 import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslation } from '../i18n'
 import { joinTrip, leaveTrip, addListener, removeListener } from '../api/websocket'
-import { addonsApi, accommodationsApi } from '../api/client'
+import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi } from '../api/client'
 
 const MIN_SIDEBAR = 200
 const MAX_SIDEBAR = 520
@@ -37,6 +37,8 @@ export default function TripPlannerPage() {
 
   const [enabledAddons, setEnabledAddons] = useState({ packing: true, budget: true, documents: true })
   const [tripAccommodations, setTripAccommodations] = useState([])
+  const [allowedFileTypes, setAllowedFileTypes] = useState(null)
+  const [tripMembers, setTripMembers] = useState([])
 
   const loadAccommodations = useCallback(() => {
     if (tripId) accommodationsApi.list(tripId).then(d => setTripAccommodations(d.accommodations || [])).catch(() => {})
@@ -47,6 +49,9 @@ export default function TripPlannerPage() {
       const map = {}
       data.addons.forEach(a => { map[a.id] = true })
       setEnabledAddons({ packing: !!map.packing, budget: !!map.budget, documents: !!map.documents })
+    }).catch(() => {})
+    authApi.getAppConfig().then(config => {
+      if (config.allowed_file_types) setAllowedFileTypes(config.allowed_file_types)
     }).catch(() => {})
   }, [])
 
@@ -104,6 +109,11 @@ export default function TripPlannerPage() {
       tripStore.loadTrip(tripId).catch(() => { toast.error(t('trip.toast.loadError')); navigate('/dashboard') })
       tripStore.loadFiles(tripId)
       loadAccommodations()
+      tripsApi.getMembers(tripId).then(d => {
+        // Combine owner + members into one list
+        const all = [d.owner, ...(d.members || [])].filter(Boolean)
+        setTripMembers(all)
+      }).catch(() => {})
     }
   }, [tripId])
 
@@ -582,6 +592,20 @@ export default function TripPlannerPage() {
                 onRemoveAssignment={handleRemoveAssignment}
                 files={files}
                 onFileUpload={(fd) => tripStore.addFile(tripId, fd)}
+                tripMembers={tripMembers}
+                onSetParticipants={async (assignmentId, dayId, userIds) => {
+                  try {
+                    const data = await assignmentsApi.setParticipants(tripId, assignmentId, userIds)
+                    useTripStore.setState(state => ({
+                      assignments: {
+                        ...state.assignments,
+                        [String(dayId)]: (state.assignments[String(dayId)] || []).map(a =>
+                          a.id === assignmentId ? { ...a, participants: data.participants } : a
+                        ),
+                      }
+                    }))
+                  } catch {}
+                }}
               />
             )}
 
@@ -645,6 +669,7 @@ export default function TripPlannerPage() {
               places={places}
               reservations={reservations}
               tripId={tripId}
+              allowedFileTypes={allowedFileTypes}
             />
           </div>
         )}

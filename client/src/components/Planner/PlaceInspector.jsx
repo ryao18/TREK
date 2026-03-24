@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation } from 'lucide-react'
+import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -100,7 +100,7 @@ function formatFileSize(bytes) {
 export default function PlaceInspector({
   place, categories, days, selectedDayId, selectedAssignmentId, assignments, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
-  files, onFileUpload,
+  files, onFileUpload, tripMembers = [], onSetParticipants,
 }) {
   const { t, locale, language } = useTranslation()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
@@ -190,6 +190,7 @@ export default function PlaceInspector({
               </span>
             )}
           </div>
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)', lineHeight: '1.3' }}>{place.name}</span>
@@ -205,7 +206,7 @@ export default function PlaceInspector({
                     padding: '2px 8px', borderRadius: 99,
                   }}>
                     <CatIcon size={10} />
-                    {category.name}
+                    <span className="hidden sm:inline">{category.name}</span>
                   </span>
                 )
               })()}
@@ -213,7 +214,7 @@ export default function PlaceInspector({
             {place.address && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 6 }}>
                 <MapPin size={11} color="var(--text-faint)" style={{ flexShrink: 0, marginTop: 2 }} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: '1.4' }}>{place.address}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{place.address}</span>
               </div>
             )}
             {place.place_time && (
@@ -223,7 +224,7 @@ export default function PlaceInspector({
               </div>
             )}
             {place.lat && place.lng && (
-              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+              <div className="hidden sm:block" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
                 {Number(place.lat).toFixed(6)}, {Number(place.lng).toFixed(6)}
               </div>
             )}
@@ -241,8 +242,8 @@ export default function PlaceInspector({
         {/* Content — scrollable */}
         <div style={{ overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-          {/* Info-Chips */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          {/* Info-Chips — hidden on mobile, shown on desktop */}
+          <div className="hidden sm:flex" style={{ flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             {googleDetails?.rating && (() => {
               const shortReview = (googleDetails.reviews || []).find(r => r.text && r.text.length > 5)
               return (
@@ -281,64 +282,71 @@ export default function PlaceInspector({
             </div>
           )}
 
-          {/* Reservation for this specific assignment */}
+          {/* Reservation + Participants — side by side */}
           {(() => {
             const res = selectedAssignmentId ? reservations.find(r => r.assignment_id === selectedAssignmentId) : null
-            if (!res) return null
-            const confirmed = res.status === 'confirmed'
-            const accentColor = confirmed ? '#16a34a' : '#d97706'
+            const assignment = selectedAssignmentId ? (assignments[String(selectedDayId)] || []).find(a => a.id === selectedAssignmentId) : null
+            const currentParticipants = assignment?.participants || []
+            const participantIds = currentParticipants.map(p => p.user_id)
+            const allJoined = currentParticipants.length === 0
+            const showParticipants = selectedAssignmentId && tripMembers.length > 1
+            if (!res && !showParticipants) return null
             return (
-              <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${confirmed ? 'rgba(22,163,74,0.2)' : 'rgba(217,119,6,0.2)'}` }}>
-                {/* Header bar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: confirmed ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)' }}>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: accentColor }} />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>{confirmed ? t('reservations.confirmed') : t('reservations.pending')}</span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>{res.title}</span>
-                </div>
-                {/* Details grid */}
-                {(res.reservation_time || res.confirmation_number || res.location || res.notes) && (
-                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                      {res.reservation_time && (
-                        <div>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.date')}</div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>
-                            {new Date(res.reservation_time).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}
+              <div className={`grid ${res && showParticipants ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                {/* Reservation */}
+                {res && (() => {
+                  const confirmed = res.status === 'confirmed'
+                  return (
+                    <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${confirmed ? 'rgba(22,163,74,0.2)' : 'rgba(217,119,6,0.2)'}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: confirmed ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)' }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: confirmed ? '#16a34a' : '#d97706' }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: confirmed ? '#16a34a' : '#d97706' }}>{confirmed ? t('reservations.confirmed') : t('reservations.pending')}</span>
+                        <span style={{ flex: 1 }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{res.title}</span>
+                      </div>
+                      <div style={{ padding: '6px 10px', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        {res.reservation_time && (
+                          <div>
+                            <div style={{ fontSize: 8, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{t('reservations.date')}</div>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{new Date(res.reservation_time).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</div>
                           </div>
-                        </div>
-                      )}
-                      {res.reservation_time && (
-                        <div>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.time')}</div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>
-                            {new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}
+                        )}
+                        {res.reservation_time && (
+                          <div>
+                            <div style={{ fontSize: 8, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{t('reservations.time')}</div>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}</div>
                           </div>
-                        </div>
-                      )}
-                      {res.confirmation_number && (
-                        <div>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.confirmationCode')}</div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{res.confirmation_number}</div>
-                        </div>
-                      )}
-                      {res.location && (
-                        <div>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.locationAddress')}</div>
-                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', marginTop: 1 }}>{res.location}</div>
-                        </div>
-                      )}
+                        )}
+                        {res.confirmation_number && (
+                          <div>
+                            <div style={{ fontSize: 8, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{t('reservations.confirmationCode')}</div>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{res.confirmation_number}</div>
+                          </div>
+                        )}
+                      </div>
+                      {res.notes && <div style={{ padding: '0 10px 6px', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.4 }}>{res.notes}</div>}
                     </div>
-                    {res.notes && (
-                      <div style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.4, borderTop: '1px solid var(--border-faint)', paddingTop: 5 }}>{res.notes}</div>
-                    )}
-                  </div>
+                  )
+                })()}
+
+                {/* Participants */}
+                {showParticipants && (
+                  <ParticipantsBox
+                    tripMembers={tripMembers}
+                    participantIds={participantIds}
+                    allJoined={allJoined}
+                    onSetParticipants={onSetParticipants}
+                    selectedAssignmentId={selectedAssignmentId}
+                    selectedDayId={selectedDayId}
+                    t={t}
+                  />
                 )}
               </div>
             )
           })()}
 
-          {/* Opening hours */}
+          {/* Opening hours + Files — side by side on desktop */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {openingHours && openingHours.length > 0 && (
             <div style={{ background: 'var(--bg-hover)', borderRadius: 10, overflow: 'hidden' }}>
               <button
@@ -410,6 +418,7 @@ export default function PlaceInspector({
               )}
             </div>
           )}
+          </div>
 
         </div>
 
@@ -480,5 +489,118 @@ function ActionButton({ onClick, variant, icon, label }) {
     >
       {icon}{label}
     </button>
+  )
+}
+
+function ParticipantsBox({ tripMembers, participantIds, allJoined, onSetParticipants, selectedAssignmentId, selectedDayId, t }) {
+  const [showAdd, setShowAdd] = React.useState(false)
+  const [hoveredId, setHoveredId] = React.useState(null)
+
+  // Active participants: if allJoined, show all members; otherwise show only those in participantIds
+  const activeMembers = allJoined ? tripMembers : tripMembers.filter(m => participantIds.includes(m.id))
+  const availableToAdd = allJoined ? [] : tripMembers.filter(m => !participantIds.includes(m.id))
+
+  const handleRemove = (userId) => {
+    if (!onSetParticipants) return
+    let newIds
+    if (allJoined) {
+      newIds = tripMembers.filter(m => m.id !== userId).map(m => m.id)
+    } else {
+      newIds = participantIds.filter(id => id !== userId)
+    }
+    if (newIds.length === tripMembers.length) newIds = []
+    onSetParticipants(selectedAssignmentId, selectedDayId, newIds)
+  }
+
+  const handleAdd = (userId) => {
+    if (!onSetParticipants) return
+    const newIds = [...participantIds, userId]
+    if (newIds.length === tripMembers.length) {
+      onSetParticipants(selectedAssignmentId, selectedDayId, [])
+    } else {
+      onSetParticipants(selectedAssignmentId, selectedDayId, newIds)
+    }
+    setShowAdd(false)
+  }
+
+  return (
+    <div style={{ borderRadius: 12, border: '1px solid var(--border-faint)', padding: '8px 10px' }}>
+      <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Users size={10} /> {t('inspector.participants')}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+        {activeMembers.map(member => {
+          const isHovered = hoveredId === member.id
+          const canRemove = activeMembers.length > 1
+          return (
+            <div key={member.id}
+              onMouseEnter={() => setHoveredId(member.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              onClick={() => { if (canRemove) handleRemove(member.id) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '2px 7px 2px 3px', borderRadius: 99,
+                border: `1.5px solid ${isHovered && canRemove ? 'rgba(239,68,68,0.4)' : 'var(--accent)'}`,
+                background: isHovered && canRemove ? 'rgba(239,68,68,0.06)' : 'var(--bg-hover)',
+                fontSize: 10, fontWeight: 500,
+                color: isHovered && canRemove ? '#ef4444' : 'var(--text-primary)',
+                cursor: canRemove ? 'pointer' : 'default',
+                transition: 'all 0.15s',
+              }}>
+              <div style={{
+                width: 16, height: 16, borderRadius: '50%', background: 'var(--bg-tertiary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 700,
+                color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
+              }}>
+                {member.avatar ? <img src={member.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
+              </div>
+              <span style={{ textDecoration: isHovered && canRemove ? 'line-through' : 'none' }}>{member.username}</span>
+            </div>
+          )
+        })}
+
+        {/* Add button */}
+        {availableToAdd.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowAdd(!showAdd)} style={{
+              width: 22, height: 22, borderRadius: '50%', border: '1.5px dashed var(--border-primary)',
+              background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--text-faint)', fontSize: 12, transition: 'all 0.12s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-faint)' }}
+            >+</button>
+
+            {showAdd && (
+              <div style={{
+                position: 'absolute', top: 26, left: 0, zIndex: 100,
+                background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 140,
+              }}>
+                {availableToAdd.map(member => (
+                  <button key={member.id} onClick={() => handleAdd(member.id)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 8px',
+                    borderRadius: 6, border: 'none', background: 'none', cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: 11, color: 'var(--text-primary)', textAlign: 'left',
+                    transition: 'background 0.1s',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%', background: 'var(--bg-tertiary)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700,
+                      color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
+                    }}>
+                      {member.avatar ? <img src={member.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
+                    </div>
+                    {member.username}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

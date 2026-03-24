@@ -752,6 +752,23 @@ export default function DayPlanSidebar({
                                   </div>
                                 )
                               })()}
+                              {assignment.participants?.length > 0 && (
+                                <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: -4 }}>
+                                  {assignment.participants.slice(0, 5).map((p, pi) => (
+                                    <div key={p.user_id} style={{
+                                      width: 16, height: 16, borderRadius: '50%', background: 'var(--bg-tertiary)', border: '1.5px solid var(--bg-card)',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 700, color: 'var(--text-muted)',
+                                      marginLeft: pi > 0 ? -4 : 0, flexShrink: 0,
+                                      overflow: 'hidden',
+                                    }}>
+                                      {p.avatar ? <img src={p.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : p.username?.[0]?.toUpperCase()}
+                                    </div>
+                                  ))}
+                                  {assignment.participants.length > 5 && (
+                                    <span style={{ fontSize: 8, color: 'var(--text-faint)', marginLeft: 2 }}>+{assignment.participants.length - 5}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
                               <button onClick={moveUp} disabled={placeIdx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: placeIdx === 0 ? 'default' : 'pointer', color: placeIdx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>

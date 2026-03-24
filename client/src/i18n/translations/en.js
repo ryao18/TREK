@@ -281,6 +281,12 @@ const en = {
   'admin.oidcIssuerHint': 'The OpenID Connect Issuer URL of the provider. e.g. https://accounts.google.com',
   'admin.oidcSaved': 'OIDC configuration saved',
 
+  // File Types
+  'admin.fileTypes': 'Allowed File Types',
+  'admin.fileTypesHint': 'Configure which file types users can upload.',
+  'admin.fileTypesFormat': 'Comma-separated extensions (e.g. jpg,png,pdf,doc). Use * to allow all types.',
+  'admin.fileTypesSaved': 'File type settings saved',
+
   // Addons
   'admin.tabs.addons': 'Addons',
   'admin.addons.title': 'Addons',
@@ -549,6 +555,7 @@ const en = {
   'inspector.website': 'Open Website',
   'inspector.addRes': 'Reservation',
   'inspector.editRes': 'Edit Reservation',
+  'inspector.participants': 'Participants',
 
   // Reservations
   'reservations.title': 'Bookings',
@@ -641,6 +648,7 @@ const en = {
   'files.uploadError': 'Upload failed',
   'files.dropzone': 'Drop files here',
   'files.dropzoneHint': 'or click to browse',
+  'files.allowedTypes': 'Images, PDF, DOC, DOCX, XLS, XLSX, TXT, CSV · Max 50 MB',
   'files.uploading': 'Uploading...',
   'files.filterAll': 'All',
   'files.filterPdf': 'PDFs',

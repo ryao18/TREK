@@ -30,11 +30,19 @@ function getAssignmentWithPlace(assignmentId) {
     WHERE pt.place_id = ?
   `).all(a.place_id);
 
+  const participants = db.prepare(`
+    SELECT ap.user_id, u.username, u.avatar
+    FROM assignment_participants ap
+    JOIN users u ON ap.user_id = u.id
+    WHERE ap.assignment_id = ?
+  `).all(a.id);
+
   return {
     id: a.id,
     day_id: a.day_id,
     order_index: a.order_index,
     notes: a.notes,
+    participants,
     created_at: a.created_at,
     place: {
       id: a.place_id,
@@ -105,12 +113,25 @@ router.get('/trips/:tripId/days/:dayId/assignments', authenticate, (req, res) =>
     }
   }
 
+  // Load all participants for this day's assignments in one query
+  const assignmentIds = assignments.map(a => a.id)
+  const allParticipants = assignmentIds.length > 0
+    ? db.prepare(`SELECT ap.assignment_id, ap.user_id, u.username, u.avatar FROM assignment_participants ap JOIN users u ON ap.user_id = u.id WHERE ap.assignment_id IN (${assignmentIds.map(() => '?').join(',')})`)
+      .all(...assignmentIds)
+    : []
+  const participantsByAssignment = {}
+  for (const p of allParticipants) {
+    if (!participantsByAssignment[p.assignment_id]) participantsByAssignment[p.assignment_id] = []
+    participantsByAssignment[p.assignment_id].push({ user_id: p.user_id, username: p.username, avatar: p.avatar })
+  }
+
   const result = assignments.map(a => {
     return {
       id: a.id,
       day_id: a.day_id,
       order_index: a.order_index,
       notes: a.notes,
+      participants: participantsByAssignment[a.id] || [],
       created_at: a.created_at,
       place: {
         id: a.place_id,
@@ -239,6 +260,47 @@ router.put('/trips/:tripId/assignments/:id/move', authenticate, (req, res) => {
   const updated = getAssignmentWithPlace(id);
   res.json({ assignment: updated });
   broadcast(tripId, 'assignment:moved', { assignment: updated, oldDayId: Number(oldDayId), newDayId: Number(new_day_id) }, req.headers['x-socket-id']);
+});
+
+// GET /api/trips/:tripId/assignments/:id/participants
+router.get('/trips/:tripId/assignments/:id/participants', authenticate, (req, res) => {
+  const { tripId, id } = req.params;
+  if (!canAccessTrip(Number(tripId), req.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const participants = db.prepare(`
+    SELECT ap.user_id, u.username, u.avatar
+    FROM assignment_participants ap
+    JOIN users u ON ap.user_id = u.id
+    WHERE ap.assignment_id = ?
+  `).all(id);
+
+  res.json({ participants });
+});
+
+// PUT /api/trips/:tripId/assignments/:id/participants — set participants (replace all)
+router.put('/trips/:tripId/assignments/:id/participants', authenticate, (req, res) => {
+  const { tripId, id } = req.params;
+  if (!canAccessTrip(Number(tripId), req.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const { user_ids } = req.body; // array of user IDs, empty array = everyone
+  if (!Array.isArray(user_ids)) return res.status(400).json({ error: 'user_ids must be an array' });
+
+  // Delete existing and insert new
+  db.prepare('DELETE FROM assignment_participants WHERE assignment_id = ?').run(id);
+  if (user_ids.length > 0) {
+    const insert = db.prepare('INSERT OR IGNORE INTO assignment_participants (assignment_id, user_id) VALUES (?, ?)');
+    for (const userId of user_ids) insert.run(id, userId);
+  }
+
+  const participants = db.prepare(`
+    SELECT ap.user_id, u.username, u.avatar
+    FROM assignment_participants ap
+    JOIN users u ON ap.user_id = u.id
+    WHERE ap.assignment_id = ?
+  `).all(id);
+
+  res.json({ participants });
+  broadcast(Number(tripId), 'assignment:participants', { assignmentId: Number(id), participants }, req.headers['x-socket-id']);
 });
 
 module.exports = router;

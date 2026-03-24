@@ -337,6 +337,14 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_photos_trip_id ON photos(trip_id);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_day_accommodations_trip_id ON day_accommodations(trip_id);
+
+    CREATE TABLE IF NOT EXISTS assignment_participants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id INTEGER NOT NULL REFERENCES day_assignments(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(assignment_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_assignment_participants_assignment ON assignment_participants(assignment_id);
   `);
 
   // Versioned migrations — each runs exactly once
@@ -437,6 +445,17 @@ function initDb() {
     // 23: Add assignment_id to reservations table
     () => {
       try { _db.exec('ALTER TABLE reservations ADD COLUMN assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE SET NULL'); } catch {}
+    },
+    // 24: Assignment participants (who's joining which activity)
+    () => {
+      _db.exec(`
+        CREATE TABLE IF NOT EXISTS assignment_participants (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          assignment_id INTEGER NOT NULL REFERENCES day_assignments(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(assignment_id, user_id)
+        )
+      `);
     },
     // Future migrations go here (append only, never reorder)
   ];

@@ -281,6 +281,12 @@ const de = {
   'admin.oidcIssuerHint': 'Die OpenID Connect Issuer URL des Anbieters. z.B. https://accounts.google.com',
   'admin.oidcSaved': 'OIDC-Konfiguration gespeichert',
 
+  // File Types
+  'admin.fileTypes': 'Erlaubte Dateitypen',
+  'admin.fileTypesHint': 'Konfiguriere welche Dateitypen hochgeladen werden dürfen.',
+  'admin.fileTypesFormat': 'Kommagetrennte Endungen (z.B. jpg,png,pdf,doc). Verwende * um alle Typen zu erlauben.',
+  'admin.fileTypesSaved': 'Dateityp-Einstellungen gespeichert',
+
   // Addons
   'admin.tabs.addons': 'Addons',
   'admin.addons.title': 'Addons',
@@ -549,6 +555,7 @@ const de = {
   'inspector.website': 'Webseite öffnen',
   'inspector.addRes': 'Reservierung',
   'inspector.editRes': 'Reservierung bearbeiten',
+  'inspector.participants': 'Teilnehmer',
 
   // Reservations
   'reservations.title': 'Buchungen',
@@ -641,6 +648,7 @@ const de = {
   'files.uploadError': 'Fehler beim Hochladen',
   'files.dropzone': 'Dateien hier ablegen',
   'files.dropzoneHint': 'oder klicken zum Auswählen',
+  'files.allowedTypes': 'Bilder, PDF, DOC, DOCX, XLS, XLSX, TXT, CSV · Max 50 MB',
   'files.uploading': 'Wird hochgeladen...',
   'files.filterAll': 'Alle',
   'files.filterPdf': 'PDFs',

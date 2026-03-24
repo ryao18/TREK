@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useTripStore } from '../../store/tripStore'
 import { useTranslation } from '../../i18n'
-import { Plus, Trash2, Calculator, Wallet } from 'lucide-react'
+import { Plus, Trash2, Calculator, Wallet, Pencil } from 'lucide-react'
 import CustomSelect from '../shared/CustomSelect'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,6 +152,7 @@ export default function BudgetPanel({ tripId }) {
   const { trip, budgetItems, addBudgetItem, updateBudgetItem, deleteBudgetItem, loadBudgetItems, updateTrip } = useTripStore()
   const { t, locale } = useTranslation()
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [editingCat, setEditingCat] = useState(null) // { name, value }
   const currency = trip?.currency || 'EUR'
 
   const fmt = (v, cur) => fmtNum(v, locale, cur)
@@ -186,6 +187,11 @@ export default function BudgetPanel({ tripId }) {
   const handleDeleteCategory = async (cat) => {
     const items = grouped[cat] || []
     for (const item of items) await deleteBudgetItem(tripId, item.id)
+  }
+  const handleRenameCategory = async (oldName, newName) => {
+    if (!newName.trim() || newName.trim() === oldName) return
+    const items = grouped[oldName] || []
+    for (const item of items) await updateBudgetItem(tripId, item.id, { category: newName.trim() })
   }
   const handleAddCategory = () => {
     if (!newCategoryName.trim()) return
@@ -239,9 +245,27 @@ export default function BudgetPanel({ tripId }) {
             return (
               <div key={cat} style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#000000', color: '#fff', borderRadius: '10px 10px 0 0', padding: '9px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 3, background: color, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{cat}</span>
+                    {editingCat?.name === cat ? (
+                      <input
+                        autoFocus
+                        value={editingCat.value}
+                        onChange={e => setEditingCat({ ...editingCat, value: e.target.value })}
+                        onBlur={() => { handleRenameCategory(cat, editingCat.value); setEditingCat(null) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { handleRenameCategory(cat, editingCat.value); setEditingCat(null) } if (e.key === 'Escape') setEditingCat(null) }}
+                        style={{ fontWeight: 600, fontSize: 13, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4, color: '#fff', padding: '1px 6px', outline: 'none', fontFamily: 'inherit', width: '100%' }}
+                      />
+                    ) : (
+                      <>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{cat}</span>
+                        <button onClick={() => setEditingCat({ name: cat, value: cat })}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', display: 'flex', padding: 1 }}
+                          onMouseEnter={e => e.currentTarget.style.color = '#fff'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}>
+                          <Pencil size={10} />
+                        </button>
+                      </>
+                    )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 13, fontWeight: 500, opacity: 0.9 }}>{fmt(subtotal, currency)}</span>

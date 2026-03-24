@@ -22,25 +22,27 @@ const storage = multer.diskStorage({
   },
 });
 
+const DEFAULT_ALLOWED_EXTENSIONS = 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv';
+const BLOCKED_EXTENSIONS = ['.svg', '.html', '.htm', '.xml'];
+
+function getAllowedExtensions() {
+  try {
+    const row = db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get();
+    return row?.value || DEFAULT_ALLOWED_EXTENSIONS;
+  } catch { return DEFAULT_ALLOWED_EXTENSIONS; }
+}
+
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
-    const allowed = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/plain',
-      'text/csv',
-    ];
     const ext = path.extname(file.originalname).toLowerCase();
-    const blockedExts = ['.svg', '.html', '.htm', '.xml'];
-    if (blockedExts.includes(ext) || file.mimetype.includes('svg')) {
+    if (BLOCKED_EXTENSIONS.includes(ext) || file.mimetype.includes('svg')) {
       return cb(new Error('File type not allowed'));
     }
-    if (allowed.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
+    const allowed = getAllowedExtensions().split(',').map(e => e.trim().toLowerCase());
+    const fileExt = ext.replace('.', '');
+    if (allowed.includes(fileExt) || (allowed.includes('*') && !BLOCKED_EXTENSIONS.includes(ext))) {
       cb(null, true);
     } else {
       cb(new Error('File type not allowed'));

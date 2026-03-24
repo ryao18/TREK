@@ -23,7 +23,10 @@ function formatDate(dateStr, locale) {
 function formatTime(timeStr, locale, timeFormat) {
   if (!timeStr) return ''
   try {
-    const [h, m] = timeStr.split(':').map(Number)
+    const parts = timeStr.split(':')
+    const h = Number(parts[0]) || 0
+    const m = Number(parts[1]) || 0
+    if (isNaN(h)) return timeStr
     if (timeFormat === '12h') {
       const period = h >= 12 ? 'PM' : 'AM'
       const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h

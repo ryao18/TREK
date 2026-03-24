@@ -75,7 +75,10 @@ function convertHoursLine(line, timeFormat) {
 function formatTime(timeStr, locale, timeFormat) {
   if (!timeStr) return ''
   try {
-    const [h, m] = timeStr.split(':').map(Number)
+    const parts = timeStr.split(':')
+    const h = Number(parts[0]) || 0
+    const m = Number(parts[1]) || 0
+    if (isNaN(h)) return timeStr
     if (timeFormat === '12h') {
       const period = h >= 12 ? 'PM' : 'AM'
       const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
@@ -216,7 +219,7 @@ export default function PlaceInspector({
             {place.place_time && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
                 <Clock size={10} color="var(--text-faint)" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatTime(place.place_time, locale, timeFormat)}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatTime(place.place_time, locale, timeFormat)}{place.end_time ? ` – ${formatTime(place.end_time, locale, timeFormat)}` : ''}</span>
               </div>
             )}
             {place.lat && place.lng && (

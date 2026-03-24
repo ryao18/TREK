@@ -141,10 +141,12 @@ function broadcast(tripId, eventType, payload, excludeSid) {
   }
 }
 
-function broadcastToUser(userId, payload) {
+function broadcastToUser(userId, payload, excludeSid) {
   if (!wss) return;
+  const excludeNum = excludeSid ? Number(excludeSid) : null;
   for (const ws of wss.clients) {
     if (ws.readyState !== 1) continue;
+    if (excludeNum && socketId.get(ws) === excludeNum) continue;
     const user = socketUser.get(ws);
     if (user && user.id === userId) {
       ws.send(JSON.stringify(payload));

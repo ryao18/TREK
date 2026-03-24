@@ -9,8 +9,8 @@ const CACHE_TTL = 24 * 60 * 60 * 1000;
 const router = express.Router();
 router.use(authenticate);
 
-// Broadcast vacay updates to all users in the same plan
-function notifyPlanUsers(planId, excludeUserId, event = 'vacay:update') {
+// Broadcast vacay updates to all users in the same plan (exclude only the triggering socket, not the whole user)
+function notifyPlanUsers(planId, excludeSid, event = 'vacay:update') {
   try {
     const { broadcastToUser } = require('../websocket');
     const plan = db.prepare('SELECT owner_id FROM vacay_plans WHERE id = ?').get(planId);
@@ -18,7 +18,7 @@ function notifyPlanUsers(planId, excludeUserId, event = 'vacay:update') {
     const userIds = [plan.owner_id];
     const members = db.prepare("SELECT user_id FROM vacay_plan_members WHERE plan_id = ? AND status = 'accepted'").all(planId);
     members.forEach(m => userIds.push(m.user_id));
-    userIds.filter(id => id !== excludeUserId).forEach(id => broadcastToUser(id, { type: event }));
+    userIds.forEach(id => broadcastToUser(id, { type: event }, excludeSid));
   } catch { /* */ }
 }
 
@@ -191,7 +191,7 @@ router.put('/plan', async (req, res) => {
     }
   }
 
-  notifyPlanUsers(planId, req.user.id, 'vacay:settings');
+  notifyPlanUsers(planId, req.headers['x-socket-id'], 'vacay:settings');
 
   const updated = db.prepare('SELECT * FROM vacay_plans WHERE id = ?').get(planId);
   res.json({
@@ -213,7 +213,7 @@ router.put('/color', (req, res) => {
     INSERT INTO vacay_user_colors (user_id, plan_id, color) VALUES (?, ?, ?)
     ON CONFLICT(user_id, plan_id) DO UPDATE SET color = excluded.color
   `).run(userId, planId, color || '#6366f1');
-  notifyPlanUsers(planId, req.user.id, 'vacay:update');
+  notifyPlanUsers(planId, req.headers['x-socket-id'], 'vacay:update');
   res.json({ success: true });
 });
 
@@ -300,7 +300,7 @@ router.post('/invite/accept', (req, res) => {
   }
 
   // Notify all plan users (not just owner)
-  notifyPlanUsers(plan_id, req.user.id, 'vacay:accepted');
+  notifyPlanUsers(plan_id, req.headers['x-socket-id'], 'vacay:accepted');
 
   res.json({ success: true });
 });
@@ -310,7 +310,7 @@ router.post('/invite/decline', (req, res) => {
   const { plan_id } = req.body;
   db.prepare("DELETE FROM vacay_plan_members WHERE plan_id = ? AND user_id = ? AND status = 'pending'").run(plan_id, req.user.id);
 
-  notifyPlanUsers(plan_id, req.user.id, 'vacay:declined');
+  notifyPlanUsers(plan_id, req.headers['x-socket-id'], 'vacay:declined');
 
   res.json({ success: true });
 });
@@ -417,7 +417,7 @@ router.post('/years', (req, res) => {
       db.prepare('INSERT OR IGNORE INTO vacay_user_years (user_id, plan_id, year, vacation_days, carried_over) VALUES (?, ?, ?, 30, ?)').run(u.id, planId, year, carriedOver);
     }
   } catch { /* exists */ }
-  notifyPlanUsers(planId, req.user.id, 'vacay:settings');
+  notifyPlanUsers(planId, req.headers['x-socket-id'], 'vacay:settings');
   const years = db.prepare('SELECT year FROM vacay_years WHERE plan_id = ? ORDER BY year').all(planId);
   res.json({ years: years.map(y => y.year) });
 });
@@ -428,7 +428,7 @@ router.delete('/years/:year', (req, res) => {
   db.prepare('DELETE FROM vacay_years WHERE plan_id = ? AND year = ?').run(planId, year);
   db.prepare("DELETE FROM vacay_entries WHERE plan_id = ? AND date LIKE ?").run(planId, `${year}-%`);
   db.prepare("DELETE FROM vacay_company_holidays WHERE plan_id = ? AND date LIKE ?").run(planId, `${year}-%`);
-  notifyPlanUsers(planId, req.user.id, 'vacay:settings');
+  notifyPlanUsers(planId, req.headers['x-socket-id'], 'vacay:settings');
   const years = db.prepare('SELECT year FROM vacay_years WHERE plan_id = ? ORDER BY year').all(planId);
   res.json({ years: years.map(y => y.year) });
 });
@@ -453,28 +453,10 @@ router.post('/entries/toggle', (req, res) => {
   const { date, target_user_id } = req.body;
   if (!date) return res.status(400).json({ error: 'date required' });
   const planId = getActivePlanId(req.user.id);
-  const planUsers = getPlanUsers(planId);
-
-  // Toggle for all users in plan
-  if (target_user_id === 'all') {
-    const actions = [];
-    for (const u of planUsers) {
-      const existing = db.prepare('SELECT id FROM vacay_entries WHERE user_id = ? AND date = ? AND plan_id = ?').get(u.id, date, planId);
-      if (existing) {
-        db.prepare('DELETE FROM vacay_entries WHERE id = ?').run(existing.id);
-        actions.push({ user_id: u.id, action: 'removed' });
-      } else {
-        db.prepare('INSERT INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)').run(planId, u.id, date, '');
-        actions.push({ user_id: u.id, action: 'added' });
-      }
-    }
-    notifyPlanUsers(planId, req.user.id);
-    return res.json({ action: 'toggled_all', actions });
-  }
-
   // Allow toggling for another user if they are in the same plan
   let userId = req.user.id;
   if (target_user_id && parseInt(target_user_id) !== req.user.id) {
+    const planUsers = getPlanUsers(planId);
     const tid = parseInt(target_user_id);
     if (!planUsers.find(u => u.id === tid)) {
       return res.status(403).json({ error: 'User not in plan' });
@@ -484,11 +466,11 @@ router.post('/entries/toggle', (req, res) => {
   const existing = db.prepare('SELECT id FROM vacay_entries WHERE user_id = ? AND date = ? AND plan_id = ?').get(userId, date, planId);
   if (existing) {
     db.prepare('DELETE FROM vacay_entries WHERE id = ?').run(existing.id);
-    notifyPlanUsers(planId, req.user.id);
+    notifyPlanUsers(planId, req.headers['x-socket-id']);
     res.json({ action: 'removed' });
   } else {
     db.prepare('INSERT INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)').run(planId, userId, date, '');
-    notifyPlanUsers(planId, req.user.id);
+    notifyPlanUsers(planId, req.headers['x-socket-id']);
     res.json({ action: 'added' });
   }
 });
@@ -499,13 +481,13 @@ router.post('/entries/company-holiday', (req, res) => {
   const existing = db.prepare('SELECT id FROM vacay_company_holidays WHERE plan_id = ? AND date = ?').get(planId, date);
   if (existing) {
     db.prepare('DELETE FROM vacay_company_holidays WHERE id = ?').run(existing.id);
-    notifyPlanUsers(planId, req.user.id);
+    notifyPlanUsers(planId, req.headers['x-socket-id']);
     res.json({ action: 'removed' });
   } else {
     db.prepare('INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, ?)').run(planId, date, note || '');
     // Remove any vacation entries on this date
     db.prepare('DELETE FROM vacay_entries WHERE plan_id = ? AND date = ?').run(planId, date);
-    notifyPlanUsers(planId, req.user.id);
+    notifyPlanUsers(planId, req.headers['x-socket-id']);
     res.json({ action: 'added' });
   }
 });
@@ -562,7 +544,7 @@ router.put('/stats/:year', (req, res) => {
     INSERT INTO vacay_user_years (user_id, plan_id, year, vacation_days, carried_over) VALUES (?, ?, ?, ?, 0)
     ON CONFLICT(user_id, plan_id, year) DO UPDATE SET vacation_days = excluded.vacation_days
   `).run(userId, planId, year, vacation_days);
-  notifyPlanUsers(planId, req.user.id);
+  notifyPlanUsers(planId, req.headers['x-socket-id']);
   res.json({ success: true });
 });
 

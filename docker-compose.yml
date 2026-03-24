@@ -1,6 +1,6 @@
 services:
   app:
-    image: mauriceboe/nomad:latest
+    image: mauriceboe/nomad:2.5.5
     container_name: nomad
     ports:
       - "3000:3000"

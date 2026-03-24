@@ -46,21 +46,35 @@ export default function WeatherWidget({ lat, lng, date, compact = false }) {
     const cached = getWeatherCache(cacheKey)
     if (cached !== undefined) {
       if (cached === null) setFailed(true)
-      else setWeather(cached)
+      // Climate data: use from cache but re-fetch in background to upgrade to forecast
+      else if (cached.type === 'climate') {
+        setWeather(cached)
+        weatherApi.get(lat, lng, date)
+          .then(data => {
+            if (!data.error && data.temp !== undefined && data.type === 'forecast') {
+              setWeatherCache(cacheKey, data)
+              setWeather(data)
+            }
+          })
+          .catch(() => {})
+        return
+      } else {
+        setWeather(cached)
+        return
+      }
       return
     }
     setLoading(true)
     weatherApi.get(lat, lng, date)
       .then(data => {
         if (data.error || data.temp === undefined) {
-          setWeatherCache(cacheKey, null)
           setFailed(true)
         } else {
           setWeatherCache(cacheKey, data)
           setWeather(data)
         }
       })
-      .catch(() => { setWeatherCache(cacheKey, null); setFailed(true) })
+      .catch(() => { setFailed(true) })
       .finally(() => setLoading(false))
   }, [lat, lng, date])
 
@@ -83,20 +97,21 @@ export default function WeatherWidget({ lat, lng, date, compact = false }) {
   const rawTemp = weather.temp
   const temp = rawTemp !== undefined ? Math.round(isFahrenheit ? rawTemp * 9/5 + 32 : rawTemp) : null
   const unit = isFahrenheit ? '°F' : '°C'
+  const isClimate = weather.type === 'climate'
 
   if (compact) {
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#6b7280', ...fontStyle }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color: isClimate ? '#a1a1aa' : '#6b7280', ...fontStyle }}>
         <WeatherIcon main={weather.main} size={12} />
-        {temp !== null && <span>{temp}{unit}</span>}
+        {temp !== null && <span>{isClimate ? 'Ø ' : ''}{temp}{unit}</span>}
       </span>
     )
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151', background: 'rgba(0,0,0,0.04)', borderRadius: 8, padding: '5px 10px', ...fontStyle }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: isClimate ? '#71717a' : '#374151', background: 'rgba(0,0,0,0.04)', borderRadius: 8, padding: '5px 10px', ...fontStyle }}>
       <WeatherIcon main={weather.main} size={15} />
-      {temp !== null && <span style={{ fontWeight: 500 }}>{temp}{unit}</span>}
+      {temp !== null && <span style={{ fontWeight: 500 }}>{isClimate ? 'Ø ' : ''}{temp}{unit}</span>}
       {weather.description && <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'capitalize' }}>{weather.description}</span>}
     </div>
   )

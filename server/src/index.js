@@ -107,23 +107,6 @@ app.use('/api/weather', weatherRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/backup', backupRoutes);
 
-// Exchange rates (cached 1h, authenticated)
-const { authenticate: rateAuth } = require('./middleware/auth');
-let _rateCache = { data: null, ts: 0 };
-app.get('/api/exchange-rates', rateAuth, async (req, res) => {
-  const now = Date.now();
-  if (_rateCache.data && now - _rateCache.ts < 3600000) return res.json(_rateCache.data);
-  try {
-    const r = await fetch('https://api.frankfurter.app/latest?from=EUR');
-    if (!r.ok) return res.status(502).json({ error: 'Failed to fetch rates' });
-    const data = await r.json();
-    _rateCache = { data, ts: now };
-    res.json(data);
-  } catch {
-    res.status(502).json({ error: 'Failed to fetch rates' });
-  }
-});
-
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   const publicPath = path.join(__dirname, '../public');

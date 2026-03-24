@@ -72,36 +72,16 @@ export default function VacayPersons() {
       </div>
 
       <div className="flex flex-col gap-0.5">
-        {users.length >= 2 && (
-          <div
-            onClick={() => setSelectedUserId('all')}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg group transition-all"
-            style={{
-              background: selectedUserId === 'all' ? 'var(--bg-hover)' : 'transparent',
-              border: selectedUserId === 'all' ? '1px solid var(--border-primary)' : '1px solid transparent',
-              cursor: 'pointer',
-            }}>
-            <div className="w-3.5 h-3.5 rounded-full shrink-0 flex items-center justify-center" style={{ background: 'var(--text-muted)' }}>
-              <span style={{ fontSize: 8, fontWeight: 700, color: 'var(--bg-card)', lineHeight: 1 }}>A</span>
-            </div>
-            <span className="text-xs font-medium flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
-              {t('vacay.everyone')}
-            </span>
-            {selectedUserId === 'all' && (
-              <Check size={12} style={{ color: 'var(--text-primary)' }} />
-            )}
-          </div>
-        )}
         {users.map(u => {
           const isSelected = selectedUserId === u.id
           return (
             <div key={u.id}
-              onClick={() => { if (isFused || users.length >= 2) setSelectedUserId(u.id) }}
+              onClick={() => { if (isFused) setSelectedUserId(u.id) }}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg group transition-all"
               style={{
                 background: isSelected ? 'var(--bg-hover)' : 'transparent',
                 border: isSelected ? '1px solid var(--border-primary)' : '1px solid transparent',
-                cursor: (isFused || users.length >= 2) ? 'pointer' : 'default',
+                cursor: isFused ? 'pointer' : 'default',
               }}>
               <button
                 onClick={(e) => { e.stopPropagation(); setColorEditUserId(u.id); setShowColorPicker(true) }}
@@ -113,7 +93,7 @@ export default function VacayPersons() {
                 {u.username}
                 {u.id === currentUser?.id && <span style={{ color: 'var(--text-faint)' }}> ({t('vacay.you')})</span>}
               </span>
-              {isSelected && (isFused || users.length >= 2) && (
+              {isSelected && isFused && (
                 <Check size={12} style={{ color: 'var(--text-primary)' }} />
               )}
             </div>

@@ -9,8 +9,9 @@ import Modal from '../components/shared/Modal'
 import { useToast } from '../components/shared/Toast'
 import CategoryManager from '../components/Admin/CategoryManager'
 import BackupPanel from '../components/Admin/BackupPanel'
+import GitHubPanel from '../components/Admin/GitHubPanel'
 import AddonManager from '../components/Admin/AddonManager'
-import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, AlertTriangle, RefreshCw, GitBranch, Sun } from 'lucide-react'
 import CustomSelect from '../components/shared/CustomSelect'
 
 export default function AdminPage() {
@@ -23,6 +24,7 @@ export default function AdminPage() {
     { id: 'addons', label: t('admin.tabs.addons') },
     { id: 'settings', label: t('admin.tabs.settings') },
     { id: 'backup', label: t('admin.tabs.backup') },
+    { id: 'github', label: t('admin.tabs.github') },
   ]
 
   const [activeTab, setActiveTab] = useState('users')
@@ -502,7 +504,7 @@ export default function AdminPage() {
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                       {t('admin.mapsKey')}
-                      <span style={{ fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 99, background: '#dbeafe', color: '#1d4ed8' }}>{t('admin.recommended')}</span>
+                      <span className="text-[9px] font-medium px-1.5 py-px rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200">{t('admin.recommended')}</span>
                     </label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
@@ -551,54 +553,35 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {/* OpenWeatherMap Key */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('admin.weatherKey')}</label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type={showKeys.weather ? 'text' : 'password'}
-                          value={weatherKey}
-                          onChange={e => setWeatherKey(e.target.value)}
-                          placeholder={t('settings.keyPlaceholder')}
-                          className="w-full pr-10 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => toggleKey('weather')}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        >
-                          {showKeys.weather ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                  {/* Open-Meteo Weather Info */}
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800 overflow-hidden">
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                          <Sun className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <span className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{t('admin.weather.title')}</span>
                       </div>
-                      <button
-                        onClick={() => handleValidateKey('weather')}
-                        disabled={!weatherKey || validating.weather}
-                        className="px-3 py-2 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-                      >
-                        {validating.weather ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : validation.weather === true ? (
-                          <CheckCircle className="w-4 h-4 text-emerald-500" />
-                        ) : validation.weather === false ? (
-                          <XCircle className="w-4 h-4 text-red-500" />
-                        ) : null}
-                        {t('admin.validateKey')}
-                      </button>
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200">{t('admin.weather.badge')}</span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">{t('admin.weatherKeyHint')}</p>
-                    {validation.weather === true && (
-                      <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                        <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block"></span>
-                        {t('admin.keyValid')}
-                      </p>
-                    )}
-                    {validation.weather === false && (
-                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                        <span className="w-2 h-2 bg-red-500 rounded-full inline-block"></span>
-                        {t('admin.keyInvalid')}
-                      </p>
-                    )}
+                    <div className="px-4 pb-3">
+                      <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed">{t('admin.weather.description')}</p>
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5 leading-relaxed">{t('admin.weather.locationHint')}</p>
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="rounded-md bg-white dark:bg-emerald-900/40 px-3 py-2 border border-emerald-100 dark:border-emerald-800">
+                          <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{t('admin.weather.forecast')}</p>
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">{t('admin.weather.forecastDesc')}</p>
+                        </div>
+                        <div className="rounded-md bg-white dark:bg-emerald-900/40 px-3 py-2 border border-emerald-100 dark:border-emerald-800">
+                          <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{t('admin.weather.climate')}</p>
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">{t('admin.weather.climateDesc')}</p>
+                        </div>
+                        <div className="rounded-md bg-white dark:bg-emerald-900/40 px-3 py-2 border border-emerald-100 dark:border-emerald-800">
+                          <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">{t('admin.weather.requests')}</p>
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">{t('admin.weather.requestsDesc')}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <button
@@ -682,6 +665,8 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'backup' && <BackupPanel />}
+
+          {activeTab === 'github' && <GitHubPanel />}
         </div>
       </div>
 

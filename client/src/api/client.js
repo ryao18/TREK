@@ -166,12 +166,8 @@ export const reservationsApi = {
   delete: (tripId, id) => apiClient.delete(`/trips/${tripId}/reservations/${id}`).then(r => r.data),
 }
 
-export const exchangeApi = {
-  getRates: () => apiClient.get('/exchange-rates').then(r => r.data),
-}
-
 export const weatherApi = {
-  get: (lat, lng, date) => apiClient.get('/weather', { params: { lat, lng, date, units: 'metric' } }).then(r => r.data),
+  get: (lat, lng, date) => apiClient.get('/weather', { params: { lat, lng, date } }).then(r => r.data),
 }
 
 export const settingsApi = {

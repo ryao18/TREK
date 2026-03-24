@@ -43,7 +43,7 @@
 - **Place Search** — Search via Google Places (with photos, ratings, opening hours) or OpenStreetMap (free, no API key needed)
 - **Day Notes** — Add timestamped, icon-tagged notes to individual days with drag & drop reordering
 - **Route Optimization** — Auto-optimize place order and export to Google Maps
-- **Weather Forecasts** — Current weather and 5-day forecasts with smart caching
+- **Weather Forecasts** — 16-day forecasts via Open-Meteo (no API key needed) with historical climate averages as fallback
 
 ### Travel Management
 - **Reservations & Bookings** — Track flights, hotels, restaurants with status, confirmation numbers, and file attachments
@@ -71,7 +71,7 @@
 ### Customization & Admin
 - **Dark Mode** — Full light and dark theme with dynamic status bar color matching
 - **Multilingual** — English and German (i18n)
-- **Admin Panel** — User management, global categories, addon management, API keys, and backups
+- **Admin Panel** — User management, global categories, addon management, API keys, backups, and GitHub release history
 - **Auto-Backups** — Scheduled backups with configurable interval and retention
 - **Customizable** — Temperature units, time format (12h/24h), map tile sources, default coordinates
 
@@ -84,18 +84,13 @@
 - **State**: Zustand
 - **Auth**: JWT + OIDC
 - **Maps**: Leaflet + react-leaflet-cluster + Google Places API (optional)
-- **Weather**: OpenWeatherMap API (optional)
+- **Weather**: Open-Meteo API (free, no key required)
 - **Icons**: lucide-react
 
 ## Quick Start
 
 ```bash
-mkdir -p /opt/nomad && cd /opt/nomad
-docker run -d --name nomad -p 3000:3000 \
-  -v /opt/nomad/data:/app/data \
-  -v /opt/nomad/uploads:/app/uploads \
-  --restart unless-stopped \
-  mauriceboe/nomad:latest
+docker run -d -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/nomad
 ```
 
 The app runs on port `3000`. The first user to register becomes the admin.
@@ -123,8 +118,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
     volumes:
-      - /opt/nomad/data:/app/data
-      - /opt/nomad/uploads:/app/uploads
+      - ./data:/app/data
+      - ./uploads:/app/uploads
     restart: unless-stopped
 ```
 
@@ -137,18 +132,14 @@ docker compose up -d
 ### Updating
 
 ```bash
-docker pull mauriceboe/nomad:latest
+docker pull mauriceboe/nomad
 docker rm -f nomad
-docker run -d --name nomad -p 3000:3000 \
-  -v /opt/nomad/data:/app/data \
-  -v /opt/nomad/uploads:/app/uploads \
-  --restart unless-stopped \
-  mauriceboe/nomad:latest
+docker run -d --name nomad -p 3000:3000 -v /your/data:/app/data -v /your/uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
 ```
 
 Or with Docker Compose: `docker compose pull && docker compose up -d`
 
-Your data is persisted in the mounted `/opt/nomad/data` and `/opt/nomad/uploads` volumes.
+Your data is persisted in the mounted `data` and `uploads` volumes.
 
 ### Reverse Proxy (recommended)
 

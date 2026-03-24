@@ -232,6 +232,7 @@ export function MapView({
         spiderfyOnMaxZoom
         showCoverageOnHover={false}
         zoomToBoundsOnClick
+        singleMarkerMode
         iconCreateFunction={(cluster) => {
           const count = cluster.getChildCount()
           const size = count < 10 ? 36 : count < 50 ? 42 : 48

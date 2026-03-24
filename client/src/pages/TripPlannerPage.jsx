@@ -228,8 +228,6 @@ export default function TripPlannerPage() {
     try {
       await tripStore.deletePlace(tripId, placeId)
       if (selectedPlaceId === placeId) setSelectedPlaceId(null)
-      // Delay route update to ensure store has propagated
-      setTimeout(() => updateRouteForDay(selectedDayId), 50)
       toast.success(t('trip.toast.placeDeleted'))
     } catch (err) { toast.error(err.message) }
   }, [tripId, tripStore, toast, selectedPlaceId])
@@ -247,7 +245,6 @@ export default function TripPlannerPage() {
   const handleRemoveAssignment = useCallback(async (dayId, assignmentId) => {
     try {
       await tripStore.removeAssignment(tripId, dayId, assignmentId)
-      updateRouteForDay(dayId)
     }
     catch (err) { toast.error(err.message) }
   }, [tripId, tripStore, toast, updateRouteForDay])
@@ -306,6 +303,18 @@ export default function TripPlannerPage() {
       map[a.place.id].push(i + 1)
     })
     return map
+  }, [selectedDayId, assignments])
+
+  // Auto-update route when assignments change
+  useEffect(() => {
+    if (!selectedDayId) return
+    const da = (assignments[String(selectedDayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
+    const waypoints = da.map(a => a.place).filter(p => p?.lat && p?.lng)
+    if (waypoints.length >= 2) {
+      setRoute(waypoints.map(p => [p.lat, p.lng]))
+    } else {
+      setRoute(null)
+    }
   }, [selectedDayId, assignments])
 
   // Places assigned to selected day (with coords) — used for map fitting

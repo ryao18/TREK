@@ -94,6 +94,7 @@ export const assignmentsApi = {
   delete: (tripId, dayId, id) => apiClient.delete(`/trips/${tripId}/days/${dayId}/assignments/${id}`).then(r => r.data),
   reorder: (tripId, dayId, orderedIds) => apiClient.put(`/trips/${tripId}/days/${dayId}/assignments/reorder`, { orderedIds }).then(r => r.data),
   move: (tripId, assignmentId, newDayId, orderIndex) => apiClient.put(`/trips/${tripId}/assignments/${assignmentId}/move`, { new_day_id: newDayId, order_index: orderIndex }).then(r => r.data),
+  update: (tripId, dayId, id, data) => apiClient.put(`/trips/${tripId}/days/${dayId}/assignments/${id}`, data).then(r => r.data),
 }
 
 export const packingApi = {
@@ -168,12 +169,20 @@ export const reservationsApi = {
 
 export const weatherApi = {
   get: (lat, lng, date) => apiClient.get('/weather', { params: { lat, lng, date } }).then(r => r.data),
+  getDetailed: (lat, lng, date, lang) => apiClient.get('/weather/detailed', { params: { lat, lng, date, lang } }).then(r => r.data),
 }
 
 export const settingsApi = {
   get: () => apiClient.get('/settings').then(r => r.data),
   set: (key, value) => apiClient.put('/settings', { key, value }).then(r => r.data),
   setBulk: (settings) => apiClient.post('/settings/bulk', { settings }).then(r => r.data),
+}
+
+export const accommodationsApi = {
+  list: (tripId) => apiClient.get(`/trips/${tripId}/accommodations`).then(r => r.data),
+  create: (tripId, data) => apiClient.post(`/trips/${tripId}/accommodations`, data).then(r => r.data),
+  update: (tripId, id, data) => apiClient.put(`/trips/${tripId}/accommodations/${id}`, data).then(r => r.data),
+  delete: (tripId, id) => apiClient.delete(`/trips/${tripId}/accommodations/${id}`).then(r => r.data),
 }
 
 export const dayNotesApi = {
@@ -191,7 +200,7 @@ export const backupApi = {
     const res = await fetch(`/api/backup/download/${filename}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!res.ok) throw new Error('Download fehlgeschlagen')
+    if (!res.ok) throw new Error('Download failed')
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

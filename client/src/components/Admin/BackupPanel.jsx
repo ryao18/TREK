@@ -387,7 +387,7 @@ export default function BackupPanel() {
               </div>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>
-                  {language === 'de' ? 'Backup wiederherstellen?' : 'Restore Backup?'}
+                  {t('backup.restoreConfirmTitle')}
                 </h3>
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
                   {restoreConfirm.filename}
@@ -398,17 +398,13 @@ export default function BackupPanel() {
             {/* Body */}
             <div style={{ padding: '20px 24px' }}>
               <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                {language === 'de'
-                  ? 'Alle aktuellen Daten (Reisen, Orte, Benutzer, Uploads) werden unwiderruflich durch das Backup ersetzt. Dieser Vorgang kann nicht rückgängig gemacht werden.'
-                  : 'All current data (trips, places, users, uploads) will be permanently replaced by the backup. This action cannot be undone.'}
+                {t('backup.restoreWarning')}
               </p>
 
               <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
                 className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
               >
-                {language === 'de'
-                  ? 'Tipp: Erstelle zuerst ein Backup des aktuellen Stands, bevor du wiederherstellst.'
-                  : 'Tip: Create a backup of the current state before restoring.'}
+                {t('backup.restoreTip')}
               </div>
             </div>
 
@@ -419,7 +415,7 @@ export default function BackupPanel() {
                 className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
                 style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
               >
-                {language === 'de' ? 'Abbrechen' : 'Cancel'}
+                {t('common.cancel')}
               </button>
               <button
                 onClick={executeRestore}
@@ -427,7 +423,7 @@ export default function BackupPanel() {
                 onMouseEnter={e => e.currentTarget.style.background = '#b91c1c'}
                 onMouseLeave={e => e.currentTarget.style.background = '#dc2626'}
               >
-                {language === 'de' ? 'Ja, wiederherstellen' : 'Yes, restore'}
+                {t('backup.restoreConfirm')}
               </button>
             </div>
           </div>

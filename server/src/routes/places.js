@@ -17,7 +17,7 @@ router.get('/', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   let query = `
@@ -89,30 +89,29 @@ router.post('/', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const {
     name, description, lat, lng, address, category_id, price, currency,
-    reservation_status, reservation_notes, reservation_datetime, place_time,
+    place_time, end_time,
     duration_minutes, notes, image_url, google_place_id, website, phone,
     transport_mode, tags = []
   } = req.body;
 
   if (!name) {
-    return res.status(400).json({ error: 'Ortsname ist erforderlich' });
+    return res.status(400).json({ error: 'Place name is required' });
   }
 
   const result = db.prepare(`
     INSERT INTO places (trip_id, name, description, lat, lng, address, category_id, price, currency,
-      reservation_status, reservation_notes, reservation_datetime, place_time,
+      place_time, end_time,
       duration_minutes, notes, image_url, google_place_id, website, phone, transport_mode)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     tripId, name, description || null, lat || null, lng || null, address || null,
     category_id || null, price || null, currency || null,
-    reservation_status || 'none', reservation_notes || null, reservation_datetime || null,
-    place_time || null, duration_minutes || 60, notes || null, image_url || null,
+    place_time || null, end_time || null, duration_minutes || 60, notes || null, image_url || null,
     google_place_id || null, website || null, phone || null, transport_mode || 'walking'
   );
 
@@ -136,12 +135,12 @@ router.get('/:id', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const placeCheck = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!placeCheck) {
-    return res.status(404).json({ error: 'Ort nicht gefunden' });
+    return res.status(404).json({ error: 'Place not found' });
   }
 
   const place = getPlaceWithTags(id);
@@ -154,17 +153,17 @@ router.get('/:id/image', authenticate, async (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const place = db.prepare('SELECT * FROM places WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!place) {
-    return res.status(404).json({ error: 'Ort nicht gefunden' });
+    return res.status(404).json({ error: 'Place not found' });
   }
 
   const user = db.prepare('SELECT unsplash_api_key FROM users WHERE id = ?').get(req.user.id);
   if (!user || !user.unsplash_api_key) {
-    return res.status(400).json({ error: 'Kein Unsplash API-Schlüssel konfiguriert' });
+    return res.status(400).json({ error: 'No Unsplash API key configured' });
   }
 
   try {
@@ -175,7 +174,7 @@ router.get('/:id/image', authenticate, async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.errors?.[0] || 'Unsplash API Fehler' });
+      return res.status(response.status).json({ error: data.errors?.[0] || 'Unsplash API error' });
     }
 
     const photos = (data.results || []).map(p => ({
@@ -190,7 +189,7 @@ router.get('/:id/image', authenticate, async (req, res) => {
     res.json({ photos });
   } catch (err) {
     console.error('Unsplash error:', err);
-    res.status(500).json({ error: 'Fehler beim Suchen des Bildes' });
+    res.status(500).json({ error: 'Error searching for image' });
   }
 });
 
@@ -200,17 +199,17 @@ router.put('/:id', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const existingPlace = db.prepare('SELECT * FROM places WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!existingPlace) {
-    return res.status(404).json({ error: 'Ort nicht gefunden' });
+    return res.status(404).json({ error: 'Place not found' });
   }
 
   const {
     name, description, lat, lng, address, category_id, price, currency,
-    reservation_status, reservation_notes, reservation_datetime, place_time,
+    place_time, end_time,
     duration_minutes, notes, image_url, google_place_id, website, phone,
     transport_mode, tags
   } = req.body;
@@ -225,10 +224,8 @@ router.put('/:id', authenticate, (req, res) => {
       category_id = ?,
       price = ?,
       currency = COALESCE(?, currency),
-      reservation_status = COALESCE(?, reservation_status),
-      reservation_notes = ?,
-      reservation_datetime = ?,
       place_time = ?,
+      end_time = ?,
       duration_minutes = COALESCE(?, duration_minutes),
       notes = ?,
       image_url = ?,
@@ -247,10 +244,8 @@ router.put('/:id', authenticate, (req, res) => {
     category_id !== undefined ? category_id : existingPlace.category_id,
     price !== undefined ? price : existingPlace.price,
     currency || null,
-    reservation_status || null,
-    reservation_notes !== undefined ? reservation_notes : existingPlace.reservation_notes,
-    reservation_datetime !== undefined ? reservation_datetime : existingPlace.reservation_datetime,
     place_time !== undefined ? place_time : existingPlace.place_time,
+    end_time !== undefined ? end_time : existingPlace.end_time,
     duration_minutes || null,
     notes !== undefined ? notes : existingPlace.notes,
     image_url !== undefined ? image_url : existingPlace.image_url,
@@ -282,12 +277,12 @@ router.delete('/:id', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const place = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!place) {
-    return res.status(404).json({ error: 'Ort nicht gefunden' });
+    return res.status(404).json({ error: 'Place not found' });
   }
 
   db.prepare('DELETE FROM places WHERE id = ?').run(id);

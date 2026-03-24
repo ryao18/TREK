@@ -1,7 +1,7 @@
 import React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, X, Edit2, Clock, DollarSign, CheckCircle, Clock3, MapPin } from 'lucide-react'
+import { GripVertical, X, Edit2, Clock, DollarSign, MapPin } from 'lucide-react'
 
 export default function AssignedPlaceItem({ assignment, dayId, onRemove, onEdit }) {
   const { place } = assignment
@@ -25,16 +25,6 @@ export default function AssignedPlaceItem({ assignment, dayId, onRemove, onEdit 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-  }
-
-  const reservationIcon = () => {
-    if (place.reservation_status === 'confirmed') {
-      return <CheckCircle className="w-3.5 h-3.5 text-emerald-500" title="Confirmed" />
-    }
-    if (place.reservation_status === 'pending') {
-      return <Clock3 className="w-3.5 h-3.5 text-amber-500" title="Pending" />
-    }
-    return null
   }
 
   return (
@@ -71,7 +61,6 @@ export default function AssignedPlaceItem({ assignment, dayId, onRemove, onEdit 
               />
             )}
             <span className="text-sm font-medium text-slate-800 truncate">{place.name}</span>
-            {reservationIcon()}
           </div>
 
           {/* Time & price row */}

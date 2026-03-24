@@ -16,7 +16,7 @@ router.get('/', authenticate, (req, res) => {
 router.post('/', authenticate, adminOnly, (req, res) => {
   const { name, color, icon } = req.body;
 
-  if (!name) return res.status(400).json({ error: 'Kategoriename ist erforderlich' });
+  if (!name) return res.status(400).json({ error: 'Category name is required' });
 
   const result = db.prepare(
     'INSERT INTO categories (name, color, icon, user_id) VALUES (?, ?, ?, ?)'
@@ -31,7 +31,7 @@ router.put('/:id', authenticate, adminOnly, (req, res) => {
   const { name, color, icon } = req.body;
   const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
 
-  if (!category) return res.status(404).json({ error: 'Kategorie nicht gefunden' });
+  if (!category) return res.status(404).json({ error: 'Category not found' });
 
   db.prepare(`
     UPDATE categories SET
@@ -49,7 +49,7 @@ router.put('/:id', authenticate, adminOnly, (req, res) => {
 router.delete('/:id', authenticate, adminOnly, (req, res) => {
   const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id);
 
-  if (!category) return res.status(404).json({ error: 'Kategorie nicht gefunden' });
+  if (!category) return res.status(404).json({ error: 'Category not found' });
 
   db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
   res.json({ success: true });

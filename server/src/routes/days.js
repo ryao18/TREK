@@ -13,7 +13,7 @@ function getAssignmentsForDay(dayId) {
   const assignments = db.prepare(`
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      p.reservation_status, p.reservation_notes, p.reservation_datetime, p.place_time, p.duration_minutes, p.notes as place_notes,
+      p.place_time, p.end_time, p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
     FROM day_assignments da
@@ -46,10 +46,8 @@ function getAssignmentsForDay(dayId) {
         category_id: a.category_id,
         price: a.price,
         currency: a.place_currency,
-        reservation_status: a.reservation_status,
-        reservation_notes: a.reservation_notes,
-        reservation_datetime: a.reservation_datetime,
         place_time: a.place_time,
+        end_time: a.end_time,
         duration_minutes: a.duration_minutes,
         notes: a.place_notes,
         image_url: a.image_url,
@@ -75,7 +73,7 @@ router.get('/', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const days = db.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number ASC').all(tripId);
@@ -91,7 +89,7 @@ router.get('/', authenticate, (req, res) => {
   const allAssignments = db.prepare(`
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      p.reservation_status, p.reservation_notes, p.reservation_datetime, p.place_time, p.duration_minutes, p.notes as place_notes,
+      p.place_time, p.end_time, p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
     FROM day_assignments da
@@ -137,10 +135,8 @@ router.get('/', authenticate, (req, res) => {
         category_id: a.category_id,
         price: a.price,
         currency: a.place_currency,
-        reservation_status: a.reservation_status,
-        reservation_notes: a.reservation_notes,
-        reservation_datetime: a.reservation_datetime,
         place_time: a.place_time,
+        end_time: a.end_time,
         duration_minutes: a.duration_minutes,
         notes: a.place_notes,
         image_url: a.image_url,
@@ -184,7 +180,7 @@ router.post('/', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const { date, notes } = req.body;
@@ -209,12 +205,12 @@ router.put('/:id', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const day = db.prepare('SELECT * FROM days WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!day) {
-    return res.status(404).json({ error: 'Tag nicht gefunden' });
+    return res.status(404).json({ error: 'Day not found' });
   }
 
   const { notes, title } = req.body;
@@ -232,12 +228,12 @@ router.delete('/:id', authenticate, (req, res) => {
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   const day = db.prepare('SELECT * FROM days WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!day) {
-    return res.status(404).json({ error: 'Tag nicht gefunden' });
+    return res.status(404).json({ error: 'Day not found' });
   }
 
   db.prepare('DELETE FROM days WHERE id = ?').run(id);
@@ -245,4 +241,149 @@ router.delete('/:id', authenticate, (req, res) => {
   broadcast(tripId, 'day:deleted', { dayId: Number(id) }, req.headers['x-socket-id']);
 });
 
+// === Accommodation routes ===
+const accommodationsRouter = express.Router({ mergeParams: true });
+
+function getAccommodationWithPlace(id) {
+  return db.prepare(`
+    SELECT a.*, p.name as place_name, p.address as place_address, p.image_url as place_image, p.lat as place_lat, p.lng as place_lng
+    FROM day_accommodations a
+    JOIN places p ON a.place_id = p.id
+    WHERE a.id = ?
+  `).get(id);
+}
+
+// GET /api/trips/:tripId/accommodations
+accommodationsRouter.get('/', authenticate, (req, res) => {
+  const { tripId } = req.params;
+
+  const trip = verifyTripOwnership(tripId, req.user.id);
+  if (!trip) {
+    return res.status(404).json({ error: 'Trip not found' });
+  }
+
+  const accommodations = db.prepare(`
+    SELECT a.*, p.name as place_name, p.address as place_address, p.image_url as place_image, p.lat as place_lat, p.lng as place_lng
+    FROM day_accommodations a
+    JOIN places p ON a.place_id = p.id
+    WHERE a.trip_id = ?
+    ORDER BY a.created_at ASC
+  `).all(tripId);
+
+  res.json({ accommodations });
+});
+
+// POST /api/trips/:tripId/accommodations
+accommodationsRouter.post('/', authenticate, (req, res) => {
+  const { tripId } = req.params;
+
+  const trip = verifyTripOwnership(tripId, req.user.id);
+  if (!trip) {
+    return res.status(404).json({ error: 'Trip not found' });
+  }
+
+  const { place_id, start_day_id, end_day_id, check_in, check_out, confirmation, notes } = req.body;
+
+  if (!place_id || !start_day_id || !end_day_id) {
+    return res.status(400).json({ error: 'place_id, start_day_id, and end_day_id are required' });
+  }
+
+  const place = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(place_id, tripId);
+  if (!place) {
+    return res.status(404).json({ error: 'Place not found' });
+  }
+
+  const startDay = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(start_day_id, tripId);
+  if (!startDay) {
+    return res.status(404).json({ error: 'Start day not found' });
+  }
+
+  const endDay = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(end_day_id, tripId);
+  if (!endDay) {
+    return res.status(404).json({ error: 'End day not found' });
+  }
+
+  const result = db.prepare(
+    'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out, confirmation, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(tripId, place_id, start_day_id, end_day_id, check_in || null, check_out || null, confirmation || null, notes || null);
+
+  const accommodation = getAccommodationWithPlace(result.lastInsertRowid);
+  res.status(201).json({ accommodation });
+  broadcast(tripId, 'accommodation:created', { accommodation }, req.headers['x-socket-id']);
+});
+
+// PUT /api/trips/:tripId/accommodations/:id
+accommodationsRouter.put('/:id', authenticate, (req, res) => {
+  const { tripId, id } = req.params;
+
+  const trip = verifyTripOwnership(tripId, req.user.id);
+  if (!trip) {
+    return res.status(404).json({ error: 'Trip not found' });
+  }
+
+  const existing = db.prepare('SELECT * FROM day_accommodations WHERE id = ? AND trip_id = ?').get(id, tripId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Accommodation not found' });
+  }
+
+  const { place_id, start_day_id, end_day_id, check_in, check_out, confirmation, notes } = req.body;
+
+  const newPlaceId = place_id !== undefined ? place_id : existing.place_id;
+  const newStartDayId = start_day_id !== undefined ? start_day_id : existing.start_day_id;
+  const newEndDayId = end_day_id !== undefined ? end_day_id : existing.end_day_id;
+  const newCheckIn = check_in !== undefined ? check_in : existing.check_in;
+  const newCheckOut = check_out !== undefined ? check_out : existing.check_out;
+  const newConfirmation = confirmation !== undefined ? confirmation : existing.confirmation;
+  const newNotes = notes !== undefined ? notes : existing.notes;
+
+  if (place_id !== undefined) {
+    const place = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(place_id, tripId);
+    if (!place) {
+      return res.status(404).json({ error: 'Place not found' });
+    }
+  }
+
+  if (start_day_id !== undefined) {
+    const startDay = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(start_day_id, tripId);
+    if (!startDay) {
+      return res.status(404).json({ error: 'Start day not found' });
+    }
+  }
+
+  if (end_day_id !== undefined) {
+    const endDay = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(end_day_id, tripId);
+    if (!endDay) {
+      return res.status(404).json({ error: 'End day not found' });
+    }
+  }
+
+  db.prepare(
+    'UPDATE day_accommodations SET place_id = ?, start_day_id = ?, end_day_id = ?, check_in = ?, check_out = ?, confirmation = ?, notes = ? WHERE id = ?'
+  ).run(newPlaceId, newStartDayId, newEndDayId, newCheckIn, newCheckOut, newConfirmation, newNotes, id);
+
+  const accommodation = getAccommodationWithPlace(id);
+  res.json({ accommodation });
+  broadcast(tripId, 'accommodation:updated', { accommodation }, req.headers['x-socket-id']);
+});
+
+// DELETE /api/trips/:tripId/accommodations/:id
+accommodationsRouter.delete('/:id', authenticate, (req, res) => {
+  const { tripId, id } = req.params;
+
+  const trip = verifyTripOwnership(tripId, req.user.id);
+  if (!trip) {
+    return res.status(404).json({ error: 'Trip not found' });
+  }
+
+  const existing = db.prepare('SELECT * FROM day_accommodations WHERE id = ? AND trip_id = ?').get(id, tripId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Accommodation not found' });
+  }
+
+  db.prepare('DELETE FROM day_accommodations WHERE id = ?').run(id);
+  res.json({ success: true });
+  broadcast(tripId, 'accommodation:deleted', { accommodationId: Number(id) }, req.headers['x-socket-id']);
+});
+
 module.exports = router;
+module.exports.accommodationsRouter = accommodationsRouter;

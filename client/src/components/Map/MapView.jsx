@@ -24,7 +24,7 @@ function escAttr(s) {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function createPlaceIcon(place, orderNumber, isSelected) {
+function createPlaceIcon(place, orderNumbers, isSelected) {
   const size = isSelected ? 44 : 36
   const borderColor = isSelected ? '#111827' : 'white'
   const borderWidth = isSelected ? 3 : 2.5
@@ -34,20 +34,23 @@ function createPlaceIcon(place, orderNumber, isSelected) {
   const bgColor = place.category_color || '#6b7280'
   const icon = place.category_icon || '📍'
 
-  // White semi-transparent number badge (bottom-right), only when orderNumber is set
-  const badgeHtml = orderNumber != null ? `
-    <span style="
-      position:absolute;bottom:-3px;right:-3px;
-      min-width:18px;height:18px;border-radius:9px;
-      padding:0 3px;
-      background:rgba(255,255,255,0.92);
-      border:1.5px solid rgba(0,0,0,0.18);
+  // Number badges (bottom-right), supports multiple numbers for duplicate places
+  let badgeHtml = ''
+  if (orderNumbers && orderNumbers.length > 0) {
+    const label = orderNumbers.join(' · ')
+    badgeHtml = `<span style="
+      position:absolute;bottom:-4px;right:-4px;
+      min-width:18px;height:${orderNumbers.length > 1 ? 16 : 18}px;border-radius:${orderNumbers.length > 1 ? 8 : 9}px;
+      padding:0 ${orderNumbers.length > 1 ? 4 : 3}px;
+      background:rgba(255,255,255,0.94);
+      border:1.5px solid rgba(0,0,0,0.15);
       box-shadow:0 1px 4px rgba(0,0,0,0.18);
       display:flex;align-items:center;justify-content:center;
-      font-size:9px;font-weight:800;color:#111827;
+      font-size:${orderNumbers.length > 1 ? 7.5 : 9}px;font-weight:800;color:#111827;
       font-family:-apple-system,system-ui,sans-serif;line-height:1;
-      box-sizing:border-box;
-    ">${orderNumber}</span>` : ''
+      box-sizing:border-box;white-space:nowrap;
+    ">${label}</span>`
+  }
 
   if (place.image_url) {
     return L.divIcon({
@@ -249,8 +252,8 @@ export function MapView({
         {places.map((place) => {
           const isSelected = place.id === selectedPlaceId
           const resolvedPhotoUrl = place.image_url || (place.google_place_id && photoUrls[place.google_place_id]) || null
-          const orderNumber = dayOrderMap[place.id] ?? null
-          const icon = createPlaceIcon({ ...place, image_url: resolvedPhotoUrl }, orderNumber, isSelected)
+          const orderNumbers = dayOrderMap[place.id] ?? null
+          const icon = createPlaceIcon({ ...place, image_url: resolvedPhotoUrl }, orderNumbers, isSelected)
 
           return (
             <Marker

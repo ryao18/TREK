@@ -3,8 +3,10 @@ import { PhotoLightbox } from './PhotoLightbox'
 import { PhotoUpload } from './PhotoUpload'
 import { Upload, Camera } from 'lucide-react'
 import Modal from '../shared/Modal'
+import { useTranslation } from '../../i18n'
 
 export default function PhotoGallery({ photos, onUpload, onDelete, onUpdate, places, days, tripId }) {
+  const { t } = useTranslation()
   const [lightboxIndex, setLightboxIndex] = useState(null)
   const [showUpload, setShowUpload] = useState(false)
   const [filterDayId, setFilterDayId] = useState('')
@@ -49,7 +51,7 @@ export default function PhotoGallery({ photos, onUpload, onDelete, onUpdate, pla
           onChange={e => setFilterDayId(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-slate-900"
         >
-          <option value="">Alle Tage</option>
+          <option value="">{t('photos.allDays')}</option>
           {(days || []).map(day => (
             <option key={day.id} value={day.id}>
               Tag {day.day_number}{day.date ? ` · ${formatDate(day.date)}` : ''}
@@ -62,7 +64,7 @@ export default function PhotoGallery({ photos, onUpload, onDelete, onUpdate, pla
             onClick={() => setFilterDayId('')}
             className="text-xs text-gray-500 hover:text-gray-700 underline"
           >
-            Zurücksetzen
+            {t('common.reset')}
           </button>
         )}
 
@@ -80,8 +82,8 @@ export default function PhotoGallery({ photos, onUpload, onDelete, onUpdate, pla
         {filteredPhotos.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
             <Camera size={40} style={{ color: '#d1d5db', display: 'block', margin: '0 auto 12px' }} />
-            <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: '0 0 4px' }}>Noch keine Fotos</p>
-            <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 20px' }}>Lade deine Reisefotos hoch</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', margin: '0 0 4px' }}>{t('photos.noPhotos')}</p>
+            <p style={{ fontSize: 13, color: '#9ca3af', margin: '0 0 20px' }}>{t('photos.uploadHint')}</p>
             <button
               onClick={() => setShowUpload(true)}
               className="flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-xl hover:bg-slate-700 font-medium"
@@ -109,7 +111,7 @@ export default function PhotoGallery({ photos, onUpload, onDelete, onUpdate, pla
               className="aspect-square rounded-xl border-2 border-dashed border-gray-200 hover:border-slate-400 flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-slate-700 transition-colors"
             >
               <Upload className="w-6 h-6" />
-              <span className="text-xs">Hinzufügen</span>
+              <span className="text-xs">{t('common.add')}</span>
             </button>
           </div>
         )}

@@ -43,7 +43,7 @@ const upload = multer({
     if (allowed.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('Dateityp nicht erlaubt'));
+      cb(new Error('File type not allowed'));
     }
   },
 });
@@ -64,7 +64,7 @@ router.get('/', authenticate, (req, res) => {
   const { tripId } = req.params;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const files = db.prepare(`
     SELECT f.*, r.title as reservation_title
@@ -84,11 +84,11 @@ router.post('/', authenticate, demoUploadBlock, upload.single('file'), (req, res
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) {
     if (req.file) fs.unlinkSync(req.file.path);
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   if (!req.file) {
-    return res.status(400).json({ error: 'Keine Datei hochgeladen' });
+    return res.status(400).json({ error: 'No file uploaded' });
   }
 
   const result = db.prepare(`
@@ -121,10 +121,10 @@ router.put('/:id', authenticate, (req, res) => {
   const { description, place_id, reservation_id } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!file) return res.status(404).json({ error: 'Datei nicht gefunden' });
+  if (!file) return res.status(404).json({ error: 'File not found' });
 
   db.prepare(`
     UPDATE trip_files SET
@@ -154,10 +154,10 @@ router.delete('/:id', authenticate, (req, res) => {
   const { tripId, id } = req.params;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!file) return res.status(404).json({ error: 'Datei nicht gefunden' });
+  if (!file) return res.status(404).json({ error: 'File not found' });
 
   const filePath = path.join(filesDir, file.filename);
   if (fs.existsSync(filePath)) {

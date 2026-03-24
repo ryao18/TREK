@@ -106,7 +106,8 @@ async function loadGeoJson() {
 
 export default function TravelStats() {
   const { t } = useTranslation()
-  const dark = useSettingsStore(s => s.settings.dark_mode)
+  const dm = useSettingsStore(s => s.settings.dark_mode)
+  const dark = dm === true || dm === 'dark' || (dm === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const [stats, setStats] = useState(null)
   const [geoData, setGeoData] = useState(null)
 

@@ -38,7 +38,7 @@ export const useSettingsStore = create((set, get) => ({
       await settingsApi.set(key, value)
     } catch (err) {
       console.error('Failed to save setting:', err)
-      throw new Error(err.response?.data?.error || 'Fehler beim Speichern der Einstellung')
+      throw new Error(err.response?.data?.error || 'Error saving setting')
     }
   },
 
@@ -55,7 +55,7 @@ export const useSettingsStore = create((set, get) => ({
       await settingsApi.setBulk(settingsObj)
     } catch (err) {
       console.error('Failed to save settings:', err)
-      throw new Error(err.response?.data?.error || 'Fehler beim Speichern der Einstellungen')
+      throw new Error(err.response?.data?.error || 'Error saving settings')
     }
   },
 }))

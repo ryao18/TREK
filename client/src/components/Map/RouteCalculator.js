@@ -9,7 +9,7 @@ const OSRM_BASE = 'https://router.project-osrm.org/route/v1'
  */
 export async function calculateRoute(waypoints, profile = 'driving') {
   if (!waypoints || waypoints.length < 2) {
-    throw new Error('Mindestens 2 Wegpunkte erforderlich')
+    throw new Error('At least 2 waypoints required')
   }
 
   const coords = waypoints.map(p => `${p.lng},${p.lat}`).join(';')
@@ -18,13 +18,13 @@ export async function calculateRoute(waypoints, profile = 'driving') {
 
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error('Route konnte nicht berechnet werden')
+    throw new Error('Route could not be calculated')
   }
 
   const data = await response.json()
 
   if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
-    throw new Error('Keine Route gefunden')
+    throw new Error('No route found')
   }
 
   const route = data.routes[0]
@@ -74,20 +74,23 @@ export function optimizeRoute(places) {
   const visited = new Set()
   const result = []
   let current = valid[0]
-  visited.add(current.id)
+  visited.add(0)
   result.push(current)
 
   while (result.length < valid.length) {
-    let nearest = null
+    let nearestIdx = -1
     let minDist = Infinity
-    for (const place of valid) {
-      if (visited.has(place.id)) continue
+    for (let i = 0; i < valid.length; i++) {
+      if (visited.has(i)) continue
       const d = Math.sqrt(
-        Math.pow(place.lat - current.lat, 2) + Math.pow(place.lng - current.lng, 2)
+        Math.pow(valid[i].lat - current.lat, 2) + Math.pow(valid[i].lng - current.lng, 2)
       )
-      if (d < minDist) { minDist = d; nearest = place }
+      if (d < minDist) { minDist = d; nearestIdx = i }
     }
-    if (nearest) { visited.add(nearest.id); result.push(nearest); current = nearest }
+    if (nearestIdx === -1) break
+    visited.add(nearestIdx)
+    current = valid[nearestIdx]
+    result.push(current)
   }
   return result
 }
@@ -103,7 +106,7 @@ function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   if (h > 0) {
-    return `${h} Std. ${m} Min.`
+    return `${h} h ${m} min`
   }
-  return `${m} Min.`
+  return `${m} min`
 }

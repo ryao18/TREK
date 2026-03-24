@@ -12,7 +12,7 @@ function verifyAccess(tripId, userId) {
 // GET /api/trips/:tripId/days/:dayId/notes
 router.get('/', authenticate, (req, res) => {
   const { tripId, dayId } = req.params;
-  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Trip not found' });
 
   const notes = db.prepare(
     'SELECT * FROM day_notes WHERE day_id = ? AND trip_id = ? ORDER BY sort_order ASC, created_at ASC'
@@ -24,13 +24,13 @@ router.get('/', authenticate, (req, res) => {
 // POST /api/trips/:tripId/days/:dayId/notes
 router.post('/', authenticate, (req, res) => {
   const { tripId, dayId } = req.params;
-  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Trip not found' });
 
   const day = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(dayId, tripId);
-  if (!day) return res.status(404).json({ error: 'Tag nicht gefunden' });
+  if (!day) return res.status(404).json({ error: 'Day not found' });
 
   const { text, time, icon, sort_order } = req.body;
-  if (!text?.trim()) return res.status(400).json({ error: 'Text erforderlich' });
+  if (!text?.trim()) return res.status(400).json({ error: 'Text required' });
 
   const result = db.prepare(
     'INSERT INTO day_notes (day_id, trip_id, text, time, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
@@ -44,10 +44,10 @@ router.post('/', authenticate, (req, res) => {
 // PUT /api/trips/:tripId/days/:dayId/notes/:id
 router.put('/:id', authenticate, (req, res) => {
   const { tripId, dayId, id } = req.params;
-  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Trip not found' });
 
   const note = db.prepare('SELECT * FROM day_notes WHERE id = ? AND day_id = ? AND trip_id = ?').get(id, dayId, tripId);
-  if (!note) return res.status(404).json({ error: 'Notiz nicht gefunden' });
+  if (!note) return res.status(404).json({ error: 'Note not found' });
 
   const { text, time, icon, sort_order } = req.body;
   db.prepare(
@@ -68,10 +68,10 @@ router.put('/:id', authenticate, (req, res) => {
 // DELETE /api/trips/:tripId/days/:dayId/notes/:id
 router.delete('/:id', authenticate, (req, res) => {
   const { tripId, dayId, id } = req.params;
-  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!verifyAccess(tripId, req.user.id)) return res.status(404).json({ error: 'Trip not found' });
 
   const note = db.prepare('SELECT id FROM day_notes WHERE id = ? AND day_id = ? AND trip_id = ?').get(id, dayId, tripId);
-  if (!note) return res.status(404).json({ error: 'Notiz nicht gefunden' });
+  if (!note) return res.status(404).json({ error: 'Note not found' });
 
   db.prepare('DELETE FROM day_notes WHERE id = ?').run(id);
   res.json({ success: true });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Modal from '../shared/Modal'
-import { Calendar, Camera, X } from 'lucide-react'
+import { Calendar, Camera, X, Clipboard } from 'lucide-react'
 import { tripsApi } from '../../api/client'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
@@ -21,6 +21,7 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [coverPreview, setCoverPreview] = useState(null)
+  const [pendingCoverFile, setPendingCoverFile] = useState(null)
   const [uploadingCover, setUploadingCover] = useState(false)
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
       setFormData({ title: '', description: '', start_date: '', end_date: '' })
       setCoverPreview(null)
     }
+    setPendingCoverFile(null)
     setError('')
   }, [trip, isOpen])
 
@@ -48,12 +50,23 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     }
     setIsLoading(true)
     try {
-      await onSave({
+      const result = await onSave({
         title: formData.title.trim(),
         description: formData.description.trim() || null,
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
       })
+      // Upload pending cover for newly created trips
+      if (pendingCoverFile && result?.trip?.id) {
+        try {
+          const fd = new FormData()
+          fd.append('cover', pendingCoverFile)
+          const data = await tripsApi.uploadCover(result.trip.id, fd)
+          onCoverUpdate?.(result.trip.id, data.cover_image)
+        } catch {
+          // Cover upload failed but trip was created
+        }
+      }
       onClose()
     } catch (err) {
       setError(err.message || t('places.saveError'))
@@ -62,9 +75,24 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     }
   }
 
-  const handleCoverChange = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file || !trip?.id) return
+  const handleCoverSelect = (file) => {
+    if (!file) return
+    if (isEditing && trip?.id) {
+      // Existing trip: upload immediately
+      uploadCoverNow(file)
+    } else {
+      // New trip: stage for upload after creation
+      setPendingCoverFile(file)
+      setCoverPreview(URL.createObjectURL(file))
+    }
+  }
+
+  const handleCoverChange = (e) => {
+    handleCoverSelect(e.target.files?.[0])
+    e.target.value = ''
+  }
+
+  const uploadCoverNow = async (file) => {
     setUploadingCover(true)
     try {
       const fd = new FormData()
@@ -77,11 +105,15 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
       toast.error(t('dashboard.coverUploadError'))
     } finally {
       setUploadingCover(false)
-      e.target.value = ''
     }
   }
 
   const handleRemoveCover = async () => {
+    if (pendingCoverFile) {
+      setPendingCoverFile(null)
+      setCoverPreview(null)
+      return
+    }
     if (!trip?.id) return
     try {
       await tripsApi.update(trip.id, { cover_image: null })
@@ -92,15 +124,26 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     }
   }
 
+  // Paste support for cover image
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) handleCoverSelect(file)
+        return
+      }
+    }
+  }
+
   const update = (field, value) => setFormData(prev => {
     const next = { ...prev, [field]: value }
-    // Auto-adjust end date when start date changes
     if (field === 'start_date' && value) {
       if (!prev.end_date || prev.end_date < value) {
-        // If no end date or end date is before new start, set end = start
         next.end_date = value
       } else if (prev.start_date) {
-        // Preserve trip duration: shift end date by same delta
         const oldStart = new Date(prev.start_date + 'T00:00:00')
         const oldEnd = new Date(prev.end_date + 'T00:00:00')
         const duration = Math.round((oldEnd - oldStart) / 86400000)
@@ -135,40 +178,38 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         </div>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" onPaste={handlePaste}>
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{error}</div>
         )}
 
-        {/* Cover image — only for existing trips */}
-        {isEditing && (
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.coverImage')}</label>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverChange} />
-            {coverPreview ? (
-              <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', height: 130 }}>
-                <img src={coverPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                <div style={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', gap: 6 }}>
-                  <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadingCover}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.55)', border: 'none', color: 'white', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-                    <Camera size={12} /> {uploadingCover ? t('common.uploading') : t('common.change')}
-                  </button>
-                  <button type="button" onClick={handleRemoveCover}
-                    style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderRadius: 8, background: 'rgba(0,0,0,0.55)', border: 'none', color: 'white', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-                    <X size={12} />
-                  </button>
-                </div>
+        {/* Cover image — available for both create and edit */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.coverImage')}</label>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverChange} />
+          {coverPreview ? (
+            <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', height: 130 }}>
+              <img src={coverPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadingCover}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.55)', border: 'none', color: 'white', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+                  <Camera size={12} /> {uploadingCover ? t('common.uploading') : t('common.change')}
+                </button>
+                <button type="button" onClick={handleRemoveCover}
+                  style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderRadius: 8, background: 'rgba(0,0,0,0.55)', border: 'none', color: 'white', cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+                  <X size={12} />
+                </button>
               </div>
-            ) : (
-              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadingCover}
-                style={{ width: '100%', padding: '18px', border: '2px dashed #e5e7eb', borderRadius: 10, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, color: '#9ca3af', fontFamily: 'inherit' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#6b7280' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#9ca3af' }}>
-                <Camera size={15} /> {uploadingCover ? t('common.uploading') : t('dashboard.addCoverImage')}
-              </button>
-            )}
-          </div>
-        )}
+            </div>
+          ) : (
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadingCover}
+              style={{ width: '100%', padding: '18px', border: '2px dashed #e5e7eb', borderRadius: 10, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, color: '#9ca3af', fontFamily: 'inherit' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#6b7280' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#9ca3af' }}>
+              <Camera size={15} /> {uploadingCover ? t('common.uploading') : t('dashboard.addCoverImage')}
+            </button>
+          )}
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">

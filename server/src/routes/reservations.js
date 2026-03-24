@@ -14,10 +14,10 @@ router.get('/', authenticate, (req, res) => {
   const { tripId } = req.params;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const reservations = db.prepare(`
-    SELECT r.*, d.day_number, p.name as place_name
+    SELECT r.*, d.day_number, p.name as place_name, r.assignment_id
     FROM reservations r
     LEFT JOIN days d ON r.day_id = d.id
     LEFT JOIN places p ON r.place_id = p.id
@@ -31,20 +31,21 @@ router.get('/', authenticate, (req, res) => {
 // POST /api/trips/:tripId/reservations
 router.post('/', authenticate, (req, res) => {
   const { tripId } = req.params;
-  const { title, reservation_time, location, confirmation_number, notes, day_id, place_id, status, type } = req.body;
+  const { title, reservation_time, location, confirmation_number, notes, day_id, place_id, assignment_id, status, type } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  if (!title) return res.status(400).json({ error: 'Titel ist erforderlich' });
+  if (!title) return res.status(400).json({ error: 'Title is required' });
 
   const result = db.prepare(`
-    INSERT INTO reservations (trip_id, day_id, place_id, title, reservation_time, location, confirmation_number, notes, status, type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO reservations (trip_id, day_id, place_id, assignment_id, title, reservation_time, location, confirmation_number, notes, status, type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     tripId,
     day_id || null,
     place_id || null,
+    assignment_id || null,
     title,
     reservation_time || null,
     location || null,
@@ -55,7 +56,7 @@ router.post('/', authenticate, (req, res) => {
   );
 
   const reservation = db.prepare(`
-    SELECT r.*, d.day_number, p.name as place_name
+    SELECT r.*, d.day_number, p.name as place_name, r.assignment_id
     FROM reservations r
     LEFT JOIN days d ON r.day_id = d.id
     LEFT JOIN places p ON r.place_id = p.id
@@ -69,13 +70,13 @@ router.post('/', authenticate, (req, res) => {
 // PUT /api/trips/:tripId/reservations/:id
 router.put('/:id', authenticate, (req, res) => {
   const { tripId, id } = req.params;
-  const { title, reservation_time, location, confirmation_number, notes, day_id, place_id, status, type } = req.body;
+  const { title, reservation_time, location, confirmation_number, notes, day_id, place_id, assignment_id, status, type } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!reservation) return res.status(404).json({ error: 'Reservierung nicht gefunden' });
+  if (!reservation) return res.status(404).json({ error: 'Reservation not found' });
 
   db.prepare(`
     UPDATE reservations SET
@@ -86,6 +87,7 @@ router.put('/:id', authenticate, (req, res) => {
       notes = ?,
       day_id = ?,
       place_id = ?,
+      assignment_id = ?,
       status = COALESCE(?, status),
       type = COALESCE(?, type)
     WHERE id = ?
@@ -97,13 +99,14 @@ router.put('/:id', authenticate, (req, res) => {
     notes !== undefined ? (notes || null) : reservation.notes,
     day_id !== undefined ? (day_id || null) : reservation.day_id,
     place_id !== undefined ? (place_id || null) : reservation.place_id,
+    assignment_id !== undefined ? (assignment_id || null) : reservation.assignment_id,
     status || null,
     type || null,
     id
   );
 
   const updated = db.prepare(`
-    SELECT r.*, d.day_number, p.name as place_name
+    SELECT r.*, d.day_number, p.name as place_name, r.assignment_id
     FROM reservations r
     LEFT JOIN days d ON r.day_id = d.id
     LEFT JOIN places p ON r.place_id = p.id
@@ -119,10 +122,10 @@ router.delete('/:id', authenticate, (req, res) => {
   const { tripId, id } = req.params;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const reservation = db.prepare('SELECT id FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!reservation) return res.status(404).json({ error: 'Reservierung nicht gefunden' });
+  if (!reservation) return res.status(404).json({ error: 'Reservation not found' });
 
   db.prepare('DELETE FROM reservations WHERE id = ?').run(id);
   res.json({ success: true });

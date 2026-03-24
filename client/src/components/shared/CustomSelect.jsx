@@ -51,7 +51,7 @@ export default function CustomSelect({
           background: 'var(--bg-input)', color: 'var(--text-primary)',
           fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
           cursor: 'pointer', outline: 'none', textAlign: 'left',
-          transition: 'border-color 0.15s',
+          transition: 'border-color 0.15s', overflow: 'hidden', minWidth: 0,
         }}
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-faint)'}
         onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = 'var(--border-primary)' }}
@@ -105,6 +105,17 @@ export default function CustomSelect({
               <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-faint)', textAlign: 'center' }}>—</div>
             ) : (
               filtered.map(option => {
+                if (option.isHeader) {
+                  return (
+                    <div key={option.value} style={{
+                      padding: '5px 10px', fontSize: 10, fontWeight: 700, color: 'var(--text-faint)',
+                      textTransform: 'uppercase', letterSpacing: '0.03em',
+                      background: 'var(--bg-tertiary)', borderRadius: 4, margin: '2px 0',
+                    }}>
+                      {option.label}
+                    </div>
+                  )
+                }
                 const isSelected = option.value === value
                 return (
                   <button

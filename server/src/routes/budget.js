@@ -14,7 +14,7 @@ router.get('/', authenticate, (req, res) => {
   const { tripId } = req.params;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const items = db.prepare(
     'SELECT * FROM budget_items WHERE trip_id = ? ORDER BY category ASC, created_at ASC'
@@ -29,9 +29,9 @@ router.post('/', authenticate, (req, res) => {
   const { category, name, total_price, persons, days, note } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  if (!name) return res.status(400).json({ error: 'Name ist erforderlich' });
+  if (!name) return res.status(400).json({ error: 'Name is required' });
 
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM budget_items WHERE trip_id = ?').get(tripId);
   const sortOrder = (maxOrder.max !== null ? maxOrder.max : -1) + 1;
@@ -40,7 +40,7 @@ router.post('/', authenticate, (req, res) => {
     'INSERT INTO budget_items (trip_id, category, name, total_price, persons, days, note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     tripId,
-    category || 'Sonstiges',
+    category || 'Other',
     name,
     total_price || 0,
     persons != null ? persons : null,
@@ -60,10 +60,10 @@ router.put('/:id', authenticate, (req, res) => {
   const { category, name, total_price, persons, days, note, sort_order } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const item = db.prepare('SELECT * FROM budget_items WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!item) return res.status(404).json({ error: 'Budget-Eintrag nicht gefunden' });
+  if (!item) return res.status(404).json({ error: 'Budget item not found' });
 
   db.prepare(`
     UPDATE budget_items SET
@@ -96,10 +96,10 @@ router.delete('/:id', authenticate, (req, res) => {
   const { tripId, id } = req.params;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const item = db.prepare('SELECT id FROM budget_items WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!item) return res.status(404).json({ error: 'Budget-Eintrag nicht gefunden' });
+  if (!item) return res.status(404).json({ error: 'Budget item not found' });
 
   db.prepare('DELETE FROM budget_items WHERE id = ?').run(id);
   res.json({ success: true });

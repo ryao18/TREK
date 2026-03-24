@@ -204,19 +204,17 @@ export default function PlacesSidebar({
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px 16px' }}>
               {days.map((day, i) => {
-                const alreadyAssigned = (assignments[String(day.id)] || []).some(a => a.place?.id === dayPickerPlace.id)
                 return (
                   <button
                     key={day.id}
-                    disabled={alreadyAssigned}
                     onClick={() => { onAssignToDay(dayPickerPlace.id, day.id); setDayPickerPlace(null) }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                      padding: '12px 14px', borderRadius: 12, border: 'none', cursor: alreadyAssigned ? 'default' : 'pointer',
+                      padding: '12px 14px', borderRadius: 12, border: 'none', cursor: 'pointer',
                       background: 'transparent', fontFamily: 'inherit', textAlign: 'left',
-                      opacity: alreadyAssigned ? 0.4 : 1, transition: 'background 0.1s',
+                      transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => { if (!alreadyAssigned) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <div style={{
@@ -230,7 +228,7 @@ export default function PlacesSidebar({
                       </div>
                       {day.date && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{new Date(day.date + 'T00:00:00').toLocaleDateString()}</div>}
                     </div>
-                    {alreadyAssigned && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>✓</span>}
+                    {(assignments[String(day.id)] || []).some(a => a.place?.id === dayPickerPlace.id) && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>✓</span>}
                   </button>
                 )
               })}

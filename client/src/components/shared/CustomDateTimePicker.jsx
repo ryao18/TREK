@@ -67,7 +67,7 @@ export function CustomDatePicker({ value, onChange, placeholder, style = {} }) {
         onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-faint)'}
         onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = 'var(--border-primary)' }}>
         <Calendar size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
-        <span>{displayValue || placeholder || t('common.date')}</span>
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayValue || placeholder || t('common.date')}</span>
       </button>
 
       {open && ReactDOM.createPortal(

@@ -107,6 +107,7 @@ function initDb() {
       reservation_notes TEXT,
       reservation_datetime TEXT,
       place_time TEXT,
+      end_time TEXT,
       duration_minutes INTEGER DEFAULT 60,
       notes TEXT,
       image_url TEXT,
@@ -130,6 +131,9 @@ function initDb() {
       place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,
       order_index INTEGER DEFAULT 0,
       notes TEXT,
+      reservation_status TEXT DEFAULT 'none',
+      reservation_notes TEXT,
+      reservation_datetime TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -175,6 +179,7 @@ function initDb() {
       trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       day_id INTEGER REFERENCES days(id) ON DELETE SET NULL,
       place_id INTEGER REFERENCES places(id) ON DELETE SET NULL,
+      assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
       reservation_time TEXT,
       location TEXT,
@@ -213,7 +218,7 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS budget_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      category TEXT NOT NULL DEFAULT 'Sonstiges',
+      category TEXT NOT NULL DEFAULT 'Other',
       name TEXT NOT NULL,
       total_price REAL NOT NULL DEFAULT 0,
       persons INTEGER DEFAULT NULL,
@@ -298,6 +303,19 @@ function initDb() {
       note TEXT DEFAULT '',
       UNIQUE(plan_id, date)
     );
+
+    CREATE TABLE IF NOT EXISTS day_accommodations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,
+      start_day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
+      end_day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
+      check_in TEXT,
+      check_out TEXT,
+      confirmation TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Create indexes for performance
@@ -318,6 +336,7 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_day_notes_day_id ON day_notes(day_id);
     CREATE INDEX IF NOT EXISTS idx_photos_trip_id ON photos(trip_id);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_day_accommodations_trip_id ON day_accommodations(trip_id);
   `);
 
   // Versioned migrations — each runs exactly once
@@ -369,7 +388,7 @@ function initDb() {
           CREATE TABLE budget_items_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-            category TEXT NOT NULL DEFAULT 'Sonstiges',
+            category TEXT NOT NULL DEFAULT 'Other',
             name TEXT NOT NULL,
             total_price REAL NOT NULL DEFAULT 0,
             persons INTEGER DEFAULT NULL,
@@ -383,6 +402,41 @@ function initDb() {
           ALTER TABLE budget_items_new RENAME TO budget_items;
         `);
       }
+    },
+    // 20: accommodation check-in/check-out/confirmation fields
+    () => {
+      try { _db.exec('ALTER TABLE day_accommodations ADD COLUMN check_in TEXT'); } catch {}
+      try { _db.exec('ALTER TABLE day_accommodations ADD COLUMN check_out TEXT'); } catch {}
+      try { _db.exec('ALTER TABLE day_accommodations ADD COLUMN confirmation TEXT'); } catch {}
+    },
+    // 21: places end_time field (place_time becomes start_time conceptually, end_time is new)
+    () => {
+      try { _db.exec('ALTER TABLE places ADD COLUMN end_time TEXT'); } catch {}
+    },
+    // 22: Move reservation fields from places to day_assignments
+    () => {
+      // Add new columns to day_assignments
+      try { _db.exec('ALTER TABLE day_assignments ADD COLUMN reservation_status TEXT DEFAULT \'none\''); } catch {}
+      try { _db.exec('ALTER TABLE day_assignments ADD COLUMN reservation_notes TEXT'); } catch {}
+      try { _db.exec('ALTER TABLE day_assignments ADD COLUMN reservation_datetime TEXT'); } catch {}
+
+      // Migrate existing data: copy reservation info from places to all their assignments
+      try {
+        _db.exec(`
+          UPDATE day_assignments SET
+            reservation_status = (SELECT reservation_status FROM places WHERE places.id = day_assignments.place_id),
+            reservation_notes = (SELECT reservation_notes FROM places WHERE places.id = day_assignments.place_id),
+            reservation_datetime = (SELECT reservation_datetime FROM places WHERE places.id = day_assignments.place_id)
+          WHERE place_id IN (SELECT id FROM places WHERE reservation_status IS NOT NULL AND reservation_status != 'none')
+        `);
+        console.log('[DB] Migrated reservation data from places to day_assignments');
+      } catch (e) {
+        console.error('[DB] Migration 22 data copy error:', e.message);
+      }
+    },
+    // 23: Add assignment_id to reservations table
+    () => {
+      try { _db.exec('ALTER TABLE reservations ADD COLUMN assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE SET NULL'); } catch {}
     },
     // Future migrations go here (append only, never reorder)
   ];
@@ -405,14 +459,14 @@ function initDb() {
       const defaultCategories = [
         { name: 'Hotel', color: '#3b82f6', icon: '🏨' },
         { name: 'Restaurant', color: '#ef4444', icon: '🍽️' },
-        { name: 'Sehenswürdigkeit', color: '#8b5cf6', icon: '🏛️' },
+        { name: 'Attraction', color: '#8b5cf6', icon: '🏛️' },
         { name: 'Shopping', color: '#f59e0b', icon: '🛍️' },
         { name: 'Transport', color: '#6b7280', icon: '🚌' },
-        { name: 'Aktivität', color: '#10b981', icon: '🎯' },
-        { name: 'Bar/Café', color: '#f97316', icon: '☕' },
-        { name: 'Strand', color: '#06b6d4', icon: '🏖️' },
-        { name: 'Natur', color: '#84cc16', icon: '🌿' },
-        { name: 'Sonstiges', color: '#6366f1', icon: '📍' },
+        { name: 'Activity', color: '#10b981', icon: '🎯' },
+        { name: 'Bar/Cafe', color: '#f97316', icon: '☕' },
+        { name: 'Beach', color: '#06b6d4', icon: '🏖️' },
+        { name: 'Nature', color: '#84cc16', icon: '🌿' },
+        { name: 'Other', color: '#6366f1', icon: '📍' },
       ];
       const insertCat = _db.prepare('INSERT INTO categories (name, color, icon) VALUES (?, ?, ?)');
       for (const cat of defaultCategories) insertCat.run(cat.name, cat.color, cat.icon);

@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { X, ExternalLink, Phone, MapPin, Clock, Euro, Edit2, Trash2, Plus, Minus } from 'lucide-react'
 import { mapsApi } from '../../api/client'
-
-const RESERVATION_STATUS = {
-  none: { label: 'Keine Reservierung', color: 'gray' },
-  pending: { label: 'Res. ausstehend', color: 'yellow' },
-  confirmed: { label: 'Bestätigt', color: 'green' },
-}
+import { useTranslation } from '../../i18n'
 
 export function PlaceDetailPanel({
   place, categories, tags, selectedDayId, dayAssignments,
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
 }) {
+  const { t } = useTranslation()
   const [googlePhoto, setGooglePhoto] = useState(null)
   const [photoAttribution, setPhotoAttribution] = useState(null)
 
@@ -39,8 +35,6 @@ export function PlaceDetailPanel({
   const assignmentInDay = selectedDayId
     ? dayAssignments?.find(a => a.place?.id === place.id)
     : null
-
-  const status = RESERVATION_STATUS[place.reservation_status] || RESERVATION_STATUS.none
 
   return (
     <div className="bg-white">
@@ -177,29 +171,6 @@ export function PlaceDetailPanel({
           </div>
         )}
 
-        {/* Reservation status */}
-        {place.reservation_status && place.reservation_status !== 'none' && (
-          <div className={`rounded-lg px-3 py-2 border ${
-            place.reservation_status === 'confirmed'
-              ? 'bg-emerald-50 border-emerald-200'
-              : 'bg-yellow-50 border-yellow-200'
-          }`}>
-            <div className={`text-xs font-semibold ${
-              place.reservation_status === 'confirmed' ? 'text-emerald-700' : 'text-yellow-700'
-            }`}>
-              {place.reservation_status === 'confirmed' ? '✅' : '⏳'} {status.label}
-            </div>
-            {place.reservation_datetime && (
-              <div className="text-xs text-gray-500 mt-0.5">
-                {formatDateTime(place.reservation_datetime)}
-              </div>
-            )}
-            {place.reservation_notes && (
-              <p className="text-xs text-gray-600 mt-1">{place.reservation_notes}</p>
-            )}
-          </div>
-        )}
-
         {/* Day assignment actions */}
         {selectedDayId && (
           <div className="pt-1">
@@ -209,7 +180,7 @@ export function PlaceDetailPanel({
                 className="w-full flex items-center justify-center gap-2 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
               >
                 <Minus className="w-4 h-4" />
-                Aus Tag entfernen
+                {t('planner.removeFromDay')}
               </button>
             ) : (
               <button
@@ -217,7 +188,7 @@ export function PlaceDetailPanel({
                 className="w-full flex items-center justify-center gap-2 py-2 text-sm text-white bg-slate-900 rounded-lg hover:bg-slate-700"
               >
                 <Plus className="w-4 h-4" />
-                Zum Tag hinzufügen
+                {t('planner.addToThisDay')}
               </button>
             )}
           </div>
@@ -230,7 +201,7 @@ export function PlaceDetailPanel({
             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
           >
             <Edit2 className="w-3.5 h-3.5" />
-            Bearbeiten
+            {t('common.edit')}
           </button>
           <button
             onClick={onDelete}

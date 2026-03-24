@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Modal from '../shared/Modal'
 import CustomSelect from '../shared/CustomSelect'
-import { Plane, Hotel, Utensils, Train, Car, Ship, Ticket, FileText, Users, Paperclip, X, ExternalLink } from 'lucide-react'
+import { Plane, Hotel, Utensils, Train, Car, Ship, Ticket, FileText, Users, Paperclip, X, ExternalLink, Link2 } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 import { CustomDateTimePicker } from '../shared/CustomDateTimePicker'
@@ -18,19 +18,46 @@ const TYPE_OPTIONS = [
   { value: 'other',      labelKey: 'reservations.type.other',      Icon: FileText },
 ]
 
-export function ReservationModal({ isOpen, onClose, onSave, reservation, days, places, selectedDayId, files = [], onFileUpload, onFileDelete }) {
+function buildAssignmentOptions(days, assignments, t, locale) {
+  const options = []
+  for (const day of (days || [])) {
+    const da = (assignments?.[String(day.id)] || []).slice().sort((a, b) => a.order_index - b.order_index)
+    if (da.length === 0) continue
+    const dayLabel = day.title || t('dayplan.dayN', { n: day.day_number })
+    const dateStr = day.date ? ` · ${formatDate(day.date, locale)}` : ''
+    // Group header (non-selectable)
+    options.push({ value: `_header_${day.id}`, label: `${dayLabel}${dateStr}`, disabled: true, isHeader: true })
+    for (let i = 0; i < da.length; i++) {
+      const place = da[i].place
+      if (!place) continue
+      const timeStr = place.place_time ? ` · ${place.place_time}${place.end_time ? ' – ' + place.end_time : ''}` : ''
+      options.push({
+        value: da[i].id,
+        label: `  ${i + 1}. ${place.name}${timeStr}`,
+      })
+    }
+  }
+  return options
+}
+
+export function ReservationModal({ isOpen, onClose, onSave, reservation, days, places, assignments, selectedDayId, files = [], onFileUpload, onFileDelete }) {
   const toast = useToast()
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
   const fileInputRef = useRef(null)
 
   const [form, setForm] = useState({
     title: '', type: 'other', status: 'pending',
     reservation_time: '', location: '', confirmation_number: '',
-    notes: '', day_id: '', place_id: '',
+    notes: '', assignment_id: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
-  const [pendingFiles, setPendingFiles] = useState([]) // for new reservations
+  const [pendingFiles, setPendingFiles] = useState([])
+
+  const assignmentOptions = useMemo(
+    () => buildAssignmentOptions(days, assignments, t, locale),
+    [days, assignments, t, locale]
+  )
 
   useEffect(() => {
     if (reservation) {
@@ -42,14 +69,13 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         location: reservation.location || '',
         confirmation_number: reservation.confirmation_number || '',
         notes: reservation.notes || '',
-        day_id: reservation.day_id || '',
-        place_id: reservation.place_id || '',
+        assignment_id: reservation.assignment_id || '',
       })
     } else {
       setForm({
         title: '', type: 'other', status: 'pending',
         reservation_time: '', location: '', confirmation_number: '',
-        notes: '', day_id: selectedDayId || '', place_id: '',
+        notes: '', assignment_id: '',
       })
       setPendingFiles([])
     }
@@ -64,10 +90,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     try {
       const saved = await onSave({
         ...form,
-        day_id: form.day_id || null,
-        place_id: form.place_id || null,
+        assignment_id: form.assignment_id || null,
       })
-      // Upload pending files for newly created reservations
       if (!reservation?.id && saved?.id && pendingFiles.length > 0) {
         for (const file of pendingFiles) {
           const fd = new FormData()
@@ -86,7 +110,6 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     const file = e.target.files?.[0]
     if (!file) return
     if (reservation?.id) {
-      // Existing reservation — upload immediately
       setUploadingFile(true)
       try {
         const fd = new FormData()
@@ -102,7 +125,6 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         e.target.value = ''
       }
     } else {
-      // New reservation — stage locally
       setPendingFiles(prev => [...prev, file])
       e.target.value = ''
     }
@@ -112,29 +134,29 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
 
   const inputStyle = {
     width: '100%', border: '1px solid var(--border-primary)', borderRadius: 10,
-    padding: '8px 14px', fontSize: 13, fontFamily: 'inherit',
+    padding: '8px 12px', fontSize: 13, fontFamily: 'inherit',
     outline: 'none', boxSizing: 'border-box', color: 'var(--text-primary)', background: 'var(--bg-input)',
   }
-  const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }
+  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.03em' }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={reservation ? t('reservations.editTitle') : t('reservations.newTitle')} size="md">
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <Modal isOpen={isOpen} onClose={onClose} title={reservation ? t('reservations.editTitle') : t('reservations.newTitle')} size="2xl">
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* Type selector */}
         <div>
           <label style={labelStyle}>{t('reservations.bookingType')}</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
             {TYPE_OPTIONS.map(({ value, labelKey, Icon }) => (
               <button key={value} type="button" onClick={() => set('type', value)} style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                padding: '6px 11px', borderRadius: 99, border: '1px solid',
-                fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s',
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '5px 10px', borderRadius: 99, border: '1px solid',
+                fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s',
                 background: form.type === value ? 'var(--text-primary)' : 'var(--bg-card)',
                 borderColor: form.type === value ? 'var(--text-primary)' : 'var(--border-primary)',
                 color: form.type === value ? 'var(--bg-primary)' : 'var(--text-muted)',
               }}>
-                <Icon size={12} /> {t(labelKey)}
+                <Icon size={11} /> {t(labelKey)}
               </button>
             ))}
           </div>
@@ -147,8 +169,29 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
             placeholder={t('reservations.titlePlaceholder')} style={inputStyle} />
         </div>
 
+        {/* Assignment Picker */}
+        {assignmentOptions.length > 0 && (
+          <div>
+            <label style={labelStyle}>
+              <Link2 size={10} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />
+              {t('reservations.linkAssignment')}
+            </label>
+            <CustomSelect
+              value={form.assignment_id}
+              onChange={value => set('assignment_id', value)}
+              placeholder={t('reservations.pickAssignment')}
+              options={[
+                { value: '', label: t('reservations.noAssignment') },
+                ...assignmentOptions,
+              ]}
+              searchable
+              size="sm"
+            />
+          </div>
+        )}
+
         {/* Date/Time + Status */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label style={labelStyle}>{t('reservations.datetime')}</label>
             <CustomDateTimePicker value={form.reservation_time} onChange={v => set('reservation_time', v)} />
@@ -167,108 +210,61 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
           </div>
         </div>
 
-        {/* Location */}
-        <div>
-          <label style={labelStyle}>{t('reservations.locationAddress')}</label>
-          <input type="text" value={form.location} onChange={e => set('location', e.target.value)}
-            placeholder={t('reservations.locationPlaceholder')} style={inputStyle} />
-        </div>
-
-        {/* Confirmation number */}
-        <div>
-          <label style={labelStyle}>{t('reservations.confirmationCode')}</label>
-          <input type="text" value={form.confirmation_number} onChange={e => set('confirmation_number', e.target.value)}
-            placeholder={t('reservations.confirmationPlaceholder')} style={inputStyle} />
-        </div>
-
-        {/* Linked day + place */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* Location + Booking Code */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label style={labelStyle}>{t('reservations.day')}</label>
-            <CustomSelect
-              value={form.day_id}
-              onChange={value => set('day_id', value)}
-              placeholder={t('reservations.noDay')}
-              options={[
-                { value: '', label: t('reservations.noDay') },
-                ...(days || []).map(day => ({
-                  value: day.id,
-                  label: `${t('reservations.day')} ${day.day_number}${day.date ? ` · ${formatDate(day.date)}` : ''}`,
-                })),
-              ]}
-              size="sm"
-            />
+            <label style={labelStyle}>{t('reservations.locationAddress')}</label>
+            <input type="text" value={form.location} onChange={e => set('location', e.target.value)}
+              placeholder={t('reservations.locationPlaceholder')} style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>{t('reservations.place')}</label>
-            <CustomSelect
-              value={form.place_id}
-              onChange={value => set('place_id', value)}
-              placeholder={t('reservations.noPlace')}
-              options={[
-                { value: '', label: t('reservations.noPlace') },
-                ...(places || []).map(place => ({
-                  value: place.id,
-                  label: place.name,
-                })),
-              ]}
-              searchable
-              size="sm"
-            />
+            <label style={labelStyle}>{t('reservations.confirmationCode')}</label>
+            <input type="text" value={form.confirmation_number} onChange={e => set('confirmation_number', e.target.value)}
+              placeholder={t('reservations.confirmationPlaceholder')} style={inputStyle} />
           </div>
         </div>
 
         {/* Notes */}
         <div>
           <label style={labelStyle}>{t('reservations.notes')}</label>
-          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
+          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
             placeholder={t('reservations.notesPlaceholder')}
             style={{ ...inputStyle, resize: 'none', lineHeight: 1.5 }} />
         </div>
 
-        {/* File upload — always visible */}
+        {/* Files */}
         <div>
           <label style={labelStyle}>{t('files.title')}</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {attachedFiles.map(f => (
-              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
-                <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
-                <a href={f.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-faint)', display: 'flex', flexShrink: 0 }} title={t('common.open')}>
-                  <ExternalLink size={12} />
-                </a>
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+                <FileText size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
+                <a href={f.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-faint)', display: 'flex', flexShrink: 0 }}><ExternalLink size={11} /></a>
                 {onFileDelete && (
-                  <button type="button" onClick={() => onFileDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 0, flexShrink: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                    onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}>
-                    <X size={12} />
+                  <button type="button" onClick={() => onFileDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 0, flexShrink: 0 }}>
+                    <X size={11} />
                   </button>
                 )}
               </div>
             ))}
             {pendingFiles.map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-primary)' }}>
-                <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-faint)', flexShrink: 0 }}>{t('reservations.pendingSave')}</span>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
+                <FileText size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                 <button type="button" onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 0, flexShrink: 0 }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}>
-                  <X size={12} />
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 0, flexShrink: 0 }}>
+                  <X size={11} />
                 </button>
               </div>
             ))}
             <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" style={{ display: 'none' }} onChange={handleFileChange} />
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px',
-              border: '1px dashed var(--border-primary)', borderRadius: 8, background: 'var(--bg-card)',
-              fontSize: 12.5, color: 'var(--text-muted)', cursor: uploadingFile ? 'default' : 'pointer',
-              fontFamily: 'inherit', transition: 'all 0.12s',
-            }}
-              onMouseEnter={e => { if (!uploadingFile) { e.currentTarget.style.borderColor = 'var(--text-faint)'; e.currentTarget.style.color = 'var(--text-secondary)' } }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
-              <Paperclip size={13} />
+              display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px',
+              border: '1px dashed var(--border-primary)', borderRadius: 8, background: 'none',
+              fontSize: 11, color: 'var(--text-faint)', cursor: uploadingFile ? 'default' : 'pointer', fontFamily: 'inherit',
+            }}>
+              <Paperclip size={11} />
               {uploadingFile ? t('reservations.uploading') : t('reservations.attachFile')}
             </button>
           </div>
@@ -276,10 +272,10 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
 
         {/* Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4, borderTop: '1px solid var(--border-secondary)' }}>
-          <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'var(--bg-card)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-secondary)' }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-muted)' }}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
+          <button type="submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
             {isSaving ? t('common.saving') : reservation ? t('common.update') : t('common.add')}
           </button>
         </div>
@@ -288,8 +284,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
   )
 }
 
-function formatDate(dateStr) {
+function formatDate(dateStr, locale) {
   if (!dateStr) return ''
   const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString(locale || 'de-DE', { day: 'numeric', month: 'short' })
 }

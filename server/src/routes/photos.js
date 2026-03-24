@@ -48,7 +48,7 @@ router.get('/', authenticate, (req, res) => {
   const { day_id, place_id } = req.query;
 
   const trip = canAccessTrip(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   let query = 'SELECT * FROM photos WHERE trip_id = ?';
   const params = [tripId];
@@ -78,11 +78,11 @@ router.post('/', authenticate, demoUploadBlock, upload.array('photos', 20), (req
   if (!trip) {
     // Delete uploaded files on auth failure
     if (req.files) req.files.forEach(f => fs.unlinkSync(f.path));
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
   }
 
   if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'Keine Dateien hochgeladen' });
+    return res.status(400).json({ error: 'No files uploaded' });
   }
 
   const insertPhoto = db.prepare(`
@@ -122,10 +122,10 @@ router.put('/:id', authenticate, (req, res) => {
   const { caption, day_id, place_id } = req.body;
 
   const trip = canAccessTrip(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const photo = db.prepare('SELECT * FROM photos WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!photo) return res.status(404).json({ error: 'Foto nicht gefunden' });
+  if (!photo) return res.status(404).json({ error: 'Photo not found' });
 
   db.prepare(`
     UPDATE photos SET
@@ -149,10 +149,10 @@ router.delete('/:id', authenticate, (req, res) => {
   const { tripId, id } = req.params;
 
   const trip = canAccessTrip(tripId, req.user.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
   const photo = db.prepare('SELECT * FROM photos WHERE id = ? AND trip_id = ?').get(id, tripId);
-  if (!photo) return res.status(404).json({ error: 'Foto nicht gefunden' });
+  if (!photo) return res.status(404).json({ error: 'Photo not found' });
 
   // Delete file
   const filePath = path.join(photosDir, photo.filename);

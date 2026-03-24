@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
-import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, AlertCircle, CheckCircle2, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown, Lock } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown, Lock, Hotel, Utensils, Users } from 'lucide-react'
+
+const RES_ICONS = { flight: Plane, hotel: Hotel, restaurant: Utensils, train: Train, car: Car, cruise: Ship, event: Ticket, tour: Users, other: FileText }
 import { downloadTripPDF } from '../PDF/TripPDF'
 import { calculateRoute, generateGoogleMapsUrl, optimizeRoute } from '../Map/RouteCalculator'
 import PlaceAvatar from '../shared/PlaceAvatar'
@@ -71,8 +73,8 @@ const TYPE_ICONS = {
 export default function DayPlanSidebar({
   tripId,
   trip, days, places, categories, assignments,
-  selectedDayId, selectedPlaceId,
-  onSelectDay, onPlaceClick,
+  selectedDayId, selectedPlaceId, selectedAssignmentId,
+  onSelectDay, onPlaceClick, onDayDetail, accommodations = [],
   onReorder, onUpdateDayTitle, onRouteCalculated,
   onAssignToDay,
   reservations = [],
@@ -83,17 +85,11 @@ export default function DayPlanSidebar({
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
   const tripStore = useTripStore()
 
-  const TRANSPORT_MODES = [
-    { value: 'driving', label: t('dayplan.transport.car') },
-    { value: 'walking', label: t('dayplan.transport.walk') },
-    { value: 'cycling', label: t('dayplan.transport.bike') },
-  ]
   const dayNotes = tripStore.dayNotes || {}
 
   const [expandedDays, setExpandedDays] = useState(() => new Set(days.map(d => d.id)))
   const [editingDayId, setEditingDayId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
-  const [transportMode, setTransportMode] = useState('driving')
   const [isCalculating, setIsCalculating] = useState(false)
   const [routeInfo, setRouteInfo] = useState(null)
   const [draggingId, setDraggingId] = useState(null)
@@ -284,7 +280,7 @@ export default function DayPlanSidebar({
     if (waypoints.length < 2) { toast.error(t('dayplan.toast.needTwoPlaces')); return }
     setIsCalculating(true)
     try {
-      const result = await calculateRoute(waypoints, transportMode)
+      const result = await calculateRoute(waypoints, 'walking')
       // Luftlinien zwischen Wegpunkten anzeigen
       const lineCoords = waypoints.map(p => [p.lat, p.lng])
       setRouteInfo({ distance: result.distanceText, duration: result.durationText })
@@ -315,12 +311,13 @@ export default function DayPlanSidebar({
       else unlocked.push(a)
     })
 
-    // Optimize only unlocked places
-    const unlockedWithCoords = unlocked.map(a => a.place).filter(p => p?.lat && p?.lng)
-    const optimized = unlockedWithCoords.length >= 2 ? optimizeRoute(unlockedWithCoords) : unlockedWithCoords
-    const optimizedQueue = optimized.map(p => unlocked.find(a => a.place?.id === p.id)).filter(Boolean)
-    // Add unlocked without coords at the end
-    for (const a of unlocked) { if (!optimizedQueue.includes(a)) optimizedQueue.push(a) }
+    // Optimize only unlocked assignments (work on assignments, not places)
+    const unlockedWithCoords = unlocked.filter(a => a.place?.lat && a.place?.lng)
+    const unlockedNoCoords = unlocked.filter(a => !a.place?.lat || !a.place?.lng)
+    const optimizedAssignments = unlockedWithCoords.length >= 2
+      ? optimizeRoute(unlockedWithCoords.map(a => ({ ...a.place, _assignmentId: a.id }))).map(p => unlockedWithCoords.find(a => a.id === p._assignmentId)).filter(Boolean)
+      : unlockedWithCoords
+    const optimizedQueue = [...optimizedAssignments, ...unlockedNoCoords]
 
     // Merge: locked stay at their index, fill gaps with optimized
     const result = new Array(da.length)
@@ -447,7 +444,7 @@ export default function DayPlanSidebar({
             <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)' }}>
               {/* Tages-Header — akzeptiert Drops aus der PlacesSidebar */}
               <div
-                onClick={() => onSelectDay(isSelected ? null : day.id)}
+                onClick={() => { onSelectDay(isSelected ? null : day.id); if (onDayDetail) onDayDetail(isSelected ? null : day) }}
                 onDragOver={e => { e.preventDefault(); setDragOverDayId(day.id) }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverDayId(null) }}
                 onDrop={e => handleDropOnDay(e, day.id)}
@@ -493,8 +490,8 @@ export default function DayPlanSidebar({
                       }}
                     />
                   ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
                         {day.title || t('dayplan.dayN', { n: index + 1 })}
                       </span>
                       <button
@@ -503,11 +500,21 @@ export default function DayPlanSidebar({
                       >
                         <Pencil size={10} strokeWidth={1.8} color="var(--text-secondary)" />
                       </button>
+                      {(() => {
+                        const acc = accommodations.find(a => day.id >= a.start_day_id && day.id <= a.end_day_id)
+                        return acc ? (
+                          <span onClick={e => { e.stopPropagation(); onPlaceClick(acc.place_id) }} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 5, background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', flexShrink: 1, minWidth: 0, maxWidth: '40%', cursor: 'pointer' }}>
+                            <Hotel size={8} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                            <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.place_name}</span>
+                          </span>
+                        ) : null
+                      })()}
                     </div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
                     {formattedDate && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>{formattedDate}</span>}
                     {cost && <span style={{ fontSize: 11, color: '#059669' }}>{cost}</span>}
+                    {day.date && anyGeoPlace && <span style={{ width: 1, height: 10, background: 'var(--text-faint)', opacity: 0.3, flexShrink: 0 }} />}
                     {day.date && anyGeoPlace && (() => {
                       const wLat = loc?.place.lat ?? anyGeoPlace?.place?.lat ?? anyGeoPlace?.lat
                       const wLng = loc?.place.lng ?? anyGeoPlace?.place?.lng ?? anyGeoPlace?.lng
@@ -580,9 +587,7 @@ export default function DayPlanSidebar({
                         const place = assignment.place
                         if (!place) return null
                         const cat = categories.find(c => c.id === place.category_id)
-                        const isPlaceSelected = place.id === selectedPlaceId
-                        const hasReservation = place.reservation_status && place.reservation_status !== 'none'
-                        const isConfirmed = place.reservation_status === 'confirmed'
+                        const isPlaceSelected = selectedAssignmentId ? assignment.id === selectedAssignmentId : place.id === selectedPlaceId
                         const isDraggingThis = draggingId === assignment.id
                         const isHovered = hoveredId === assignment.id
                         const placeIdx = placeItems.findIndex(i => i.data.id === assignment.id)
@@ -639,7 +644,7 @@ export default function DayPlanSidebar({
                               }
                             }}
                             onDragEnd={() => { setDraggingId(null); setDragOverDayId(null); setDropTargetKey(null); dragDataRef.current = null }}
-                            onClick={() => { onPlaceClick(isPlaceSelected ? null : place.id); if (!isPlaceSelected) onSelectDay(day.id, true) }}
+                            onClick={() => { onPlaceClick(isPlaceSelected ? null : place.id, isPlaceSelected ? null : assignment.id); if (!isPlaceSelected) onSelectDay(day.id, true) }}
                             onMouseEnter={() => setHoveredId(assignment.id)}
                             onMouseLeave={() => setHoveredId(null)}
                             style={{
@@ -651,9 +656,7 @@ export default function DayPlanSidebar({
                                 : isPlaceSelected ? 'var(--bg-hover)' : (isHovered ? 'var(--bg-hover)' : 'transparent'),
                               borderLeft: lockedIds.has(assignment.id)
                                 ? '3px solid #dc2626'
-                                : hasReservation
-                                  ? `3px solid ${isConfirmed ? '#10b981' : '#f59e0b'}`
-                                  : '3px solid transparent',
+                                : '3px solid transparent',
                               transition: 'background 0.15s, border-color 0.15s',
                               opacity: isDraggingThis ? 0.4 : 1,
                             }}
@@ -689,8 +692,8 @@ export default function DayPlanSidebar({
                                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--border-faint, #e5e7eb)',
                                 }}>
                                   {lockedIds.has(assignment.id)
-                                    ? (language === 'de' ? 'Klicken zum Entsperren' : 'Click to unlock')
-                                    : (language === 'de' ? 'Position bei Routenoptimierung beibehalten' : 'Keep position during route optimization')}
+                                    ? t('planner.clickToUnlock')
+                                    : t('planner.keepPosition')}
                                 </div>
                               )}
                             </div>
@@ -706,28 +709,36 @@ export default function DayPlanSidebar({
                                 {place.place_time && (
                                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, color: 'var(--text-faint)', fontWeight: 400, marginLeft: 6 }}>
                                     <Clock size={9} strokeWidth={2} />
-                                    {formatTime(place.place_time, locale, timeFormat)}
+                                    {formatTime(place.place_time, locale, timeFormat)}{place.end_time ? ` – ${formatTime(place.end_time, locale, timeFormat)}` : ''}
                                   </span>
                                 )}
                               </div>
-                              {(place.description || place.address || cat?.name) && !hasReservation && (
+                              {(place.description || place.address || cat?.name) && (
                                 <div style={{ marginTop: 2 }}>
                                   <span style={{ fontSize: 10, color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', lineHeight: 1.2 }}>
                                     {place.description || place.address || cat?.name}
                                   </span>
                                 </div>
                               )}
-                              {hasReservation && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 2 }}>
-                                  <span style={{ fontSize: 10, color: isConfirmed ? '#059669' : '#d97706', display: 'flex', alignItems: 'center', gap: 2, fontWeight: 600 }}>
-                                    {isConfirmed ? <><CheckCircle2 size={10} />
-                                      {place.reservation_datetime
-                                        ? `Res. ${formatTime(new Date(place.reservation_datetime).toTimeString().slice(0,5), locale, timeFormat)}`
-                                        : place.place_time ? `Res. ${formatTime(place.place_time, locale, timeFormat)}` : t('dayplan.confirmed')}
-                                    </> : <><AlertCircle size={10} />{t('dayplan.pendingRes')}</>}
-                                  </span>
-                                </div>
-                              )}
+                              {(() => {
+                                const res = reservations.find(r => r.assignment_id === assignment.id)
+                                if (!res) return null
+                                const confirmed = res.status === 'confirmed'
+                                return (
+                                  <div style={{ marginTop: 3, display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 5, fontSize: 9, fontWeight: 600,
+                                    background: confirmed ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)',
+                                    color: confirmed ? '#16a34a' : '#d97706',
+                                  }}>
+                                    {(() => { const RI = RES_ICONS[res.type] || Ticket; return <RI size={8} /> })()}
+                                    <span className="hidden sm:inline">{confirmed ? t('planner.resConfirmed') : t('planner.resPending')}</span>
+                                    {res.reservation_time && (
+                                      <span style={{ fontWeight: 400 }}>
+                                        {new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </div>
                             <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
                               <button onClick={moveUp} disabled={placeIdx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: placeIdx === 0 ? 'default' : 'pointer', color: placeIdx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
@@ -855,18 +866,6 @@ export default function DayPlanSidebar({
                   {/* Routen-Werkzeuge (ausgewählter Tag, 2+ Orte) */}
                   {isSelected && getDayAssignments(day.id).length >= 2 && (
                     <div style={{ padding: '10px 16px 12px', borderTop: '1px solid var(--border-faint)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                      <div style={{ display: 'flex', background: 'var(--bg-hover)', borderRadius: 8, padding: 2, gap: 2 }}>
-                        {TRANSPORT_MODES.map(m => (
-                          <button key={m.value} onClick={() => setTransportMode(m.value)} style={{
-                            flex: 1, padding: '4px 0', fontSize: 11, fontWeight: transportMode === m.value ? 600 : 400,
-                            background: transportMode === m.value ? 'var(--bg-card)' : 'transparent',
-                            border: 'none', borderRadius: 6, cursor: 'pointer', color: transportMode === m.value ? 'var(--text-primary)' : 'var(--text-muted)',
-                            boxShadow: transportMode === m.value ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                            fontFamily: 'inherit',
-                          }}>{m.label}</button>
-                        ))}
-                      </div>
-
                       {routeInfo && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: 12, fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-hover)', borderRadius: 8, padding: '5px 10px' }}>
                           <span>{routeInfo.distance}</span>

@@ -48,7 +48,7 @@ router.get('/list', (req, res) => {
 
     res.json({ backups: files });
   } catch (err) {
-    res.status(500).json({ error: 'Fehler beim Laden der Backups' });
+    res.status(500).json({ error: 'Error loading backups' });
   }
 });
 
@@ -100,7 +100,7 @@ router.post('/create', async (req, res) => {
   } catch (err) {
     console.error('Backup error:', err);
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-    res.status(500).json({ error: 'Fehler beim Erstellen des Backups' });
+    res.status(500).json({ error: 'Error creating backup' });
   }
 });
 
@@ -115,7 +115,7 @@ router.get('/download/:filename', (req, res) => {
 
   const filePath = path.join(backupsDir, filename);
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Backup nicht gefunden' });
+    return res.status(404).json({ error: 'Backup not found' });
   }
 
   res.download(filePath, filename);
@@ -132,7 +132,7 @@ async function restoreFromZip(zipPath, res) {
     const extractedDb = path.join(extractDir, 'travel.db');
     if (!fs.existsSync(extractedDb)) {
       fs.rmSync(extractDir, { recursive: true, force: true });
-      return res.status(400).json({ error: 'Ungültiges Backup: travel.db nicht gefunden' });
+      return res.status(400).json({ error: 'Invalid backup: travel.db not found' });
     }
 
     // Step 1: close DB connection BEFORE touching the file (required on Windows)
@@ -173,7 +173,7 @@ async function restoreFromZip(zipPath, res) {
   } catch (err) {
     console.error('Restore error:', err);
     if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
-    if (!res.headersSent) res.status(500).json({ error: err.message || 'Fehler beim Wiederherstellen' });
+    if (!res.headersSent) res.status(500).json({ error: err.message || 'Error restoring backup' });
   }
 }
 
@@ -185,7 +185,7 @@ router.post('/restore/:filename', async (req, res) => {
   }
   const zipPath = path.join(backupsDir, filename);
   if (!fs.existsSync(zipPath)) {
-    return res.status(404).json({ error: 'Backup nicht gefunden' });
+    return res.status(404).json({ error: 'Backup not found' });
   }
   await restoreFromZip(zipPath, res);
 });
@@ -195,13 +195,13 @@ const uploadTmp = multer({
   dest: path.join(dataDir, 'tmp/'),
   fileFilter: (req, file, cb) => {
     if (file.originalname.endsWith('.zip')) cb(null, true);
-    else cb(new Error('Nur ZIP-Dateien erlaubt'));
+    else cb(new Error('Only ZIP files allowed'));
   },
   limits: { fileSize: 500 * 1024 * 1024 },
 });
 
 router.post('/upload-restore', uploadTmp.single('backup'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Keine Datei hochgeladen' });
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const zipPath = req.file.path;
   await restoreFromZip(zipPath, res);
   if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
@@ -235,7 +235,7 @@ router.delete('/:filename', (req, res) => {
 
   const filePath = path.join(backupsDir, filename);
   if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Backup nicht gefunden' });
+    return res.status(404).json({ error: 'Backup not found' });
   }
 
   fs.unlinkSync(filePath);

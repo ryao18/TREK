@@ -25,17 +25,17 @@ export const CATEGORY_ICON_MAP = {
 }
 
 export const ICON_LABELS = {
-  MapPin: 'Pin', Building2: 'Gebäude', BedDouble: 'Hotel', UtensilsCrossed: 'Restaurant',
-  Landmark: 'Sehenswürdigkeit', ShoppingBag: 'Shopping', Bus: 'Bus', Train: 'Zug',
-  Car: 'Auto', Plane: 'Flugzeug', Ship: 'Schiff', Bike: 'Fahrrad',
-  Activity: 'Aktivität', Dumbbell: 'Fitness', Mountain: 'Berg', Tent: 'Camping',
-  Anchor: 'Hafen', Coffee: 'Café', Beer: 'Bar', Wine: 'Wein', Utensils: 'Essen',
-  Camera: 'Foto', Music: 'Musik', Theater: 'Theater', Ticket: 'Events',
-  TreePine: 'Natur', Waves: 'Strand', Leaf: 'Grün', Flower2: 'Garten', Sun: 'Sonne',
-  Globe: 'Welt', Compass: 'Erkundung', Flag: 'Flagge', Navigation: 'Navigation', Map: 'Karte',
-  Church: 'Kirche', Library: 'Museum', Store: 'Markt', Home: 'Unterkunft', Cross: 'Medizin',
-  Heart: 'Favorit', Star: 'Top', CreditCard: 'Bank', Wifi: 'Internet',
-  Luggage: 'Gepäck', Backpack: 'Rucksack', Zap: 'Abenteuer',
+  MapPin: 'Pin', Building2: 'Building', BedDouble: 'Hotel', UtensilsCrossed: 'Restaurant',
+  Landmark: 'Attraction', ShoppingBag: 'Shopping', Bus: 'Bus', Train: 'Train',
+  Car: 'Car', Plane: 'Plane', Ship: 'Ship', Bike: 'Bicycle',
+  Activity: 'Activity', Dumbbell: 'Fitness', Mountain: 'Mountain', Tent: 'Camping',
+  Anchor: 'Harbor', Coffee: 'Cafe', Beer: 'Bar', Wine: 'Wine', Utensils: 'Food',
+  Camera: 'Photo', Music: 'Music', Theater: 'Theater', Ticket: 'Events',
+  TreePine: 'Nature', Waves: 'Beach', Leaf: 'Green', Flower2: 'Garden', Sun: 'Sun',
+  Globe: 'World', Compass: 'Explore', Flag: 'Flag', Navigation: 'Navigation', Map: 'Map',
+  Church: 'Church', Library: 'Museum', Store: 'Market', Home: 'Accommodation', Cross: 'Medicine',
+  Heart: 'Favorite', Star: 'Top', CreditCard: 'Bank', Wifi: 'Internet',
+  Luggage: 'Luggage', Backpack: 'Backpack', Zap: 'Adventure',
 }
 
 export function getCategoryIcon(iconName) {

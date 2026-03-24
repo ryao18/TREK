@@ -55,9 +55,9 @@ async function runBackup() {
       if (fs.existsSync(uploadsDir)) archive.directory(uploadsDir, 'uploads');
       archive.finalize();
     });
-    console.log(`[Auto-Backup] Erstellt: ${filename}`);
+    console.log(`[Auto-Backup] Created: ${filename}`);
   } catch (err) {
-    console.error('[Auto-Backup] Fehler:', err.message);
+    console.error('[Auto-Backup] Error:', err.message);
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
     return;
   }
@@ -77,11 +77,11 @@ function cleanupOldBackups(keepDays) {
       const stat = fs.statSync(filePath);
       if (stat.birthtimeMs < cutoff) {
         fs.unlinkSync(filePath);
-        console.log(`[Auto-Backup] Altes Backup gelöscht: ${file}`);
+        console.log(`[Auto-Backup] Old backup deleted: ${file}`);
       }
     }
   } catch (err) {
-    console.error('[Auto-Backup] Bereinigungsfehler:', err.message);
+    console.error('[Auto-Backup] Cleanup error:', err.message);
   }
 }
 
@@ -93,13 +93,13 @@ function start() {
 
   const settings = loadSettings();
   if (!settings.enabled) {
-    console.log('[Auto-Backup] Deaktiviert');
+    console.log('[Auto-Backup] Disabled');
     return;
   }
 
   const expression = CRON_EXPRESSIONS[settings.interval] || CRON_EXPRESSIONS.daily;
   currentTask = cron.schedule(expression, runBackup);
-  console.log(`[Auto-Backup] Geplant: ${settings.interval} (${expression}), Aufbewahrung: ${settings.keep_days === 0 ? 'immer' : settings.keep_days + ' Tage'}`);
+  console.log(`[Auto-Backup] Scheduled: ${settings.interval} (${expression}), retention: ${settings.keep_days === 0 ? 'forever' : settings.keep_days + ' days'}`);
 }
 
 // Demo mode: hourly reset of demo user data

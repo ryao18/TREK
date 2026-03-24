@@ -26,7 +26,7 @@ export const useAuthStore = create((set, get) => ({
       connect(data.token)
       return data
     } catch (err) {
-      const error = err.response?.data?.error || 'Anmeldung fehlgeschlagen'
+      const error = err.response?.data?.error || 'Login failed'
       set({ isLoading: false, error })
       throw new Error(error)
     }
@@ -47,7 +47,7 @@ export const useAuthStore = create((set, get) => ({
       connect(data.token)
       return data
     } catch (err) {
-      const error = err.response?.data?.error || 'Registrierung fehlgeschlagen'
+      const error = err.response?.data?.error || 'Registration failed'
       set({ isLoading: false, error })
       throw new Error(error)
     }
@@ -97,7 +97,7 @@ export const useAuthStore = create((set, get) => ({
         user: { ...state.user, maps_api_key: key || null }
       }))
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Speichern des API-Schlüssels')
+      throw new Error(err.response?.data?.error || 'Error saving API key')
     }
   },
 
@@ -106,7 +106,7 @@ export const useAuthStore = create((set, get) => ({
       const data = await authApi.updateApiKeys(keys)
       set({ user: data.user })
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Speichern der API-Schlüssel')
+      throw new Error(err.response?.data?.error || 'Error saving API keys')
     }
   },
 
@@ -115,7 +115,7 @@ export const useAuthStore = create((set, get) => ({
       const data = await authApi.updateSettings(profileData)
       set({ user: data.user })
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren des Profils')
+      throw new Error(err.response?.data?.error || 'Error updating profile')
     }
   },
 
@@ -156,7 +156,7 @@ export const useAuthStore = create((set, get) => ({
       connect(data.token)
       return data
     } catch (err) {
-      const error = err.response?.data?.error || 'Demo-Login fehlgeschlagen'
+      const error = err.response?.data?.error || 'Demo login failed'
       set({ isLoading: false, error })
       throw new Error(error)
     }

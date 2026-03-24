@@ -13,19 +13,20 @@ import SettingsPage from './pages/SettingsPage'
 import VacayPage from './pages/VacayPage'
 import AtlasPage from './pages/AtlasPage'
 import { ToastContainer } from './components/shared/Toast'
-import { TranslationProvider } from './i18n'
+import { TranslationProvider, useTranslation } from './i18n'
 import DemoBanner from './components/Layout/DemoBanner'
 import { authApi } from './api/client'
 
 function ProtectedRoute({ children, adminRequired = false }) {
   const { isAuthenticated, user, isLoading } = useAuthStore()
+  const { t } = useTranslation()
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
-          <p className="text-slate-500 text-sm">Wird geladen...</p>
+          <p className="text-slate-500 text-sm">{t('common.loading')}</p>
         </div>
       </div>
     )
@@ -80,15 +81,22 @@ export default function App() {
 
   // Apply dark mode class to <html> + update PWA theme-color
   useEffect(() => {
-    if (settings.dark_mode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
+    const mode = settings.dark_mode
+    const applyDark = (isDark) => {
+      document.documentElement.classList.toggle('dark', isDark)
+      const meta = document.querySelector('meta[name="theme-color"]')
+      if (meta) meta.setAttribute('content', isDark ? '#09090b' : '#ffffff')
     }
-    const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) {
-      meta.setAttribute('content', settings.dark_mode ? '#09090b' : '#ffffff')
+
+    if (mode === 'auto') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      applyDark(mq.matches)
+      const handler = (e) => applyDark(e.matches)
+      mq.addEventListener('change', handler)
+      return () => mq.removeEventListener('change', handler)
     }
+    // Support legacy boolean + new string values
+    applyDark(mode === true || mode === 'dark')
   }, [settings.dark_mode])
 
   return (

@@ -5,8 +5,10 @@ import { tripsApi, placesApi } from '../api/client'
 import Navbar from '../components/Layout/Navbar'
 import FileManager from '../components/Files/FileManager'
 import { ArrowLeft } from 'lucide-react'
+import { useTranslation } from '../i18n'
 
 export default function FilesPage() {
+  const { t } = useTranslation()
   const { id: tripId } = useParams()
   const navigate = useNavigate()
   const tripStore = useTripStore()
@@ -69,7 +71,7 @@ export default function FilesPage() {
               className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
             >
               <ArrowLeft className="w-4 h-4" />
-              Zurück zur Planung
+              {t('common.backToPlanning')}
             </Link>
           </div>
 

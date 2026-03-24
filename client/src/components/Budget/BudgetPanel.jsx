@@ -163,7 +163,7 @@ export default function BudgetPanel({ tripId }) {
   useEffect(() => { if (tripId) loadBudgetItems(tripId) }, [tripId])
 
   const grouped = useMemo(() => (budgetItems || []).reduce((acc, item) => {
-    const cat = item.category || 'Sonstiges'
+    const cat = item.category || 'Other'
     if (!acc[cat]) acc[cat] = []
     acc[cat].push(item)
     return acc

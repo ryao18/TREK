@@ -13,20 +13,7 @@ import { PlaceDetailPanel } from './PlaceDetailPanel'
 import WeatherWidget from '../Weather/WeatherWidget'
 import { useTripStore } from '../../store/tripStore'
 import { useToast } from '../shared/Toast'
-
-const SEGMENTS = [
-  { id: 'plan', label: 'Plan' },
-  { id: 'orte', label: 'Orte' },
-  { id: 'reservierungen', label: 'Buchungen' },
-  { id: 'packliste', label: 'Packliste' },
-  { id: 'dokumente', label: 'Dokumente' },
-]
-
-const TRANSPORT_MODES = [
-  { value: 'driving', label: 'Auto', icon: '🚗' },
-  { value: 'walking', label: 'Fuß', icon: '🚶' },
-  { value: 'cycling', label: 'Rad', icon: '🚲' },
-]
+import { useTranslation } from '../../i18n'
 
 function formatShortDate(dateStr) {
   if (!dateStr) return ''
@@ -53,7 +40,6 @@ export default function PlannerSidebar({
   const [activeSegment, setActiveSegment] = useState('plan')
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [transportMode, setTransportMode] = useState('driving')
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false)
   const [showReservationModal, setShowReservationModal] = useState(false)
   const [editingReservation, setEditingReservation] = useState(null)
@@ -65,6 +51,16 @@ export default function PlannerSidebar({
 
   const tripStore = useTripStore()
   const toast = useToast()
+  const { t } = useTranslation()
+
+  const SEGMENTS = [
+    { id: 'plan', label: 'Plan' },
+    { id: 'orte', label: t('planner.places') },
+    { id: 'reservierungen', label: t('planner.bookings') },
+    { id: 'packliste', label: t('planner.packingList') },
+    { id: 'dokumente', label: t('planner.documents') },
+  ]
+
   const dayNotes = tripStore.dayNotes || {}
   const placesListRef = useRef(null)
   const [placesListHeight, setPlacesListHeight] = useState(400)
@@ -135,17 +131,17 @@ export default function PlannerSidebar({
       .filter(p => p?.lat && p?.lng)
       .map(p => ({ lat: p.lat, lng: p.lng }))
     if (waypoints.length < 2) {
-      toast.error('Mindestens 2 Orte mit Koordinaten benötigt')
+      toast.error(t('planner.minTwoPlaces'))
       return
     }
     setIsCalculatingRoute(true)
     try {
-      const result = await calculateRoute(waypoints, transportMode)
+      const result = await calculateRoute(waypoints, 'walking')
       setRouteInfo({ distance: result.distanceText, duration: result.durationText })
       onRouteCalculated?.(result)
-      toast.success('Route berechnet')
+      toast.success(t('planner.routeCalculated'))
     } catch {
-      toast.error('Route konnte nicht berechnet werden')
+      toast.error(t('planner.routeCalcFailed'))
     } finally {
       setIsCalculatingRoute(false)
     }
@@ -163,14 +159,14 @@ export default function PlannerSidebar({
       if (!reorderedIds.includes(a.id)) reorderedIds.push(a.id)
     }
     await onReorder(selectedDayId, reorderedIds)
-    toast.success('Route optimiert')
+    toast.success(t('planner.routeOptimized'))
   }
 
   const handleOpenGoogleMaps = () => {
     const ps = selectedDayAssignments.map(a => a.place).filter(p => p?.lat && p?.lng)
     const url = generateGoogleMapsUrl(ps)
     if (url) window.open(url, '_blank')
-    else toast.error('Keine Orte mit Koordinaten vorhanden')
+    else toast.error(t('planner.noGeoPlaces'))
   }
 
   const handleMoveUp = async (dayId, idx) => {
@@ -270,10 +266,10 @@ export default function PlannerSidebar({
     try {
       if (editingReservation) {
         await tripStore.updateReservation(tripId, editingReservation.id, data)
-        toast.success('Reservierung aktualisiert')
+        toast.success(t('planner.reservationUpdated'))
       } else {
         await tripStore.addReservation(tripId, { ...data, day_id: selectedDayId || null })
-        toast.success('Reservierung hinzugefügt')
+        toast.success(t('planner.reservationAdded'))
       }
       setShowReservationModal(false)
     } catch (err) {
@@ -282,10 +278,10 @@ export default function PlannerSidebar({
   }
 
   const handleDeleteReservation = async (id) => {
-    if (!confirm('Reservierung löschen?')) return
+    if (!confirm(t('planner.confirmDeleteReservation'))) return
     try {
       await tripStore.deleteReservation(tripId, id)
-      toast.success('Reservierung gelöscht')
+      toast.success(t('planner.reservationDeleted'))
     } catch (err) {
       toast.error(err.message)
     }
@@ -306,7 +302,7 @@ export default function PlannerSidebar({
               {trip.start_date && formatShortDate(trip.start_date)}
               {trip.start_date && trip.end_date && ' – '}
               {trip.end_date && formatShortDate(trip.end_date)}
-              {days.length > 0 && ` · ${days.length} Tage`}
+              {days.length > 0 && ` · ${days.length} ${t('planner.days')}`}
             </p>
           )}
         </button>
@@ -348,18 +344,18 @@ export default function PlannerSidebar({
               </div>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-medium ${selectedDayId === null ? 'text-slate-900' : 'text-gray-700'}`}>
-                  Alle Orte
+                  {t('planner.allPlaces')}
                 </p>
-                <p className="text-xs text-gray-400">{places.length} Orte gesamt</p>
+                <p className="text-xs text-gray-400">{t('planner.totalPlaces', { n: places.length })}</p>
               </div>
             </button>
 
             {days.length === 0 ? (
               <div className="px-4 py-10 text-center">
                 <CalendarDays className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                <p className="text-sm text-gray-400">Noch keine Tage geplant</p>
+                <p className="text-sm text-gray-400">{t('planner.noDaysPlanned')}</p>
                 <button onClick={onEditTrip} className="mt-2 text-slate-700 text-sm">
-                  Reise bearbeiten →
+                  {t('planner.editTrip')}
                 </button>
               </div>
             ) : (
@@ -396,7 +392,7 @@ export default function PlannerSidebar({
                           </p>
                           {da.length > 0 && (
                             <span className="text-xs text-gray-400 flex-shrink-0">
-                              {da.length} {da.length === 1 ? 'Ort' : 'Orte'}
+                              {da.length === 1 ? t('planner.placeOne') : t('planner.placeN', { n: da.length })}
                             </span>
                           )}
                         </div>
@@ -410,7 +406,7 @@ export default function PlannerSidebar({
                       </div>
                       <button
                         onClick={e => { e.stopPropagation(); openAddNote(day.id); if (!isExpanded) toggleDay(day.id) }}
-                        title="Notiz hinzufügen"
+                        title={t('planner.addNote')}
                         className="p-1 text-gray-300 hover:text-amber-500 flex-shrink-0 transition-colors"
                       >
                         <FileText className="w-4 h-4" />
@@ -430,12 +426,12 @@ export default function PlannerSidebar({
                       <div className="bg-gray-50/40">
                         {merged.length === 0 && !dayNoteUi ? (
                           <div className="px-4 py-4 text-center">
-                            <p className="text-xs text-gray-400">Keine Einträge für diesen Tag</p>
+                            <p className="text-xs text-gray-400">{t('planner.noEntries')}</p>
                             <button
                               onClick={() => { onSelectDay(day.id); setActiveSegment('orte') }}
                               className="mt-1 text-xs text-slate-700"
                             >
-                              + Ort hinzufügen
+                              {t('planner.addPlaceShort')}
                             </button>
                           </div>
                         ) : (
@@ -478,19 +474,10 @@ export default function PlannerSidebar({
                                       )}
                                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                         {place.place_time && (
-                                          <span className="text-[11px] text-slate-600 font-medium">{place.place_time}</span>
+                                          <span className="text-[11px] text-slate-600 font-medium">{place.place_time}{place.end_time ? ` – ${place.end_time}` : ''}</span>
                                         )}
                                         {place.price > 0 && (
                                           <span className="text-[11px] text-gray-400">{place.price} {place.currency || currency}</span>
-                                        )}
-                                        {place.reservation_status && place.reservation_status !== 'none' && (
-                                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                            place.reservation_status === 'confirmed'
-                                              ? 'bg-emerald-50 text-emerald-600'
-                                              : 'bg-amber-50 text-amber-600'
-                                          }`}>
-                                            {place.reservation_status === 'confirmed' ? '✓ Bestätigt' : '⏳ Res. ausstehend'}
-                                          </span>
                                         )}
                                       </div>
                                     </div>
@@ -524,7 +511,7 @@ export default function PlannerSidebar({
                                         type="text"
                                         value={dayNoteUi.time}
                                         onChange={e => setNoteUi(prev => ({ ...prev, [day.id]: { ...prev[day.id], time: e.target.value } }))}
-                                        placeholder="Zeit (optional)"
+                                        placeholder={t('planner.noteTimePlaceholder')}
                                         className="w-24 text-[11px] border border-amber-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-amber-300"
                                       />
                                     </div>
@@ -533,16 +520,16 @@ export default function PlannerSidebar({
                                       value={dayNoteUi.text}
                                       onChange={e => setNoteUi(prev => ({ ...prev, [day.id]: { ...prev[day.id], text: e.target.value } }))}
                                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote(day.id) } if (e.key === 'Escape') cancelNote(day.id) }}
-                                      placeholder="Notiz…"
+                                      placeholder={t('planner.notePlaceholder')}
                                       rows={2}
                                       className="w-full text-[12px] border border-amber-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-300 resize-none"
                                     />
                                     <div className="flex gap-1.5 mt-1.5">
                                       <button onClick={() => saveNote(day.id)} className="flex items-center gap-1 text-[11px] bg-amber-500 text-white px-2.5 py-1 rounded-lg hover:bg-amber-600">
-                                        <Check className="w-3 h-3" /> Speichern
+                                        <Check className="w-3 h-3" /> {t('common.save')}
                                       </button>
                                       <button onClick={() => cancelNote(day.id)} className="text-[11px] text-gray-500 px-2.5 py-1 rounded-lg hover:bg-gray-100">
-                                        Abbrechen
+                                        {t('common.cancel')}
                                       </button>
                                     </div>
                                   </div>
@@ -587,7 +574,7 @@ export default function PlannerSidebar({
                                 type="text"
                                 value={dayNoteUi.time}
                                 onChange={e => setNoteUi(prev => ({ ...prev, [day.id]: { ...prev[day.id], time: e.target.value } }))}
-                                placeholder="Zeit (optional)"
+                                placeholder={t('planner.noteTimePlaceholder')}
                                 className="w-24 text-[11px] border border-amber-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-amber-300"
                               />
                             </div>
@@ -596,16 +583,16 @@ export default function PlannerSidebar({
                               value={dayNoteUi.text}
                               onChange={e => setNoteUi(prev => ({ ...prev, [day.id]: { ...prev[day.id], text: e.target.value } }))}
                               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote(day.id) } if (e.key === 'Escape') cancelNote(day.id) }}
-                              placeholder="z.B. S3 um 14:30 ab Hauptbahnhof, Fähre ab Pier 7, Mittagspause…"
+                              placeholder={t('planner.noteExamplePlaceholder')}
                               rows={2}
                               className="w-full text-[12px] border border-amber-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-300 resize-none"
                             />
                             <div className="flex gap-1.5 mt-1.5">
                               <button onClick={() => saveNote(day.id)} className="flex items-center gap-1 text-[11px] bg-amber-500 text-white px-2.5 py-1 rounded-lg hover:bg-amber-600">
-                                <Check className="w-3 h-3" /> Hinzufügen
+                                <Check className="w-3 h-3" /> {t('common.add')}
                               </button>
                               <button onClick={() => cancelNote(day.id)} className="text-[11px] text-gray-500 px-2.5 py-1 rounded-lg hover:bg-gray-100">
-                                Abbrechen
+                                {t('common.cancel')}
                               </button>
                             </div>
                           </div>
@@ -618,7 +605,7 @@ export default function PlannerSidebar({
                               className="flex items-center gap-1 text-[11px] text-amber-600 hover:text-amber-700 py-1"
                             >
                               <FileText className="w-3 h-3" />
-                              Notiz hinzufügen
+                              {t('planner.addNote')}
                             </button>
                           </div>
                         )}
@@ -626,21 +613,6 @@ export default function PlannerSidebar({
                         {/* Route tools — only for the selected day */}
                         {isSelected && da.length >= 2 && (
                           <div className="px-4 py-3 space-y-2 border-t border-gray-100/60">
-                            <div className="flex bg-gray-100 rounded-[8px] p-0.5 gap-0.5">
-                              {TRANSPORT_MODES.map(m => (
-                                <button
-                                  key={m.value}
-                                  onClick={() => setTransportMode(m.value)}
-                                  className={`flex-1 py-1 text-[11px] rounded-[6px] transition-all ${
-                                    transportMode === m.value
-                                      ? 'bg-white shadow-sm text-gray-900 font-medium'
-                                      : 'text-gray-500'
-                                  }`}
-                                >
-                                  {m.icon} {m.label}
-                                </button>
-                              ))}
-                            </div>
                             {routeInfo && (
                               <div className="flex items-center justify-center gap-3 text-xs bg-slate-50 rounded-lg px-3 py-2">
                                 <span className="text-slate-900">🛣️ {routeInfo.distance}</span>
@@ -655,14 +627,14 @@ export default function PlannerSidebar({
                                 className="flex items-center justify-center gap-1.5 bg-slate-900 text-white text-xs py-2 rounded-lg hover:bg-slate-700 disabled:opacity-60 transition-colors"
                               >
                                 <Navigation className="w-3.5 h-3.5" />
-                                {isCalculatingRoute ? 'Berechne...' : 'Route'}
+                                {isCalculatingRoute ? t('planner.calculating') : t('planner.route')}
                               </button>
                               <button
                                 onClick={handleOptimizeRoute}
                                 className="flex items-center justify-center gap-1.5 bg-emerald-600 text-white text-xs py-2 rounded-lg hover:bg-emerald-700 transition-colors"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
-                                Optimieren
+                                {t('planner.optimize')}
                               </button>
                             </div>
                             <button
@@ -670,7 +642,7 @@ export default function PlannerSidebar({
                               className="w-full flex items-center justify-center gap-1.5 border border-gray-200 text-gray-600 text-xs py-2 rounded-lg hover:bg-gray-50 transition-colors"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
-                              In Google Maps öffnen
+                              {t('planner.openGoogleMaps')}
                             </button>
                           </div>
                         )}
@@ -683,7 +655,7 @@ export default function PlannerSidebar({
 
             {totalCost > 0 && (
               <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-xs text-gray-500">Gesamtkosten</span>
+                <span className="text-xs text-gray-500">{t('planner.totalCost')}</span>
                 <span className="text-sm font-semibold text-gray-800">{totalCost.toFixed(2)} {currency}</span>
               </div>
             )}
@@ -700,7 +672,7 @@ export default function PlannerSidebar({
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Orte suchen…"
+                  placeholder={t('planner.searchPlaces')}
                   className="w-full pl-8 pr-8 py-2 bg-gray-100 rounded-[10px] text-sm focus:outline-none focus:bg-white focus:ring-2 focus:ring-slate-400 transition-colors"
                 />
                 {search && (
@@ -715,7 +687,7 @@ export default function PlannerSidebar({
                   onChange={e => setCategoryFilter(e.target.value)}
                   className="flex-1 bg-gray-100 rounded-lg text-xs py-2 px-2 focus:outline-none text-gray-600"
                 >
-                  <option value="">Alle Kategorien</option>
+                  <option value="">{t('planner.allCategories')}</option>
                   {categories.map(c => (
                     <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                   ))}
@@ -725,7 +697,7 @@ export default function PlannerSidebar({
                   className="flex items-center gap-1 bg-slate-900 text-white text-xs px-3 py-2 rounded-lg hover:bg-slate-700 whitespace-nowrap transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Neu
+                  {t('planner.new')}
                 </button>
               </div>
             </div>
@@ -733,9 +705,9 @@ export default function PlannerSidebar({
             {filteredPlaces.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <span className="text-3xl mb-2">📍</span>
-                <p className="text-sm">Keine Orte gefunden</p>
+                <p className="text-sm">{t('planner.noPlacesFound')}</p>
                 <button onClick={onAddPlace} className="mt-3 text-slate-700 text-sm">
-                  Ersten Ort hinzufügen
+                  {t('planner.addFirstPlace')}
                 </button>
               </div>
             ) : (
@@ -782,7 +754,7 @@ export default function PlannerSidebar({
                                     onClick={e => { e.stopPropagation(); onAssignToDay(place.id) }}
                                     className="text-[11px] text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors"
                                   >
-                                    + Tag
+                                    {t('planner.addToDay')}
                                   </button>
                                 )
                               }
@@ -805,7 +777,7 @@ export default function PlannerSidebar({
           <div>
             <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
               <h3 className="font-medium text-sm text-gray-900">
-                Reservierungen
+                {t('planner.reservations')}
                 {selectedDay && <span className="text-gray-400 font-normal"> · Tag {selectedDay.day_number}</span>}
               </h3>
               <button
@@ -813,13 +785,13 @@ export default function PlannerSidebar({
                 className="flex items-center gap-1 bg-slate-900 text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Hinzufügen
+                {t('common.add')}
               </button>
             </div>
             {filteredReservations.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <span className="text-3xl mb-2">🎫</span>
-                <p className="text-sm">Keine Reservierungen</p>
+                <p className="text-sm">{t('planner.noReservations')}</p>
               </div>
             ) : (
               <div className="p-3 space-y-2.5">

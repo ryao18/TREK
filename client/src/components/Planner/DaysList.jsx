@@ -1,6 +1,7 @@
 import React from 'react'
 import { CalendarDays, MapPin, Plus } from 'lucide-react'
 import WeatherWidget from '../Weather/WeatherWidget'
+import { useTranslation } from '../../i18n'
 
 function formatDate(dateStr) {
   if (!dateStr) return null
@@ -20,6 +21,7 @@ function dayTotal(dayId, assignments) {
 }
 
 export function DaysList({ days, selectedDayId, onSelectDay, assignments, trip }) {
+  const { t } = useTranslation()
   const totalCost = days.reduce((sum, d) => sum + dayTotal(d.id, assignments), 0)
   const currency = trip?.currency || 'EUR'
 
@@ -27,8 +29,8 @@ export function DaysList({ days, selectedDayId, onSelectDay, assignments, trip }
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
-        <h2 className="text-sm font-semibold text-gray-700">Tagesplan</h2>
-        <p className="text-xs text-gray-400 mt-0.5">{days.length} Tage</p>
+        <h2 className="text-sm font-semibold text-gray-700">{t('planner.dayPlan')}</h2>
+        <p className="text-xs text-gray-400 mt-0.5">{t('planner.dayCount', { n: days.length })}</p>
       </div>
 
       {/* All places overview option */}
@@ -43,9 +45,9 @@ export function DaysList({ days, selectedDayId, onSelectDay, assignments, trip }
         <MapPin className={`w-4 h-4 flex-shrink-0 ${selectedDayId === null ? 'text-slate-900' : 'text-gray-400'}`} />
         <div>
           <p className={`text-sm font-medium ${selectedDayId === null ? 'text-slate-900' : 'text-gray-700'}`}>
-            Alle Orte
+            {t('planner.allPlaces')}
           </p>
-          <p className="text-xs text-gray-400">Gesamtübersicht</p>
+          <p className="text-xs text-gray-400">{t('planner.overview')}</p>
         </div>
       </button>
 
@@ -54,8 +56,8 @@ export function DaysList({ days, selectedDayId, onSelectDay, assignments, trip }
         {days.length === 0 ? (
           <div className="px-4 py-6 text-center">
             <CalendarDays className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-xs text-gray-400">Noch keine Tage</p>
-            <p className="text-xs text-gray-300 mt-1">Reise bearbeiten um Tage hinzuzufügen</p>
+            <p className="text-xs text-gray-400">{t('planner.noDays')}</p>
+            <p className="text-xs text-gray-300 mt-1">{t('planner.editTripToAddDays')}</p>
           </div>
         ) : (
           days.map((day, index) => {
@@ -96,7 +98,7 @@ export function DaysList({ days, selectedDayId, onSelectDay, assignments, trip }
                     <div className="flex items-center gap-3 mt-1.5">
                       {placeCount > 0 && (
                         <span className="text-xs text-gray-400">
-                          {placeCount} {placeCount === 1 ? 'Ort' : 'Orte'}
+                          {placeCount === 1 ? t('planner.placeOne') : t('planner.placeN', { n: placeCount })}
                         </span>
                       )}
                       {cost > 0 && (
@@ -124,7 +126,7 @@ export function DaysList({ days, selectedDayId, onSelectDay, assignments, trip }
       {totalCost > 0 && (
         <div className="flex-shrink-0 border-t border-gray-100 px-4 py-3 bg-gray-50">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500">Gesamtkosten</span>
+            <span className="text-xs text-gray-500">{t('planner.totalCost')}</span>
             <span className="text-sm font-semibold text-gray-800">
               {totalCost.toFixed(2)} {currency}
             </span>

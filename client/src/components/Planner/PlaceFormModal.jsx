@@ -1,20 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Modal from '../shared/Modal'
 import CustomSelect from '../shared/CustomSelect'
 import { mapsApi } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../shared/Toast'
-import { Search } from 'lucide-react'
+import { Search, Paperclip, X } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import CustomTimePicker from '../shared/CustomTimePicker'
-import { CustomDateTimePicker } from '../shared/CustomDateTimePicker'
-
-const TRANSPORT_MODES = [
-  { value: 'walking', labelKey: 'places.transport.walking' },
-  { value: 'driving', labelKey: 'places.transport.driving' },
-  { value: 'cycling', labelKey: 'places.transport.cycling' },
-  { value: 'transit', labelKey: 'places.transport.transit' },
-]
 
 const DEFAULT_FORM = {
   name: '',
@@ -24,11 +16,9 @@ const DEFAULT_FORM = {
   lng: '',
   category_id: '',
   place_time: '',
+  end_time: '',
   notes: '',
   transport_mode: 'walking',
-  reservation_status: 'none',
-  reservation_notes: '',
-  reservation_datetime: '',
   website: '',
 }
 
@@ -43,6 +33,8 @@ export default function PlaceFormModal({
   const [newCategoryName, setNewCategoryName] = useState('')
   const [showNewCategory, setShowNewCategory] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState([])
+  const fileRef = useRef(null)
   const toast = useToast()
   const { t, language } = useTranslation()
   const { hasMapsKey } = useAuthStore()
@@ -57,16 +49,15 @@ export default function PlaceFormModal({
         lng: place.lng || '',
         category_id: place.category_id || '',
         place_time: place.place_time || '',
+        end_time: place.end_time || '',
         notes: place.notes || '',
         transport_mode: place.transport_mode || 'walking',
-        reservation_status: place.reservation_status || 'none',
-        reservation_notes: place.reservation_notes || '',
-        reservation_datetime: place.reservation_datetime || '',
         website: place.website || '',
       })
     } else {
       setForm(DEFAULT_FORM)
     }
+    setPendingFiles([])
   }, [place, isOpen])
 
   const handleChange = (field, value) => {
@@ -111,6 +102,30 @@ export default function PlaceFormModal({
     }
   }
 
+  const handleFileAdd = (e) => {
+    const files = Array.from(e.target.files || [])
+    setPendingFiles(prev => [...prev, ...files])
+    e.target.value = ''
+  }
+
+  const handleRemoveFile = (idx) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  // Paste support for files/images
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/') || item.type === 'application/pdf') {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) setPendingFiles(prev => [...prev, file])
+        return
+      }
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name.trim()) {
@@ -124,6 +139,7 @@ export default function PlaceFormModal({
         lat: form.lat ? parseFloat(form.lat) : null,
         lng: form.lng ? parseFloat(form.lng) : null,
         category_id: form.category_id || null,
+        _pendingFiles: pendingFiles.length > 0 ? pendingFiles : undefined,
       })
       onClose()
     } catch (err) {
@@ -140,7 +156,7 @@ export default function PlaceFormModal({
       title={place ? t('places.editPlace') : t('places.addPlace')}
       size="lg"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" onPaste={handlePaste}>
         {/* Place Search */}
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
           {!hasMapsKey && (
@@ -278,12 +294,21 @@ export default function PlaceFormModal({
         </div>
 
         {/* Time */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.formTime')}</label>
-          <CustomTimePicker
-            value={form.place_time}
-            onChange={v => handleChange('place_time', v)}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.startTime')}</label>
+            <CustomTimePicker
+              value={form.place_time}
+              onChange={v => handleChange('place_time', v)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.endTime')}</label>
+            <CustomTimePicker
+              value={form.end_time}
+              onChange={v => handleChange('end_time', v)}
+            />
+          </div>
         </div>
 
         {/* Website */}
@@ -298,45 +323,35 @@ export default function PlaceFormModal({
           />
         </div>
 
-        {/* Reservation */}
-        <div className="border border-gray-200 rounded-xl p-3 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <label className="block text-sm font-medium text-gray-700 shrink-0">{t('places.formReservation')}</label>
-            <div className="flex gap-2 flex-wrap">
-              {['none', 'pending', 'confirmed'].map(status => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => handleChange('reservation_status', status)}
-                  className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
-                    form.reservation_status === status
-                      ? status === 'confirmed' ? 'bg-emerald-600 text-white'
-                        : status === 'pending' ? 'bg-yellow-500 text-white'
-                        : 'bg-gray-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {status === 'none' ? t('common.none') : status === 'pending' ? t('reservations.pending') : t('reservations.confirmed')}
-                </button>
-              ))}
+        {/* File Attachments */}
+        {true && (
+          <div className="border border-gray-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">{t('files.title')}</label>
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors">
+                <Paperclip size={12} /> {t('files.attach')}
+              </button>
             </div>
+            <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileAdd} />
+            {pendingFiles.length > 0 && (
+              <div className="space-y-1">
+                {pendingFiles.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 text-xs">
+                    <Paperclip size={10} className="text-slate-400 shrink-0" />
+                    <span className="truncate flex-1 text-slate-600">{file.name}</span>
+                    <button type="button" onClick={() => handleRemoveFile(idx)} className="text-slate-400 hover:text-red-500 shrink-0">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {pendingFiles.length === 0 && (
+              <p className="text-xs text-slate-400">{t('files.pasteHint')}</p>
+            )}
           </div>
-          {form.reservation_status !== 'none' && (
-            <>
-              <CustomDateTimePicker
-                value={form.reservation_datetime}
-                onChange={v => handleChange('reservation_datetime', v)}
-              />
-              <textarea
-                value={form.reservation_notes}
-                onChange={e => handleChange('reservation_notes', e.target.value)}
-                rows={2}
-                placeholder={t('places.reservationNotesPlaceholder')}
-                className="form-input" style={{ resize: 'none' }}
-              />
-            </>
-          )}
-        </div>
+        )}
 
         {/* Actions */}
         <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">

@@ -6,7 +6,7 @@ import { useTranslation } from '../i18n'
 import Navbar from '../components/Layout/Navbar'
 import CustomSelect from '../components/shared/CustomSelect'
 import { useToast } from '../components/shared/Toast'
-import { Save, Map, Palette, User, Moon, Sun, Shield, Camera, Trash2, Lock } from 'lucide-react'
+import { Save, Map, Palette, User, Moon, Sun, Monitor, Shield, Camera, Trash2, Lock } from 'lucide-react'
 import { authApi, adminApi } from '../api/client'
 
 const MAP_PRESETS = [
@@ -208,30 +208,35 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>{t('settings.colorMode')}</label>
               <div className="flex gap-3">
                 {[
-                  { value: false, label: t('settings.light'), icon: Sun },
-                  { value: true, label: t('settings.dark'), icon: Moon },
-                ].map(opt => (
-                  <button
-                    key={String(opt.value)}
-                    onClick={async () => {
-                      try {
-                        await updateSetting('dark_mode', opt.value)
-                      } catch (e) { toast.error(e.message) }
-                    }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '10px 20px', borderRadius: 10, cursor: 'pointer',
-                      fontFamily: 'inherit', fontSize: 14, fontWeight: 500,
-                      border: settings.dark_mode === opt.value ? '2px solid var(--text-primary)' : '2px solid var(--border-primary)',
-                      background: settings.dark_mode === opt.value ? 'var(--bg-hover)' : 'var(--bg-card)',
-                      color: 'var(--text-primary)',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    <opt.icon size={16} />
-                    {opt.label}
-                  </button>
-                ))}
+                  { value: 'light', label: t('settings.light'), icon: Sun },
+                  { value: 'dark', label: t('settings.dark'), icon: Moon },
+                  { value: 'auto', label: t('settings.auto'), icon: Monitor },
+                ].map(opt => {
+                  const current = settings.dark_mode
+                  const isActive = current === opt.value || (opt.value === 'light' && current === false) || (opt.value === 'dark' && current === true)
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={async () => {
+                        try {
+                          await updateSetting('dark_mode', opt.value)
+                        } catch (e) { toast.error(e.message) }
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 20px', borderRadius: 10, cursor: 'pointer',
+                        fontFamily: 'inherit', fontSize: 14, fontWeight: 500,
+                        border: isActive ? '2px solid var(--text-primary)' : '2px solid var(--border-primary)',
+                        background: isActive ? 'var(--bg-hover)' : 'var(--bg-card)',
+                        color: 'var(--text-primary)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <opt.icon size={16} />
+                      {opt.label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 

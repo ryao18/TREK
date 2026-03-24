@@ -76,6 +76,17 @@ export const useTripStore = create((set, get) => ({
             }
           }
         }
+        case 'assignment:updated': {
+          const dayKey = String(payload.assignment.day_id)
+          return {
+            assignments: {
+              ...state.assignments,
+              [dayKey]: (state.assignments[dayKey] || []).map(a =>
+                a.id === payload.assignment.id ? { ...a, ...payload.assignment } : a
+              ),
+            }
+          }
+        }
         case 'assignment:deleted': {
           const dayKey = String(payload.dayId)
           return {
@@ -279,7 +290,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ places: [data.place, ...state.places] }))
       return data.place
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Hinzufügen des Ortes')
+      throw new Error(err.response?.data?.error || 'Error adding place')
     }
   },
 
@@ -297,7 +308,7 @@ export const useTripStore = create((set, get) => ({
       }))
       return data.place
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren des Ortes')
+      throw new Error(err.response?.data?.error || 'Error updating place')
     }
   },
 
@@ -314,7 +325,7 @@ export const useTripStore = create((set, get) => ({
         ),
       }))
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Löschen des Ortes')
+      throw new Error(err.response?.data?.error || 'Error deleting place')
     }
   },
 
@@ -322,9 +333,6 @@ export const useTripStore = create((set, get) => ({
     const state = get()
     const place = state.places.find(p => p.id === parseInt(placeId))
     if (!place) return
-
-    const existing = (state.assignments[String(dayId)] || []).find(a => a.place?.id === parseInt(placeId))
-    if (existing) return
 
     const tempId = Date.now() * -1
     const current = [...(state.assignments[String(dayId)] || [])]
@@ -347,9 +355,11 @@ export const useTripStore = create((set, get) => ({
 
     try {
       const data = await assignmentsApi.create(tripId, dayId, { place_id: placeId })
-      const newAssignment = position != null
-        ? { ...data.assignment, order_index: insertIdx }
-        : data.assignment
+      const newAssignment = {
+        ...data.assignment,
+        place: data.assignment.place || place,
+        order_index: position != null ? insertIdx : data.assignment.order_index,
+      }
       set(state => ({
         assignments: {
           ...state.assignments,
@@ -390,7 +400,7 @@ export const useTripStore = create((set, get) => ({
           [String(dayId)]: state.assignments[String(dayId)].filter(a => a.id !== tempId),
         }
       }))
-      throw new Error(err.response?.data?.error || 'Fehler beim Zuweisen des Ortes')
+      throw new Error(err.response?.data?.error || 'Error assigning place')
     }
   },
 
@@ -408,7 +418,7 @@ export const useTripStore = create((set, get) => ({
       await assignmentsApi.delete(tripId, dayId, assignmentId)
     } catch (err) {
       set({ assignments: prevAssignments })
-      throw new Error(err.response?.data?.error || 'Fehler beim Entfernen der Zuweisung')
+      throw new Error(err.response?.data?.error || 'Error removing assignment')
     }
   },
 
@@ -431,7 +441,7 @@ export const useTripStore = create((set, get) => ({
       await assignmentsApi.reorder(tripId, dayId, orderedIds)
     } catch (err) {
       set({ assignments: prevAssignments })
-      throw new Error(err.response?.data?.error || 'Fehler beim Neuanordnen')
+      throw new Error(err.response?.data?.error || 'Error reordering')
     }
   },
 
@@ -464,7 +474,7 @@ export const useTripStore = create((set, get) => ({
       }
     } catch (err) {
       set({ assignments: prevAssignments })
-      throw new Error(err.response?.data?.error || 'Fehler beim Verschieben der Zuweisung')
+      throw new Error(err.response?.data?.error || 'Error moving assignment')
     }
   },
 
@@ -498,7 +508,7 @@ export const useTripStore = create((set, get) => ({
           [String(fromDayId)]: [...(s.dayNotes[String(fromDayId)] || []), note],
         }
       }))
-      throw new Error(err.response?.data?.error || 'Fehler beim Verschieben der Notiz')
+      throw new Error(err.response?.data?.error || 'Error moving note')
     }
   },
 
@@ -512,7 +522,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ packingItems: [...state.packingItems, result.item] }))
       return result.item
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Hinzufügen des Artikels')
+      throw new Error(err.response?.data?.error || 'Error adding item')
     }
   },
 
@@ -524,7 +534,7 @@ export const useTripStore = create((set, get) => ({
       }))
       return result.item
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren des Artikels')
+      throw new Error(err.response?.data?.error || 'Error updating item')
     }
   },
 
@@ -535,7 +545,7 @@ export const useTripStore = create((set, get) => ({
       await packingApi.delete(tripId, id)
     } catch (err) {
       set({ packingItems: prev })
-      throw new Error(err.response?.data?.error || 'Fehler beim Löschen des Artikels')
+      throw new Error(err.response?.data?.error || 'Error deleting item')
     }
   },
 
@@ -563,7 +573,7 @@ export const useTripStore = create((set, get) => ({
         days: state.days.map(d => d.id === parseInt(dayId) ? { ...d, notes } : d)
       }))
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren der Notizen')
+      throw new Error(err.response?.data?.error || 'Error updating notes')
     }
   },
 
@@ -574,7 +584,7 @@ export const useTripStore = create((set, get) => ({
         days: state.days.map(d => d.id === parseInt(dayId) ? { ...d, title } : d)
       }))
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren des Tagesnamens')
+      throw new Error(err.response?.data?.error || 'Error updating day name')
     }
   },
 
@@ -584,7 +594,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ tags: [...state.tags, result.tag] }))
       return result.tag
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Erstellen des Tags')
+      throw new Error(err.response?.data?.error || 'Error creating tag')
     }
   },
 
@@ -594,7 +604,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ categories: [...state.categories, result.category] }))
       return result.category
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Erstellen der Kategorie')
+      throw new Error(err.response?.data?.error || 'Error creating category')
     }
   },
 
@@ -612,7 +622,7 @@ export const useTripStore = create((set, get) => ({
       set({ days: daysData.days, assignments: assignmentsMap, dayNotes: dayNotesMap })
       return result.trip
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren der Reise')
+      throw new Error(err.response?.data?.error || 'Error updating trip')
     }
   },
 
@@ -631,7 +641,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ budgetItems: [...state.budgetItems, result.item] }))
       return result.item
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Hinzufügen des Budget-Eintrags')
+      throw new Error(err.response?.data?.error || 'Error adding budget item')
     }
   },
 
@@ -643,7 +653,7 @@ export const useTripStore = create((set, get) => ({
       }))
       return result.item
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren des Budget-Eintrags')
+      throw new Error(err.response?.data?.error || 'Error updating budget item')
     }
   },
 
@@ -654,7 +664,7 @@ export const useTripStore = create((set, get) => ({
       await budgetApi.delete(tripId, id)
     } catch (err) {
       set({ budgetItems: prev })
-      throw new Error(err.response?.data?.error || 'Fehler beim Löschen des Budget-Eintrags')
+      throw new Error(err.response?.data?.error || 'Error deleting budget item')
     }
   },
 
@@ -673,7 +683,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ files: [data.file, ...state.files] }))
       return data.file
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Hochladen der Datei')
+      throw new Error(err.response?.data?.error || 'Error uploading file')
     }
   },
 
@@ -682,7 +692,7 @@ export const useTripStore = create((set, get) => ({
       await filesApi.delete(tripId, id)
       set(state => ({ files: state.files.filter(f => f.id !== id) }))
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Löschen der Datei')
+      throw new Error(err.response?.data?.error || 'Error deleting file')
     }
   },
 
@@ -701,7 +711,7 @@ export const useTripStore = create((set, get) => ({
       set(state => ({ reservations: [result.reservation, ...state.reservations] }))
       return result.reservation
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Erstellen der Reservierung')
+      throw new Error(err.response?.data?.error || 'Error creating reservation')
     }
   },
 
@@ -713,7 +723,7 @@ export const useTripStore = create((set, get) => ({
       }))
       return result.reservation
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren der Reservierung')
+      throw new Error(err.response?.data?.error || 'Error updating reservation')
     }
   },
 
@@ -737,22 +747,36 @@ export const useTripStore = create((set, get) => ({
       await reservationsApi.delete(tripId, id)
       set(state => ({ reservations: state.reservations.filter(r => r.id !== id) }))
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Löschen der Reservierung')
+      throw new Error(err.response?.data?.error || 'Error deleting reservation')
     }
   },
 
   addDayNote: async (tripId, dayId, data) => {
+    const tempId = Date.now() * -1
+    const tempNote = { id: tempId, day_id: dayId, ...data, created_at: new Date().toISOString() }
+    set(state => ({
+      dayNotes: {
+        ...state.dayNotes,
+        [String(dayId)]: [...(state.dayNotes[String(dayId)] || []), tempNote],
+      }
+    }))
     try {
       const result = await dayNotesApi.create(tripId, dayId, data)
       set(state => ({
         dayNotes: {
           ...state.dayNotes,
-          [String(dayId)]: [...(state.dayNotes[String(dayId)] || []), result.note],
+          [String(dayId)]: (state.dayNotes[String(dayId)] || []).map(n => n.id === tempId ? result.note : n),
         }
       }))
       return result.note
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Hinzufügen der Notiz')
+      set(state => ({
+        dayNotes: {
+          ...state.dayNotes,
+          [String(dayId)]: (state.dayNotes[String(dayId)] || []).filter(n => n.id !== tempId),
+        }
+      }))
+      throw new Error(err.response?.data?.error || 'Error adding note')
     }
   },
 
@@ -767,7 +791,7 @@ export const useTripStore = create((set, get) => ({
       }))
       return result.note
     } catch (err) {
-      throw new Error(err.response?.data?.error || 'Fehler beim Aktualisieren der Notiz')
+      throw new Error(err.response?.data?.error || 'Error updating note')
     }
   },
 
@@ -783,7 +807,7 @@ export const useTripStore = create((set, get) => ({
       await dayNotesApi.delete(tripId, dayId, id)
     } catch (err) {
       set({ dayNotes: prev })
-      throw new Error(err.response?.data?.error || 'Fehler beim Löschen der Notiz')
+      throw new Error(err.response?.data?.error || 'Error deleting note')
     }
   },
 }))

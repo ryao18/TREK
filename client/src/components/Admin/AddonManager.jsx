@@ -16,7 +16,8 @@ function AddonIcon({ name, size = 20 }) {
 
 export default function AddonManager() {
   const { t } = useTranslation()
-  const dark = useSettingsStore(s => s.settings.dark_mode)
+  const dm = useSettingsStore(s => s.settings.dark_mode)
+  const dark = dm === true || dm === 'dark' || (dm === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const toast = useToast()
   const [addons, setAddons] = useState([])
   const [loading, setLoading] = useState(true)

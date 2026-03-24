@@ -16,7 +16,7 @@ router.get('/', authenticate, (req, res) => {
 router.post('/', authenticate, (req, res) => {
   const { name, color } = req.body;
 
-  if (!name) return res.status(400).json({ error: 'Tag-Name ist erforderlich' });
+  if (!name) return res.status(400).json({ error: 'Tag name is required' });
 
   const result = db.prepare(
     'INSERT INTO tags (user_id, name, color) VALUES (?, ?, ?)'
@@ -31,7 +31,7 @@ router.put('/:id', authenticate, (req, res) => {
   const { name, color } = req.body;
   const tag = db.prepare('SELECT * FROM tags WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
 
-  if (!tag) return res.status(404).json({ error: 'Tag nicht gefunden' });
+  if (!tag) return res.status(404).json({ error: 'Tag not found' });
 
   db.prepare('UPDATE tags SET name = COALESCE(?, name), color = COALESCE(?, color) WHERE id = ?')
     .run(name || null, color || null, req.params.id);
@@ -43,7 +43,7 @@ router.put('/:id', authenticate, (req, res) => {
 // DELETE /api/tags/:id
 router.delete('/:id', authenticate, (req, res) => {
   const tag = db.prepare('SELECT * FROM tags WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!tag) return res.status(404).json({ error: 'Tag nicht gefunden' });
+  if (!tag) return res.status(404).json({ error: 'Tag not found' });
 
   db.prepare('DELETE FROM tags WHERE id = ?').run(req.params.id);
   res.json({ success: true });

@@ -22,7 +22,7 @@ router.get('/', authenticate, (req, res) => {
 router.put('/', authenticate, (req, res) => {
   const { key, value } = req.body;
 
-  if (!key) return res.status(400).json({ error: 'Schlüssel ist erforderlich' });
+  if (!key) return res.status(400).json({ error: 'Key is required' });
 
   const serialized = typeof value === 'object' ? JSON.stringify(value) : String(value !== undefined ? value : '');
 
@@ -39,7 +39,7 @@ router.post('/bulk', authenticate, (req, res) => {
   const { settings } = req.body;
 
   if (!settings || typeof settings !== 'object') {
-    return res.status(400).json({ error: 'Einstellungen-Objekt ist erforderlich' });
+    return res.status(400).json({ error: 'Settings object is required' });
   }
 
   const upsert = db.prepare(`
@@ -56,7 +56,7 @@ router.post('/bulk', authenticate, (req, res) => {
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
-    return res.status(500).json({ error: 'Fehler beim Speichern der Einstellungen', detail: err.message });
+    return res.status(500).json({ error: 'Error saving settings', detail: err.message });
   }
 
   res.json({ success: true, updated: Object.keys(settings).length });

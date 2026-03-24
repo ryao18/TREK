@@ -388,7 +388,8 @@ export default function DashboardPage() {
   const { t, locale } = useTranslation()
   const { demoMode } = useAuthStore()
   const { settings, updateSetting } = useSettingsStore()
-  const dark = settings.dark_mode
+  const dm = settings.dark_mode
+  const dark = dm === true || dm === 'dark' || (dm === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const showCurrency = settings.dashboard_currency !== 'off'
   const showTimezone = settings.dashboard_timezone !== 'off'
   const showSidebar = showCurrency || showTimezone
@@ -425,6 +426,7 @@ export default function DashboardPage() {
       const data = await tripsApi.create(tripData)
       setTrips(prev => sortTrips([data.trip, ...prev]))
       toast.success(t('dashboard.toast.created'))
+      return data
     } catch (err) {
       throw new Error(err.response?.data?.error || t('dashboard.toast.createError'))
     }

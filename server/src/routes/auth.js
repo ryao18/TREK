@@ -145,7 +145,7 @@ router.post('/register', authLimiter, (req, res) => {
 
     res.status(201).json({ token, user: { ...user, avatar_url: null } });
   } catch (err) {
-    res.status(500).json({ error: 'Fehler beim Erstellen des Benutzers' });
+    res.status(500).json({ error: 'Error creating user' });
   }
 });
 
@@ -154,17 +154,17 @@ router.post('/login', authLimiter, (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ error: 'E-Mail und Passwort sind erforderlich' });
+    return res.status(400).json({ error: 'Email and password are required' });
   }
 
   const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email);
   if (!user) {
-    return res.status(401).json({ error: 'Ungültige E-Mail oder Passwort' });
+    return res.status(401).json({ error: 'Invalid email or password' });
   }
 
   const validPassword = bcrypt.compareSync(password, user.password_hash);
   if (!validPassword) {
-    return res.status(401).json({ error: 'Ungültige E-Mail oder Passwort' });
+    return res.status(401).json({ error: 'Invalid email or password' });
   }
 
   db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
@@ -181,7 +181,7 @@ router.get('/me', authenticate, (req, res) => {
   ).get(req.user.id);
 
   if (!user) {
-    return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    return res.status(404).json({ error: 'User not found' });
   }
 
   res.json({ user: { ...user, avatar_url: avatarUrl(user) } });

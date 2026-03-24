@@ -79,9 +79,9 @@ router.get('/', authenticate, (req, res) => {
 // POST /api/trips
 router.post('/', authenticate, (req, res) => {
   const { title, description, start_date, end_date, currency } = req.body;
-  if (!title) return res.status(400).json({ error: 'Titel ist erforderlich' });
+  if (!title) return res.status(400).json({ error: 'Title is required' });
   if (start_date && end_date && new Date(end_date) < new Date(start_date))
-    return res.status(400).json({ error: 'Enddatum muss nach dem Startdatum liegen' });
+    return res.status(400).json({ error: 'End date must be after start date' });
 
   const result = db.prepare(`
     INSERT INTO trips (user_id, title, description, start_date, end_date, currency)
@@ -102,24 +102,24 @@ router.get('/:id', authenticate, (req, res) => {
     LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
     WHERE t.id = :tripId AND (t.user_id = :userId OR m.user_id IS NOT NULL)
   `).get({ userId, tripId: req.params.id });
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
   res.json({ trip });
 });
 
 // PUT /api/trips/:id — all members can edit; archive/cover owner-only
 router.put('/:id', authenticate, (req, res) => {
   const access = canAccessTrip(req.params.id, req.user.id);
-  if (!access) return res.status(404).json({ error: 'Reise nicht gefunden' });
+  if (!access) return res.status(404).json({ error: 'Trip not found' });
 
   const ownerOnly = req.body.is_archived !== undefined || req.body.cover_image !== undefined;
   if (ownerOnly && !isOwner(req.params.id, req.user.id))
-    return res.status(403).json({ error: 'Nur der Eigentümer kann diese Einstellung ändern' });
+    return res.status(403).json({ error: 'Only the owner can change this setting' });
 
   const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(req.params.id);
   const { title, description, start_date, end_date, currency, is_archived, cover_image } = req.body;
 
   if (start_date && end_date && new Date(end_date) < new Date(start_date))
-    return res.status(400).json({ error: 'Enddatum muss nach dem Startdatum liegen' });
+    return res.status(400).json({ error: 'End date must be after start date' });
 
   const newTitle = title || trip.title;
   const newDesc = description !== undefined ? description : trip.description;
@@ -146,11 +146,11 @@ router.put('/:id', authenticate, (req, res) => {
 // POST /api/trips/:id/cover
 router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cover'), (req, res) => {
   if (!isOwner(req.params.id, req.user.id))
-    return res.status(403).json({ error: 'Nur der Eigentümer kann das Titelbild ändern' });
+    return res.status(403).json({ error: 'Only the owner can change the cover image' });
 
   const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(req.params.id);
-  if (!trip) return res.status(404).json({ error: 'Reise nicht gefunden' });
-  if (!req.file) return res.status(400).json({ error: 'Kein Bild hochgeladen' });
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
   if (trip.cover_image) {
     const oldPath = path.join(__dirname, '../../', trip.cover_image.replace(/^\//, ''));
@@ -169,7 +169,7 @@ router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cov
 // DELETE /api/trips/:id — owner only
 router.delete('/:id', authenticate, (req, res) => {
   if (!isOwner(req.params.id, req.user.id))
-    return res.status(403).json({ error: 'Nur der Eigentümer kann die Reise löschen' });
+    return res.status(403).json({ error: 'Only the owner can delete the trip' });
   const deletedTripId = Number(req.params.id);
   db.prepare('DELETE FROM trips WHERE id = ?').run(req.params.id);
   res.json({ success: true });
@@ -181,7 +181,7 @@ router.delete('/:id', authenticate, (req, res) => {
 // GET /api/trips/:id/members
 router.get('/:id/members', authenticate, (req, res) => {
   if (!canAccessTrip(req.params.id, req.user.id))
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
 
   const trip = db.prepare('SELECT user_id FROM trips WHERE id = ?').get(req.params.id);
   const members = db.prepare(`
@@ -208,23 +208,23 @@ router.get('/:id/members', authenticate, (req, res) => {
 // POST /api/trips/:id/members — add by email or username
 router.post('/:id/members', authenticate, (req, res) => {
   if (!canAccessTrip(req.params.id, req.user.id))
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
 
   const { identifier } = req.body; // email or username
-  if (!identifier) return res.status(400).json({ error: 'E-Mail oder Benutzername erforderlich' });
+  if (!identifier) return res.status(400).json({ error: 'Email or username required' });
 
   const target = db.prepare(
     'SELECT id, username, email, avatar FROM users WHERE email = ? OR username = ?'
   ).get(identifier.trim(), identifier.trim());
 
-  if (!target) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+  if (!target) return res.status(404).json({ error: 'User not found' });
 
   const trip = db.prepare('SELECT user_id FROM trips WHERE id = ?').get(req.params.id);
   if (target.id === trip.user_id)
-    return res.status(400).json({ error: 'Der Eigentümer der Reise ist bereits Mitglied' });
+    return res.status(400).json({ error: 'Trip owner is already a member' });
 
   const existing = db.prepare('SELECT id FROM trip_members WHERE trip_id = ? AND user_id = ?').get(req.params.id, target.id);
-  if (existing) return res.status(400).json({ error: 'Benutzer hat bereits Zugriff' });
+  if (existing) return res.status(400).json({ error: 'User already has access' });
 
   db.prepare('INSERT INTO trip_members (trip_id, user_id, invited_by) VALUES (?, ?, ?)').run(req.params.id, target.id, req.user.id);
 
@@ -234,12 +234,12 @@ router.post('/:id/members', authenticate, (req, res) => {
 // DELETE /api/trips/:id/members/:userId — owner removes anyone; member removes self
 router.delete('/:id/members/:userId', authenticate, (req, res) => {
   if (!canAccessTrip(req.params.id, req.user.id))
-    return res.status(404).json({ error: 'Reise nicht gefunden' });
+    return res.status(404).json({ error: 'Trip not found' });
 
   const targetId = parseInt(req.params.userId);
   const isSelf = targetId === req.user.id;
   if (!isSelf && !isOwner(req.params.id, req.user.id))
-    return res.status(403).json({ error: 'Keine Berechtigung' });
+    return res.status(403).json({ error: 'No permission' });
 
   db.prepare('DELETE FROM trip_members WHERE trip_id = ? AND user_id = ?').run(req.params.id, targetId);
   res.json({ success: true });

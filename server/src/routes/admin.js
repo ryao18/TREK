@@ -30,18 +30,18 @@ router.post('/users', (req, res) => {
   const { username, email, password, role } = req.body;
 
   if (!username?.trim() || !email?.trim() || !password?.trim()) {
-    return res.status(400).json({ error: 'Benutzername, E-Mail und Passwort sind erforderlich' });
+    return res.status(400).json({ error: 'Username, email and password are required' });
   }
 
   if (role && !['user', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Ungültige Rolle' });
+    return res.status(400).json({ error: 'Invalid role' });
   }
 
   const existingUsername = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim());
-  if (existingUsername) return res.status(409).json({ error: 'Benutzername bereits vergeben' });
+  if (existingUsername) return res.status(409).json({ error: 'Username already taken' });
 
   const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim());
-  if (existingEmail) return res.status(409).json({ error: 'E-Mail bereits vergeben' });
+  if (existingEmail) return res.status(409).json({ error: 'Email already taken' });
 
   const passwordHash = bcrypt.hashSync(password.trim(), 10);
 
@@ -61,19 +61,19 @@ router.put('/users/:id', (req, res) => {
   const { username, email, role, password } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
 
-  if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
 
   if (role && !['user', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'Ungültige Rolle' });
+    return res.status(400).json({ error: 'Invalid role' });
   }
 
   if (username && username !== user.username) {
     const conflict = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.params.id);
-    if (conflict) return res.status(409).json({ error: 'Benutzername bereits vergeben' });
+    if (conflict) return res.status(409).json({ error: 'Username already taken' });
   }
   if (email && email !== user.email) {
     const conflict = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, req.params.id);
-    if (conflict) return res.status(409).json({ error: 'E-Mail bereits vergeben' });
+    if (conflict) return res.status(409).json({ error: 'Email already taken' });
   }
 
   const passwordHash = password ? bcrypt.hashSync(password, 10) : null;
@@ -98,11 +98,11 @@ router.put('/users/:id', (req, res) => {
 // DELETE /api/admin/users/:id
 router.delete('/users/:id', (req, res) => {
   if (parseInt(req.params.id) === req.user.id) {
-    return res.status(400).json({ error: 'Eigenes Konto kann nicht gelöscht werden' });
+    return res.status(400).json({ error: 'Cannot delete own account' });
   }
 
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
-  if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
 
   db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
   res.json({ success: true });

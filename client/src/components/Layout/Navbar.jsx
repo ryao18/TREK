@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useTranslation } from '../../i18n'
 import { addonsApi } from '../../api/client'
-import { Plane, LogOut, Settings, ChevronDown, Shield, ArrowLeft, Users, Moon, Sun, CalendarDays, Briefcase, Globe } from 'lucide-react'
+import { Plane, LogOut, Settings, ChevronDown, Shield, ArrowLeft, Users, Moon, Sun, Monitor, CalendarDays, Briefcase, Globe } from 'lucide-react'
 
 const ADDON_ICONS = { CalendarDays, Briefcase, Globe }
 
@@ -18,7 +18,8 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [appVersion, setAppVersion] = useState(null)
   const [globalAddons, setGlobalAddons] = useState([])
-  const dark = settings.dark_mode
+  const darkMode = settings.dark_mode
+  const dark = darkMode === true || darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   const loadAddons = () => {
     if (user) {
@@ -46,8 +47,8 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
     navigate('/login')
   }
 
-  const toggleDark = () => {
-    updateSetting('dark_mode', !dark).catch(() => {})
+  const toggleDarkMode = () => {
+    updateSetting('dark_mode', dark ? 'light' : 'dark').catch(() => {})
   }
 
   return (
@@ -139,8 +140,8 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare })
         </button>
       )}
 
-      {/* Dark mode toggle */}
-      <button onClick={toggleDark} title={dark ? t('nav.lightMode') : t('nav.darkMode')}
+      {/* Dark mode toggle (light ↔ dark, overrides auto) */}
+      <button onClick={toggleDarkMode} title={dark ? t('nav.lightMode') : t('nav.darkMode')}
         className="p-2 rounded-lg transition-colors flex-shrink-0"
         style={{ color: 'var(--text-muted)' }}
         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}

@@ -6,19 +6,7 @@ import { ReservationModal } from './ReservationModal'
 import { PlaceDetailPanel } from './PlaceDetailPanel'
 import { useTripStore } from '../../store/tripStore'
 import { useToast } from '../shared/Toast'
-
-const TABS = [
-  { id: 'orte', label: 'Orte', icon: '📍' },
-  { id: 'tagesplan', label: 'Tagesplan', icon: '📅' },
-  { id: 'reservierungen', label: 'Reservierungen', icon: '🎫' },
-  { id: 'packliste', label: 'Packliste', icon: '🎒' },
-]
-
-const TRANSPORT_MODES = [
-  { value: 'driving', label: 'Auto', icon: '🚗' },
-  { value: 'walking', label: 'Fuß', icon: '🚶' },
-  { value: 'cycling', label: 'Rad', icon: '🚲' },
-]
+import { useTranslation } from '../../i18n'
 
 export function RightPanel({
   trip, days, places, categories, tags,
@@ -31,7 +19,6 @@ export function RightPanel({
   const [activeTab, setActiveTab] = useState('orte')
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [transportMode, setTransportMode] = useState('driving')
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false)
   const [showReservationModal, setShowReservationModal] = useState(false)
   const [editingReservation, setEditingReservation] = useState(null)
@@ -39,6 +26,14 @@ export function RightPanel({
 
   const tripStore = useTripStore()
   const toast = useToast()
+  const { t } = useTranslation()
+
+  const TABS = [
+    { id: 'orte', label: t('planner.places'), icon: '📍' },
+    { id: 'tagesplan', label: t('planner.dayPlan'), icon: '📅' },
+    { id: 'reservierungen', label: t('planner.reservations'), icon: '🎫' },
+    { id: 'packliste', label: t('planner.packingList'), icon: '🎒' },
+  ]
 
   // Filtered places for Orte tab
   const filteredPlaces = places.filter(p => {
@@ -83,22 +78,22 @@ export function RightPanel({
       .map(p => ({ lat: p.lat, lng: p.lng }))
 
     if (waypoints.length < 2) {
-      toast.error('Mindestens 2 Orte mit Koordinaten benötigt')
+      toast.error(t('planner.minTwoPlaces'))
       return
     }
 
     setIsCalculatingRoute(true)
     try {
-      const result = await calculateRoute(waypoints, transportMode)
+      const result = await calculateRoute(waypoints, 'walking')
       if (result) {
         setRouteInfo({ distance: result.distanceText, duration: result.durationText })
         onRouteCalculated?.(result)
-        toast.success('Route berechnet')
+        toast.success(t('planner.routeCalculated'))
       } else {
-        toast.error('Route konnte nicht berechnet werden')
+        toast.error(t('planner.routeCalcFailed'))
       }
     } catch (err) {
-      toast.error('Fehler bei der Routenberechnung')
+      toast.error(t('planner.routeError'))
     } finally {
       setIsCalculatingRoute(false)
     }
@@ -113,14 +108,14 @@ export function RightPanel({
       return a?.id
     }).filter(Boolean)
     await onReorder(selectedDayId, optimizedIds)
-    toast.success('Route optimiert')
+    toast.success(t('planner.routeOptimized'))
   }
 
   const handleOpenGoogleMaps = () => {
     const places = dayAssignments.map(a => a.place).filter(p => p?.lat && p?.lng)
     const url = generateGoogleMapsUrl(places)
     if (url) window.open(url, '_blank')
-    else toast.error('Keine Orte mit Koordinaten vorhanden')
+    else toast.error(t('planner.noGeoPlaces'))
   }
 
   const handleMoveUp = async (idx) => {
@@ -146,10 +141,10 @@ export function RightPanel({
     try {
       if (editingReservation) {
         await tripStore.updateReservation(tripId, editingReservation.id, data)
-        toast.success('Reservierung aktualisiert')
+        toast.success(t('planner.reservationUpdated'))
       } else {
         await tripStore.addReservation(tripId, { ...data, day_id: selectedDayId || null })
-        toast.success('Reservierung hinzugefügt')
+        toast.success(t('planner.reservationAdded'))
       }
       setShowReservationModal(false)
     } catch (err) {
@@ -158,10 +153,10 @@ export function RightPanel({
   }
 
   const handleDeleteReservation = async (id) => {
-    if (!confirm('Reservierung löschen?')) return
+    if (!confirm(t('planner.confirmDeleteReservation'))) return
     try {
       await tripStore.deleteReservation(tripId, id)
-      toast.success('Reservierung gelöscht')
+      toast.success(t('planner.reservationDeleted'))
     } catch (err) {
       toast.error(err.message)
     }
@@ -226,7 +221,7 @@ export function RightPanel({
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Orte suchen..."
+                  placeholder={t('planner.searchPlaces')}
                   className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
                 {search && (
@@ -241,7 +236,7 @@ export function RightPanel({
                   onChange={e => setCategoryFilter(e.target.value)}
                   className="flex-1 border border-gray-200 rounded-lg text-xs py-1.5 px-2 focus:outline-none focus:ring-1 focus:ring-slate-900 text-gray-600"
                 >
-                  <option value="">Alle Kategorien</option>
+                  <option value="">{t('planner.allCategories')}</option>
                   {categories.map(c => (
                     <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                   ))}
@@ -251,7 +246,7 @@ export function RightPanel({
                   className="flex items-center gap-1 bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-slate-900 whitespace-nowrap"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  Ort hinzufügen
+                  {t('planner.addPlace')}
                 </button>
               </div>
             </div>
@@ -261,9 +256,9 @@ export function RightPanel({
               {filteredPlaces.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                   <span className="text-3xl mb-2">📍</span>
-                  <p className="text-sm">Keine Orte gefunden</p>
+                  <p className="text-sm">{t('planner.noPlacesFound')}</p>
                   <button onClick={onAddPlace} className="mt-3 text-slate-700 text-sm hover:underline">
-                    Ersten Ort hinzufügen
+                    {t('planner.addFirstPlace')}
                   </button>
                 </div>
               ) : (
@@ -299,7 +294,7 @@ export function RightPanel({
                                     onClick={e => { e.stopPropagation(); onAssignToDay(place.id) }}
                                     className="text-xs text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded hover:bg-slate-100"
                                   >
-                                    + Tag
+                                    {t('planner.addToDay')}
                                   </button>
                                 )}
                               </div>
@@ -312,7 +307,7 @@ export function RightPanel({
                             )}
                             <div className="flex items-center gap-2 mt-1">
                               {place.place_time && (
-                                <span className="text-xs text-gray-500">🕐 {place.place_time}</span>
+                                <span className="text-xs text-gray-500">🕐 {place.place_time}{place.end_time ? ` – ${place.end_time}` : ''}</span>
                               )}
                               {place.price > 0 && (
                                 <span className="text-xs text-gray-500">
@@ -337,7 +332,7 @@ export function RightPanel({
             {!selectedDayId ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 px-6">
                 <span className="text-4xl mb-3">📅</span>
-                <p className="text-sm text-center">Wähle einen Tag aus der linken Liste um den Tagesplan zu sehen</p>
+                <p className="text-sm text-center">{t('planner.selectDayHint')}</p>
               </div>
             ) : (
               <>
@@ -352,26 +347,9 @@ export function RightPanel({
                     )}
                   </h3>
                   <p className="text-xs text-slate-700 mt-0.5">
-                    {dayAssignments.length} Ort{dayAssignments.length !== 1 ? 'e' : ''}
-                    {dayAssignments.length > 0 && ` · ${dayAssignments.reduce((s, a) => s + (a.place?.duration_minutes || 60), 0)} Min. gesamt`}
+                    {dayAssignments.length === 1 ? t('planner.placeOne') : t('planner.placeN', { n: dayAssignments.length })}
+                    {dayAssignments.length > 0 && ` · ${dayAssignments.reduce((s, a) => s + (a.place?.duration_minutes || 60), 0)} ${t('planner.minTotal')}`}
                   </p>
-                </div>
-
-                {/* Transport mode */}
-                <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-1 flex-shrink-0">
-                  {TRANSPORT_MODES.map(m => (
-                    <button
-                      key={m.value}
-                      onClick={() => setTransportMode(m.value)}
-                      className={`flex-1 py-1.5 text-xs rounded-lg flex items-center justify-center gap-1 transition-colors ${
-                        transportMode === m.value
-                          ? 'bg-slate-100 text-slate-900 font-medium'
-                          : 'text-gray-500 hover:bg-gray-100'
-                      }`}
-                    >
-                      {m.icon} {m.label}
-                    </button>
-                  ))}
                 </div>
 
                 {/* Places list with order */}
@@ -379,12 +357,12 @@ export function RightPanel({
                   {dayAssignments.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                       <span className="text-3xl mb-2">🗺️</span>
-                      <p className="text-sm">Noch keine Orte für diesen Tag</p>
+                      <p className="text-sm">{t('planner.noPlacesForDay')}</p>
                       <button
                         onClick={() => setActiveTab('orte')}
                         className="mt-3 text-slate-700 text-sm hover:underline"
                       >
-                        Orte hinzufügen →
+                        {t('planner.addPlacesLink')}
                       </button>
                     </div>
                   ) : (
@@ -475,14 +453,14 @@ export function RightPanel({
                         className="flex items-center justify-center gap-1.5 bg-slate-700 text-white text-xs py-2 rounded-lg hover:bg-slate-900 disabled:opacity-60"
                       >
                         <Navigation className="w-3.5 h-3.5" />
-                        {isCalculatingRoute ? 'Berechne...' : 'Route berechnen'}
+                        {isCalculatingRoute ? t('planner.calculating') : t('planner.route')}
                       </button>
                       <button
                         onClick={handleOptimizeRoute}
                         className="flex items-center justify-center gap-1.5 bg-emerald-600 text-white text-xs py-2 rounded-lg hover:bg-emerald-700"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        Optimieren
+                        {t('planner.optimize')}
                       </button>
                     </div>
                     <button
@@ -490,7 +468,7 @@ export function RightPanel({
                       className="w-full flex items-center justify-center gap-1.5 bg-white border border-gray-200 text-gray-700 text-xs py-2 rounded-lg hover:bg-gray-50"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      In Google Maps öffnen
+                      {t('planner.openGoogleMaps')}
                     </button>
                   </div>
                 )}
@@ -504,7 +482,7 @@ export function RightPanel({
           <div className="flex flex-col h-full">
             <div className="p-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
               <h3 className="font-medium text-sm text-gray-900">
-                Reservierungen
+                {t('planner.reservations')}
                 {selectedDay && <span className="text-gray-500 font-normal"> · Tag {selectedDay.day_number}</span>}
               </h3>
               <button
@@ -512,7 +490,7 @@ export function RightPanel({
                 className="flex items-center gap-1 bg-slate-700 text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-900"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Hinzufügen
+                {t('common.add')}
               </button>
             </div>
 
@@ -520,9 +498,9 @@ export function RightPanel({
               {filteredReservations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                   <span className="text-3xl mb-2">🎫</span>
-                  <p className="text-sm">Keine Reservierungen</p>
+                  <p className="text-sm">{t('planner.noReservations')}</p>
                   <button onClick={handleAddReservation} className="mt-3 text-slate-700 text-sm hover:underline">
-                    Erste Reservierung hinzufügen
+                    {t('planner.addFirstReservation')}
                   </button>
                 </div>
               ) : (

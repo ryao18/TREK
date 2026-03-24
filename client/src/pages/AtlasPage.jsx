@@ -81,7 +81,8 @@ export default function AtlasPage() {
   const { settings } = useSettingsStore()
   const navigate = useNavigate()
   const resolveName = useCountryNames(language)
-  const dark = settings.dark_mode
+  const dm = settings.dark_mode
+  const dark = dm === true || dm === 'dark' || (dm === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const geoLayerRef = useRef(null)

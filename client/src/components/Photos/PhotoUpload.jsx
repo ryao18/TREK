@@ -1,8 +1,10 @@
 import React, { useState, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, X, Image } from 'lucide-react'
+import { useTranslation } from '../../i18n'
 
 export function PhotoUpload({ tripId, days, places, onUpload, onClose }) {
+  const { t } = useTranslation()
   const [files, setFiles] = useState([])
   const [dayId, setDayId] = useState('')
   const [placeId, setPlaceId] = useState('')
@@ -78,7 +80,7 @@ export function PhotoUpload({ tripId, days, places, onUpload, onClose }) {
         ) : (
           <>
             <p className="text-gray-600 font-medium">Fotos hier ablegen</p>
-            <p className="text-gray-400 text-sm mt-1">oder klicken zum Auswählen</p>
+            <p className="text-gray-400 text-sm mt-1">{t('photos.clickToSelect')}</p>
             <p className="text-gray-400 text-xs mt-2">JPG, PNG, WebP · max. 10 MB · bis zu 30 Fotos</p>
           </>
         )}
@@ -128,13 +130,13 @@ export function PhotoUpload({ tripId, days, places, onUpload, onClose }) {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Ort verknüpfen</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('photos.linkPlace')}</label>
             <select
               value={placeId}
               onChange={e => setPlaceId(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             >
-              <option value="">Kein Ort</option>
+              <option value="">{t('photos.noPlace')}</option>
               {(places || []).map(place => (
                 <option key={place.id} value={place.id}>{place.name}</option>
               ))}
@@ -175,7 +177,7 @@ export function PhotoUpload({ tripId, days, places, onUpload, onClose }) {
           onClick={onClose}
           className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
         >
-          Abbrechen
+          {t('common.cancel')}
         </button>
         <button
           onClick={handleUpload}
@@ -183,7 +185,7 @@ export function PhotoUpload({ tripId, days, places, onUpload, onClose }) {
           className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-60 font-medium"
         >
           <Upload className="w-4 h-4" />
-          {uploading ? 'Hochladen...' : `${files.length} Foto${files.length !== 1 ? 's' : ''} hochladen`}
+          {uploading ? t('common.uploading') : t('photos.uploadN', { n: files.length })}
         </button>
       </div>
     </div>

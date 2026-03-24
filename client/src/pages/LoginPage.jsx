@@ -44,10 +44,10 @@ export default function LoginPage() {
     }
     if (oidcError) {
       const errorMessages = {
-        registration_disabled: language === 'de' ? 'Registrierung ist deaktiviert. Kontaktiere den Administrator.' : 'Registration is disabled. Contact your administrator.',
-        no_email: language === 'de' ? 'Keine E-Mail vom Provider erhalten.' : 'No email received from provider.',
-        token_failed: language === 'de' ? 'Authentifizierung fehlgeschlagen.' : 'Authentication failed.',
-        invalid_state: language === 'de' ? 'Ungueltige Sitzung. Bitte erneut versuchen.' : 'Invalid session. Please try again.',
+        registration_disabled: t('login.oidc.registrationDisabled'),
+        no_email: t('login.oidc.noEmail'),
+        token_failed: t('login.oidc.tokenFailed'),
+        invalid_state: t('login.oidc.invalidState'),
       }
       setError(errorMessages[oidcError] || oidcError)
       window.history.replaceState({}, '', '/login')
@@ -62,7 +62,7 @@ export default function LoginPage() {
       setShowTakeoff(true)
       setTimeout(() => navigate('/dashboard'), 2600)
     } catch (err) {
-      setError(err.message || 'Demo-Login fehlgeschlagen')
+      setError(err.message || t('login.demoFailed'))
     } finally {
       setIsLoading(false)
     }
@@ -517,7 +517,7 @@ export default function LoginPage() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
                 <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
-                <span style={{ fontSize: 12, color: '#9ca3af' }}>{language === 'de' ? 'oder' : 'or'}</span>
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>{t('common.or')}</span>
                 <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
               </div>
               <a href="/api/auth/oidc/login"
@@ -534,7 +534,7 @@ export default function LoginPage() {
                 onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#d1d5db' }}
               >
                 <Shield size={16} />
-                {language === 'de' ? `Anmelden mit ${appConfig.oidc_display_name}` : `Sign in with ${appConfig.oidc_display_name}`}
+                {t('login.oidcSignIn', { name: appConfig.oidc_display_name })}
               </a>
             </>
           )}
@@ -555,7 +555,7 @@ export default function LoginPage() {
               onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(245, 158, 11, 0.3)' }}
             >
               <Plane size={18} />
-              {language === 'de' ? 'Demo ausprobieren — ohne Registrierung' : 'Try the demo — no registration needed'}
+              {t('login.demoHint')}
             </button>
           )}
         </div>

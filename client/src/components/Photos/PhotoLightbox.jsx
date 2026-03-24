@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight, Edit2, Trash2, Check } from 'lucide-react'
+import { useTranslation } from '../../i18n'
 
 export function PhotoLightbox({ photos, initialIndex, onClose, onUpdate, onDelete, days, places, tripId }) {
+  const { t } = useTranslation()
   const [index, setIndex] = useState(initialIndex || 0)
   const [editCaption, setEditCaption] = useState(false)
   const [caption, setCaption] = useState('')
@@ -81,7 +83,7 @@ export function PhotoLightbox({ photos, initialIndex, onClose, onUpdate, onDelet
             <button
               onClick={handleDelete}
               className="p-2 text-white/60 hover:text-red-400 hover:bg-white/10 rounded-lg transition-colors"
-              title="Löschen"
+              title={t('common.delete')}
             >
               <Trash2 className="w-4 h-4" />
             </button>

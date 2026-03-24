@@ -107,6 +107,23 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
     noClick: false,
   })
 
+  // Paste support
+  const handlePaste = useCallback((e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const files = []
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault()
+      onDrop(files)
+    }
+  }, [onDrop])
+
   const filteredFiles = files.filter(f => {
     if (filterType === 'pdf') return f.mime_type === 'application/pdf'
     if (filterType === 'image') return isImage(f.mime_type)
@@ -135,7 +152,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
+    <div className="flex flex-col h-full" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }} onPaste={handlePaste} tabIndex={-1}>
       {/* Lightbox */}
       {lightboxFile && <ImageLightbox file={lightboxFile} onClose={() => setLightboxFile(null)} />}
 

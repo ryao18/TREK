@@ -139,7 +139,7 @@ router.get('/', authenticate, async (req, res) => {
   const { lat, lng, date, lang = 'de' } = req.query;
 
   if (!lat || !lng) {
-    return res.status(400).json({ error: 'Breiten- und Längengrad sind erforderlich' });
+    return res.status(400).json({ error: 'Latitude and longitude are required' });
   }
 
   const ck = cacheKey(lat, lng, date);
@@ -161,7 +161,7 @@ router.get('/', authenticate, async (req, res) => {
         const data = await response.json();
 
         if (!response.ok || data.error) {
-          return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo API Fehler' });
+          return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo API error' });
         }
 
         const dateStr = targetDate.toISOString().slice(0, 10);
@@ -202,7 +202,7 @@ router.get('/', authenticate, async (req, res) => {
         const data = await response.json();
 
         if (!response.ok || data.error) {
-          return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo Climate API Fehler' });
+          return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo Climate API error' });
         }
 
         const daily = data.daily;
@@ -257,7 +257,7 @@ router.get('/', authenticate, async (req, res) => {
     const data = await response.json();
 
     if (!response.ok || data.error) {
-      return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo API Fehler' });
+      return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo API error' });
     }
 
     const code = data.current.weathercode;
@@ -274,7 +274,152 @@ router.get('/', authenticate, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Weather error:', err);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Wetterdaten' });
+    res.status(500).json({ error: 'Error fetching weather data' });
+  }
+});
+
+// GET /api/weather/detailed?lat=&lng=&date=&lang=de
+router.get('/detailed', authenticate, async (req, res) => {
+  const { lat, lng, date, lang = 'de' } = req.query;
+
+  if (!lat || !lng || !date) {
+    return res.status(400).json({ error: 'Latitude, longitude, and date are required' });
+  }
+
+  const ck = `detailed_${cacheKey(lat, lng, date)}`;
+
+  try {
+    const cached = getCached(ck);
+    if (cached) return res.json(cached);
+
+    const targetDate = new Date(date);
+    const now = new Date();
+    const diffDays = (targetDate - now) / (1000 * 60 * 60 * 24);
+    const dateStr = targetDate.toISOString().slice(0, 10);
+    const descriptions = lang === 'de' ? WMO_DESCRIPTION_DE : WMO_DESCRIPTION_EN;
+
+    // Beyond 16-day forecast window → archive API (daily only, no hourly)
+    if (diffDays > 16) {
+      const refYear = targetDate.getFullYear() - 1;
+      const month = targetDate.getMonth() + 1;
+      const day = targetDate.getDate();
+      const startDate = new Date(refYear, month - 1, day - 2);
+      const endDate = new Date(refYear, month - 1, day + 2);
+      const startStr = startDate.toISOString().slice(0, 10);
+      const endStr = endDate.toISOString().slice(0, 10);
+
+      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${startStr}&end_date=${endStr}&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_sum&timezone=auto`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo Climate API error' });
+      }
+
+      const daily = data.daily;
+      if (!daily || !daily.time || daily.time.length === 0) {
+        return res.json({ error: 'no_forecast' });
+      }
+
+      let sumMax = 0, sumMin = 0, sumPrecip = 0, count = 0;
+      for (let i = 0; i < daily.time.length; i++) {
+        if (daily.temperature_2m_max[i] != null && daily.temperature_2m_min[i] != null) {
+          sumMax += daily.temperature_2m_max[i];
+          sumMin += daily.temperature_2m_min[i];
+          sumPrecip += daily.precipitation_sum[i] || 0;
+          count++;
+        }
+      }
+
+      if (count === 0) {
+        return res.json({ error: 'no_forecast' });
+      }
+
+      const avgMax = sumMax / count;
+      const avgMin = sumMin / count;
+      const avgTemp = (avgMax + avgMin) / 2;
+      const avgPrecip = sumPrecip / count;
+
+      const result = {
+        type: 'climate',
+        temp: Math.round(avgTemp),
+        temp_max: Math.round(avgMax),
+        temp_min: Math.round(avgMin),
+        main: estimateCondition(avgTemp, avgPrecip),
+        precipitation_sum: Math.round(avgPrecip * 10) / 10,
+      };
+
+      setCache(ck, result, TTL_CLIMATE_MS);
+      return res.json(result);
+    }
+
+    // Within 16-day forecast window → full forecast with hourly data
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}`
+      + `&hourly=temperature_2m,precipitation_probability,precipitation,weathercode,windspeed_10m,relativehumidity_2m`
+      + `&daily=temperature_2m_max,temperature_2m_min,weathercode,sunrise,sunset,precipitation_probability_max,precipitation_sum,windspeed_10m_max`
+      + `&timezone=auto&start_date=${dateStr}&end_date=${dateStr}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      return res.status(response.status || 500).json({ error: data.reason || 'Open-Meteo API error' });
+    }
+
+    const daily = data.daily;
+    const hourly = data.hourly;
+
+    if (!daily || !daily.time || daily.time.length === 0) {
+      return res.json({ error: 'no_forecast' });
+    }
+
+    const dayIdx = 0; // We requested a single day
+    const code = daily.weathercode[dayIdx];
+
+    // Parse sunrise/sunset to HH:MM
+    const formatTime = (isoStr) => {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+
+    // Build hourly array
+    const hourlyData = [];
+    if (hourly && hourly.time) {
+      for (let i = 0; i < hourly.time.length; i++) {
+        const h = new Date(hourly.time[i]).getHours();
+        hourlyData.push({
+          hour: h,
+          temp: Math.round(hourly.temperature_2m[i]),
+          precipitation_probability: hourly.precipitation_probability[i] || 0,
+          precipitation: hourly.precipitation[i] || 0,
+          main: WMO_MAP[hourly.weathercode[i]] || 'Clouds',
+          wind: Math.round(hourly.windspeed_10m[i] || 0),
+          humidity: Math.round(hourly.relativehumidity_2m[i] || 0),
+        });
+      }
+    }
+
+    const result = {
+      type: 'forecast',
+      temp: Math.round((daily.temperature_2m_max[dayIdx] + daily.temperature_2m_min[dayIdx]) / 2),
+      temp_max: Math.round(daily.temperature_2m_max[dayIdx]),
+      temp_min: Math.round(daily.temperature_2m_min[dayIdx]),
+      main: WMO_MAP[code] || 'Clouds',
+      description: descriptions[code] || '',
+      sunrise: formatTime(daily.sunrise[dayIdx]),
+      sunset: formatTime(daily.sunset[dayIdx]),
+      precipitation_sum: daily.precipitation_sum[dayIdx] || 0,
+      precipitation_probability_max: daily.precipitation_probability_max[dayIdx] || 0,
+      wind_max: Math.round(daily.windspeed_10m_max[dayIdx] || 0),
+      hourly: hourlyData,
+    };
+
+    setCache(ck, result, TTL_FORECAST_MS);
+    return res.json(result);
+  } catch (err) {
+    console.error('Detailed weather error:', err);
+    res.status(500).json({ error: 'Error fetching detailed weather data' });
   }
 });
 

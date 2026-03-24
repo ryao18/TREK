@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation } from 'lucide-react'
+import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -86,16 +86,6 @@ function formatTime(timeStr, locale, timeFormat) {
   } catch { return timeStr }
 }
 
-function formatReservationDatetime(dt, locale, timeFormat) {
-  if (!dt) return null
-  try {
-    const d = new Date(dt)
-    if (isNaN(d)) return dt
-    const datePart = d.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })
-    const timePart = formatTime(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`, locale, timeFormat)
-    return `${datePart}, ${timePart}`
-  } catch { return dt }
-}
 
 function formatFileSize(bytes) {
   if (!bytes) return ''
@@ -105,7 +95,7 @@ function formatFileSize(bytes) {
 }
 
 export default function PlaceInspector({
-  place, categories, days, selectedDayId, assignments,
+  place, categories, days, selectedDayId, selectedAssignmentId, assignments, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files, onFileUpload,
 }) {
@@ -279,44 +269,71 @@ export default function PlaceInspector({
             </div>
           )}
 
-          {/* Description + Reservation in one box */}
-          {(place.description || place.notes || (place.reservation_status && place.reservation_status !== 'none')) && (
+          {/* Description */}
+          {(place.description || place.notes) && (
             <div style={{ background: 'var(--bg-hover)', borderRadius: 10, overflow: 'hidden' }}>
-              {(place.description || place.notes) && (
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: '1.5', padding: '8px 12px',
-                  borderBottom: (place.reservation_status && place.reservation_status !== 'none') ? '1px solid var(--border-faint)' : 'none'
-                }}>
-                  {place.description || place.notes}
-                </p>
-              )}
-              {place.reservation_status && place.reservation_status !== 'none' && (
-                <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                    {place.reservation_status === 'confirmed'
-                      ? <CheckCircle2 size={12} color="#059669" />
-                      : <AlertCircle size={12} color="#d97706" />
-                    }
-                    <span style={{ fontSize: 12, fontWeight: 600, color: place.reservation_status === 'confirmed' ? '#059669' : '#d97706' }}>
-                      {place.reservation_status === 'confirmed' ? t('inspector.confirmedRes') : t('inspector.pendingRes')}
-                    </span>
-                    {(place.reservation_datetime || place.place_time) && (
-                      <>
-                        <span style={{ fontSize: 11, color: '#d1d5db' }}>·</span>
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          {place.reservation_datetime
-                            ? formatReservationDatetime(place.reservation_datetime, locale, timeFormat)
-                            : formatTime(place.place_time, locale, timeFormat)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  {place.reservation_notes && (
-                    <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: 0, lineHeight: '1.5', paddingLeft: 17 }}>{place.reservation_notes}</p>
-                  )}
-                </div>
-              )}
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: '1.5', padding: '8px 12px' }}>
+                {place.description || place.notes}
+              </p>
             </div>
           )}
+
+          {/* Reservation for this specific assignment */}
+          {(() => {
+            const res = selectedAssignmentId ? reservations.find(r => r.assignment_id === selectedAssignmentId) : null
+            if (!res) return null
+            const confirmed = res.status === 'confirmed'
+            const accentColor = confirmed ? '#16a34a' : '#d97706'
+            return (
+              <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${confirmed ? 'rgba(22,163,74,0.2)' : 'rgba(217,119,6,0.2)'}` }}>
+                {/* Header bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: confirmed ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)' }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: accentColor }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>{confirmed ? t('reservations.confirmed') : t('reservations.pending')}</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>{res.title}</span>
+                </div>
+                {/* Details grid */}
+                {(res.reservation_time || res.confirmation_number || res.location || res.notes) && (
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      {res.reservation_time && (
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.date')}</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>
+                            {new Date(res.reservation_time).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}
+                          </div>
+                        </div>
+                      )}
+                      {res.reservation_time && (
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.time')}</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>
+                            {new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}
+                          </div>
+                        </div>
+                      )}
+                      {res.confirmation_number && (
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.confirmationCode')}</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{res.confirmation_number}</div>
+                        </div>
+                      )}
+                      {res.location && (
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.locationAddress')}</div>
+                          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', marginTop: 1 }}>{res.location}</div>
+                        </div>
+                      )}
+                    </div>
+                    {res.notes && (
+                      <div style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.4, borderTop: '1px solid var(--border-faint)', paddingTop: 5 }}>{res.notes}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Opening hours */}
           {openingHours && openingHours.length > 0 && (

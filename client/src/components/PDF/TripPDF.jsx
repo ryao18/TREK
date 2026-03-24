@@ -144,9 +144,6 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
           const googleImg = photoMap[place.id] || null
           const img = directImg || googleImg
 
-          const confirmed = place.reservation_status === 'confirmed'
-          const pending   = place.reservation_status === 'pending'
-
           const iconSvg = categoryIconSvg(cat?.icon, color, 24)
           const thumbHtml = img
             ? `<img class="place-thumb" src="${escHtml(img)}" />`
@@ -157,8 +154,6 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
           const chips = [
             place.place_time ? `<span class="chip">${svgClock}${escHtml(place.place_time)}</span>` : '',
             place.price && parseFloat(place.price) > 0 ? `<span class="chip chip-green">${svgEuro}${Number(place.price).toLocaleString('de-DE')} EUR</span>` : '',
-            confirmed ? `<span class="chip chip-green">${svgCheck}${escHtml(tr('reservations.confirmed'))}</span>` : '',
-            pending   ? `<span class="chip chip-amber">${svgClock2}${escHtml(tr('reservations.pending'))}</span>` : '',
           ].filter(Boolean).join('')
 
           return `
@@ -352,7 +347,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
       ? `<div class="cover-circle"><img src="${escHtml(coverImg)}" /></div>`
       : `<div class="cover-circle-ph"></div>`}
     <div class="cover-label">${escHtml(tr('pdf.travelPlan'))}</div>
-    <div class="cover-title">${escHtml(trip?.title || 'Meine Reise')}</div>
+    <div class="cover-title">${escHtml(trip?.title || 'My Trip')}</div>
     ${trip?.description ? `<div class="cover-desc">${escHtml(trip.description)}</div>` : ''}
     ${range ? `<div class="cover-dates">${range}</div>` : ''}
     <div class="cover-line"></div>

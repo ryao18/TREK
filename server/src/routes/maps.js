@@ -49,7 +49,7 @@ async function searchNominatim(query, lang) {
 router.post('/search', authenticate, async (req, res) => {
   const { query } = req.body;
 
-  if (!query) return res.status(400).json({ error: 'Suchanfrage ist erforderlich' });
+  if (!query) return res.status(400).json({ error: 'Search query is required' });
 
   const apiKey = getMapsKey(req.user.id);
 
@@ -60,7 +60,7 @@ router.post('/search', authenticate, async (req, res) => {
       return res.json({ places, source: 'openstreetmap' });
     } catch (err) {
       console.error('Nominatim search error:', err);
-      return res.status(500).json({ error: 'Fehler bei der OpenStreetMap Suche' });
+      return res.status(500).json({ error: 'OpenStreetMap search error' });
     }
   }
 
@@ -78,7 +78,7 @@ router.post('/search', authenticate, async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Google Places API Fehler' });
+      return res.status(response.status).json({ error: data.error?.message || 'Google Places API error' });
     }
 
     const places = (data.places || []).map(p => ({
@@ -96,7 +96,7 @@ router.post('/search', authenticate, async (req, res) => {
     res.json({ places, source: 'google' });
   } catch (err) {
     console.error('Maps search error:', err);
-    res.status(500).json({ error: 'Fehler bei der Google Places Suche' });
+    res.status(500).json({ error: 'Google Places search error' });
   }
 });
 
@@ -106,7 +106,7 @@ router.get('/details/:placeId', authenticate, async (req, res) => {
 
   const apiKey = getMapsKey(req.user.id);
   if (!apiKey) {
-    return res.status(400).json({ error: 'Google Maps API-Schlüssel nicht konfiguriert' });
+    return res.status(400).json({ error: 'Google Maps API key not configured' });
   }
 
   try {
@@ -122,7 +122,7 @@ router.get('/details/:placeId', authenticate, async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Google Places API Fehler' });
+      return res.status(response.status).json({ error: data.error?.message || 'Google Places API error' });
     }
 
     const place = {
@@ -151,7 +151,7 @@ router.get('/details/:placeId', authenticate, async (req, res) => {
     res.json({ place });
   } catch (err) {
     console.error('Maps details error:', err);
-    res.status(500).json({ error: 'Fehler beim Abrufen der Ortsdetails' });
+    res.status(500).json({ error: 'Error fetching place details' });
   }
 });
 
@@ -168,7 +168,7 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
 
   const apiKey = getMapsKey(req.user.id);
   if (!apiKey) {
-    return res.status(400).json({ error: 'Google Maps API-Schlüssel nicht konfiguriert' });
+    return res.status(400).json({ error: 'Google Maps API key not configured' });
   }
 
   try {
@@ -183,11 +183,11 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
 
     if (!detailsRes.ok) {
       console.error('Google Places photo details error:', details.error?.message || detailsRes.status);
-      return res.status(404).json({ error: 'Foto konnte nicht abgerufen werden' });
+      return res.status(404).json({ error: 'Photo could not be retrieved' });
     }
 
     if (!details.photos?.length) {
-      return res.status(404).json({ error: 'Kein Foto verfügbar' });
+      return res.status(404).json({ error: 'No photo available' });
     }
 
     const photo = details.photos[0];
@@ -202,7 +202,7 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
     const photoUrl = mediaData.photoUri;
 
     if (!photoUrl) {
-      return res.status(404).json({ error: 'Foto-URL nicht verfügbar' });
+      return res.status(404).json({ error: 'Photo URL not available' });
     }
 
     photoCache.set(placeId, { photoUrl, attribution, fetchedAt: Date.now() });
@@ -220,7 +220,7 @@ router.get('/place-photo/:placeId', authenticate, async (req, res) => {
     res.json({ photoUrl, attribution });
   } catch (err) {
     console.error('Place photo error:', err);
-    res.status(500).json({ error: 'Fehler beim Abrufen des Fotos' });
+    res.status(500).json({ error: 'Error fetching photo' });
   }
 });
 

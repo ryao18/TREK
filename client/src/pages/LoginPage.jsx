@@ -268,7 +268,7 @@ export default function LoginPage() {
         onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.06)'}
       >
         <Globe size={14} />
-        {language === 'en' ? 'DE' : 'EN'}
+        {language === 'en' ? 'EN' : 'DE'}
       </button>
 
       {/* Left — branding */}

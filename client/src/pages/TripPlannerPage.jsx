@@ -228,7 +228,8 @@ export default function TripPlannerPage() {
     try {
       await tripStore.deletePlace(tripId, placeId)
       if (selectedPlaceId === placeId) setSelectedPlaceId(null)
-      updateRouteForDay(selectedDayId)
+      // Delay route update to ensure store has propagated
+      setTimeout(() => updateRouteForDay(selectedDayId), 50)
       toast.success(t('trip.toast.placeDeleted'))
     } catch (err) { toast.error(err.message) }
   }, [tripId, tripStore, toast, selectedPlaceId])

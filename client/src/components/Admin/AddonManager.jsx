@@ -118,8 +118,9 @@ export default function AddonManager() {
 }
 
 function AddonRow({ addon, onToggle, t }) {
+  const isComingSoon = addon.id === 'collab'
   return (
-    <div className="flex items-center gap-4 px-6 py-4 border-b transition-colors hover:opacity-95" style={{ borderColor: 'var(--border-secondary)' }}>
+    <div className="flex items-center gap-4 px-6 py-4 border-b transition-colors hover:opacity-95" style={{ borderColor: 'var(--border-secondary)', opacity: isComingSoon ? 0.5 : 1, pointerEvents: isComingSoon ? 'none' : 'auto' }}>
       {/* Icon */}
       <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
         <AddonIcon name={addon.icon} size={20} />
@@ -129,6 +130,11 @@ function AddonRow({ addon, onToggle, t }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{addon.name}</span>
+          {isComingSoon && (
+            <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-faint)' }}>
+              Coming Soon
+            </span>
+          )}
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{
             background: addon.type === 'global' ? 'var(--bg-secondary)' : 'var(--bg-secondary)',
             color: 'var(--text-muted)',
@@ -141,19 +147,20 @@ function AddonRow({ addon, onToggle, t }) {
 
       {/* Toggle */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs font-medium" style={{ color: addon.enabled ? 'var(--text-primary)' : 'var(--text-faint)' }}>
-          {addon.enabled ? t('admin.addons.enabled') : t('admin.addons.disabled')}
+        <span className="text-xs font-medium" style={{ color: (addon.enabled && !isComingSoon) ? 'var(--text-primary)' : 'var(--text-faint)' }}>
+          {isComingSoon ? t('admin.addons.disabled') : addon.enabled ? t('admin.addons.enabled') : t('admin.addons.disabled')}
         </span>
         <button
-          onClick={() => onToggle(addon)}
+          onClick={() => !isComingSoon && onToggle(addon)}
+          disabled={isComingSoon}
           className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-          style={{ background: addon.enabled ? 'var(--text-primary)' : 'var(--border-primary)' }}
+          style={{ background: (addon.enabled && !isComingSoon) ? 'var(--text-primary)' : 'var(--border-primary)', cursor: isComingSoon ? 'not-allowed' : 'pointer' }}
         >
           <span
             className="inline-block h-4 w-4 transform rounded-full transition-transform"
             style={{
-              background: addon.enabled ? 'var(--bg-card)' : 'var(--bg-card)',
-              transform: addon.enabled ? 'translateX(22px)' : 'translateX(4px)',
+              background: 'var(--bg-card)',
+              transform: (addon.enabled && !isComingSoon) ? 'translateX(22px)' : 'translateX(4px)',
             }}
           />
         </button>

@@ -16,6 +16,7 @@ import ReservationsPanel from '../components/Planner/ReservationsPanel'
 import PackingListPanel from '../components/Packing/PackingListPanel'
 import FileManager from '../components/Files/FileManager'
 import BudgetPanel from '../components/Budget/BudgetPanel'
+import CollabPanel from '../components/Collab/CollabPanel'
 import Navbar from '../components/Layout/Navbar'
 import { useToast } from '../components/shared/Toast'
 import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
@@ -48,7 +49,7 @@ export default function TripPlannerPage() {
     addonsApi.enabled().then(data => {
       const map = {}
       data.addons.forEach(a => { map[a.id] = true })
-      setEnabledAddons({ packing: !!map.packing, budget: !!map.budget, documents: !!map.documents })
+      setEnabledAddons({ packing: !!map.packing, budget: !!map.budget, documents: !!map.documents, collab: !!map.collab })
     }).catch(() => {})
     authApi.getAppConfig().then(config => {
       if (config.allowed_file_types) setAllowedFileTypes(config.allowed_file_types)
@@ -61,6 +62,7 @@ export default function TripPlannerPage() {
     ...(enabledAddons.packing ? [{ id: 'packliste', label: t('trip.tabs.packing'), shortLabel: t('trip.tabs.packingShort') }] : []),
     ...(enabledAddons.budget ? [{ id: 'finanzplan', label: t('trip.tabs.budget') }] : []),
     ...(enabledAddons.documents ? [{ id: 'dateien', label: t('trip.tabs.files') }] : []),
+    ...(enabledAddons.collab ? [{ id: 'collab', label: 'Collab' }] : []),
   ]
 
   const [activeTab, setActiveTab] = useState('plan')
@@ -671,6 +673,12 @@ export default function TripPlannerPage() {
               tripId={tripId}
               allowedFileTypes={allowedFileTypes}
             />
+          </div>
+        )}
+
+        {activeTab === 'collab' && (
+          <div style={{ height: '100%', overflow: 'hidden', overscrollBehavior: 'contain' }}>
+            <CollabPanel tripId={tripId} />
           </div>
         )}
       </div>

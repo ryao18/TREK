@@ -316,6 +316,54 @@ function initDb() {
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- Collab addon tables
+    CREATE TABLE IF NOT EXISTS collab_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category TEXT DEFAULT 'General',
+      title TEXT NOT NULL,
+      content TEXT,
+      color TEXT DEFAULT '#6366f1',
+      pinned INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS collab_polls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      question TEXT NOT NULL,
+      options TEXT NOT NULL,
+      multiple INTEGER DEFAULT 0,
+      closed INTEGER DEFAULT 0,
+      deadline TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS collab_poll_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      poll_id INTEGER NOT NULL REFERENCES collab_polls(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      option_index INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(poll_id, user_id, option_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS collab_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      text TEXT NOT NULL,
+      reply_to INTEGER REFERENCES collab_messages(id) ON DELETE SET NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collab_notes_trip ON collab_notes(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_collab_polls_trip ON collab_polls(trip_id);
+    CREATE INDEX IF NOT EXISTS idx_collab_messages_trip ON collab_messages(trip_id);
   `);
 
   // Create indexes for performance
@@ -457,6 +505,57 @@ function initDb() {
         )
       `);
     },
+    // 25: Collab addon tables
+    () => {
+      _db.exec(`
+        CREATE TABLE IF NOT EXISTS collab_notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          category TEXT DEFAULT 'General',
+          title TEXT NOT NULL,
+          content TEXT,
+          color TEXT DEFAULT '#6366f1',
+          pinned INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS collab_polls (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          question TEXT NOT NULL,
+          options TEXT NOT NULL,
+          multiple INTEGER DEFAULT 0,
+          closed INTEGER DEFAULT 0,
+          deadline TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS collab_poll_votes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          poll_id INTEGER NOT NULL REFERENCES collab_polls(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          option_index INTEGER NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(poll_id, user_id, option_index)
+        );
+        CREATE TABLE IF NOT EXISTS collab_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          text TEXT NOT NULL,
+          reply_to INTEGER REFERENCES collab_messages(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_collab_notes_trip ON collab_notes(trip_id);
+        CREATE INDEX IF NOT EXISTS idx_collab_polls_trip ON collab_polls(trip_id);
+        CREATE INDEX IF NOT EXISTS idx_collab_messages_trip ON collab_messages(trip_id);
+      `);
+      // Ensure collab addon exists for existing installations
+      try {
+        _db.prepare("INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('collab', 'Collab', 'Notes, polls, and live chat for trip collaboration', 'trip', 'Users', 0, 6)").run();
+      } catch {}
+    },
     // Future migrations go here (append only, never reorder)
   ];
 
@@ -505,6 +604,7 @@ function initDb() {
         { id: 'documents', name: 'Documents', description: 'Store and manage travel documents', type: 'trip', icon: 'FileText', sort_order: 2 },
         { id: 'vacay', name: 'Vacay', description: 'Personal vacation day planner with calendar view', type: 'global', icon: 'CalendarDays', sort_order: 10 },
         { id: 'atlas', name: 'Atlas', description: 'World map of your visited countries with travel stats', type: 'global', icon: 'Globe', sort_order: 11 },
+        { id: 'collab', name: 'Collab', description: 'Notes, polls, and live chat for trip collaboration', type: 'trip', icon: 'Users', sort_order: 6 },
       ];
       const insertAddon = _db.prepare('INSERT INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)');
       for (const a of defaultAddons) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.sort_order);

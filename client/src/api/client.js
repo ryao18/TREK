@@ -194,6 +194,24 @@ export const dayNotesApi = {
   delete: (tripId, dayId, id) => apiClient.delete(`/trips/${tripId}/days/${dayId}/notes/${id}`).then(r => r.data),
 }
 
+export const collabApi = {
+  // Notes
+  getNotes: (tripId) => apiClient.get(`/trips/${tripId}/collab/notes`).then(r => r.data),
+  createNote: (tripId, data) => apiClient.post(`/trips/${tripId}/collab/notes`, data).then(r => r.data),
+  updateNote: (tripId, id, data) => apiClient.put(`/trips/${tripId}/collab/notes/${id}`, data).then(r => r.data),
+  deleteNote: (tripId, id) => apiClient.delete(`/trips/${tripId}/collab/notes/${id}`).then(r => r.data),
+  // Polls
+  getPolls: (tripId) => apiClient.get(`/trips/${tripId}/collab/polls`).then(r => r.data),
+  createPoll: (tripId, data) => apiClient.post(`/trips/${tripId}/collab/polls`, data).then(r => r.data),
+  votePoll: (tripId, id, optionIndex) => apiClient.post(`/trips/${tripId}/collab/polls/${id}/vote`, { option_index: optionIndex }).then(r => r.data),
+  closePoll: (tripId, id) => apiClient.put(`/trips/${tripId}/collab/polls/${id}/close`).then(r => r.data),
+  deletePoll: (tripId, id) => apiClient.delete(`/trips/${tripId}/collab/polls/${id}`).then(r => r.data),
+  // Chat
+  getMessages: (tripId, before) => apiClient.get(`/trips/${tripId}/collab/messages${before ? `?before=${before}` : ''}`).then(r => r.data),
+  sendMessage: (tripId, data) => apiClient.post(`/trips/${tripId}/collab/messages`, data).then(r => r.data),
+  deleteMessage: (tripId, id) => apiClient.delete(`/trips/${tripId}/collab/messages/${id}`).then(r => r.data),
+}
+
 export const backupApi = {
   list: () => apiClient.get('/backup/list').then(r => r.data),
   create: () => apiClient.post('/backup/create').then(r => r.data),

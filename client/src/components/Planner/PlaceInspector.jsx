@@ -344,8 +344,8 @@ export default function PlaceInspector({
             )
           })()}
 
-          {/* Opening hours + Files — side by side on desktop */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {/* Opening hours + Files — side by side on desktop only if both exist */}
+          <div className={`grid grid-cols-1 ${openingHours?.length > 0 ? 'sm:grid-cols-2' : ''} gap-2`}>
           {openingHours && openingHours.length > 0 && (
             <div style={{ background: 'var(--bg-hover)', borderRadius: 10, overflow: 'hidden' }}>
               <button

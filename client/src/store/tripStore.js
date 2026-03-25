@@ -201,6 +201,20 @@ export const useTripStore = create((set, get) => ({
           return {
             budgetItems: state.budgetItems.filter(i => i.id !== payload.itemId),
           }
+        case 'budget:members-updated':
+          return {
+            budgetItems: state.budgetItems.map(i =>
+              i.id === payload.itemId ? { ...i, members: payload.members, persons: payload.persons } : i
+            ),
+          }
+        case 'budget:member-paid-updated':
+          return {
+            budgetItems: state.budgetItems.map(i =>
+              i.id === payload.itemId
+                ? { ...i, members: (i.members || []).map(m => m.user_id === payload.userId ? { ...m, paid: payload.paid } : m) }
+                : i
+            ),
+          }
 
         // Reservations
         case 'reservation:created':
@@ -681,6 +695,27 @@ export const useTripStore = create((set, get) => ({
       set({ budgetItems: prev })
       throw new Error(err.response?.data?.error || 'Error deleting budget item')
     }
+  },
+
+  setBudgetItemMembers: async (tripId, itemId, userIds) => {
+    const result = await budgetApi.setMembers(tripId, itemId, userIds);
+    set(state => ({
+      budgetItems: state.budgetItems.map(item =>
+        item.id === itemId ? { ...item, members: result.members, persons: result.item.persons } : item
+      )
+    }));
+    return result;
+  },
+
+  toggleBudgetMemberPaid: async (tripId, itemId, userId, paid) => {
+    await budgetApi.togglePaid(tripId, itemId, userId, paid);
+    set(state => ({
+      budgetItems: state.budgetItems.map(item =>
+        item.id === itemId
+          ? { ...item, members: (item.members || []).map(m => m.user_id === userId ? { ...m, paid } : m) }
+          : item
+      )
+    }));
   },
 
   loadFiles: async (tripId) => {

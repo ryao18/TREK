@@ -144,7 +144,7 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle })
               disabled={adding || !selectedUserId}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px',
-                background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 10,
+                background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', borderRadius: 10,
                 fontSize: 13, fontWeight: 600, cursor: adding || !selectedUserId ? 'default' : 'pointer',
                 fontFamily: 'inherit', opacity: adding || !selectedUserId ? 0.4 : 1, flexShrink: 0,
               }}

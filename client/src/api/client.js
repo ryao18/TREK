@@ -152,6 +152,9 @@ export const budgetApi = {
   create: (tripId, data) => apiClient.post(`/trips/${tripId}/budget`, data).then(r => r.data),
   update: (tripId, id, data) => apiClient.put(`/trips/${tripId}/budget/${id}`, data).then(r => r.data),
   delete: (tripId, id) => apiClient.delete(`/trips/${tripId}/budget/${id}`).then(r => r.data),
+  setMembers: (tripId, id, userIds) => apiClient.put(`/trips/${tripId}/budget/${id}/members`, { user_ids: userIds }).then(r => r.data),
+  togglePaid: (tripId, id, userId, paid) => apiClient.put(`/trips/${tripId}/budget/${id}/members/${userId}/paid`, { paid }).then(r => r.data),
+  perPersonSummary: (tripId) => apiClient.get(`/trips/${tripId}/budget/summary/per-person`).then(r => r.data),
 }
 
 export const filesApi = {

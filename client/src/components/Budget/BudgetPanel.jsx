@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import ReactDOM from 'react-dom'
 import { useTripStore } from '../../store/tripStore'
 import { useTranslation } from '../../i18n'
-import { Plus, Trash2, Calculator, Wallet, Pencil } from 'lucide-react'
+import { Plus, Trash2, Calculator, Wallet, Pencil, Users, Check } from 'lucide-react'
 import CustomSelect from '../shared/CustomSelect'
+import { budgetApi } from '../../api/client'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'JPY', 'CHF', 'CZK', 'PLN', 'SEK', 'NOK', 'DKK', 'TRY', 'THB', 'AUD', 'CAD']
@@ -110,6 +112,172 @@ function AddItemRow({ onAdd, t }) {
   )
 }
 
+// ── Chip with custom tooltip ─────────────────────────────────────────────────
+function ChipWithTooltip({ label, avatarUrl, size = 20 }) {
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef(null)
+
+  const onEnter = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect()
+      setPos({ top: rect.top - 6, left: rect.left + rect.width / 2 })
+    }
+    setHover(true)
+  }
+
+  return (
+    <>
+      <div ref={ref} onMouseEnter={onEnter} onMouseLeave={() => setHover(false)}
+        style={{
+          width: size, height: size, borderRadius: '50%', border: '1.5px solid var(--border-primary)',
+          background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: size * 0.4, fontWeight: 700, color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
+        }}>
+        {avatarUrl
+          ? <img src={avatarUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : label?.[0]?.toUpperCase()
+        }
+      </div>
+      {hover && ReactDOM.createPortal(
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, transform: 'translate(-50%, -100%)',
+          pointerEvents: 'none', zIndex: 10000, whiteSpace: 'nowrap',
+          background: 'var(--bg-card, white)', color: 'var(--text-primary, #111827)',
+          fontSize: 11, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--border-faint, #e5e7eb)',
+        }}>
+          {label}
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
+// ── Budget Member Chips (for Persons column) ────────────────────────────────
+function BudgetMemberChips({ members = [], tripMembers = [], onSetMembers, compact = true }) {
+  const chipSize = compact ? 20 : 30
+  const btnSize = compact ? 18 : 28
+  const iconSize = compact ? (members.length > 0 ? 8 : 9) : (members.length > 0 ? 12 : 14)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
+  const btnRef = useRef(null)
+  const dropRef = useRef(null)
+
+  const openDropdown = useCallback(() => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setDropPos({ top: rect.bottom + 4, left: rect.left + rect.width / 2 })
+    }
+    setShowDropdown(v => !v)
+  }, [])
+
+  useEffect(() => {
+    if (!showDropdown) return
+    const close = (e) => {
+      if (dropRef.current && dropRef.current.contains(e.target)) return
+      if (btnRef.current && btnRef.current.contains(e.target)) return
+      setShowDropdown(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [showDropdown])
+
+  const memberIds = members.map(m => m.user_id)
+
+  const toggleMember = (userId) => {
+    const newIds = memberIds.includes(userId)
+      ? memberIds.filter(id => id !== userId)
+      : [...memberIds, userId]
+    onSetMembers(newIds)
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
+      {members.map(m => (
+        <ChipWithTooltip key={m.user_id} label={m.username} avatarUrl={m.avatar_url} size={chipSize} />
+      ))}
+      <button ref={btnRef} onClick={openDropdown}
+        style={{
+          width: btnSize, height: btnSize, borderRadius: '50%', border: '1.5px dashed var(--border-primary)',
+          background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-faint)', padding: 0, flexShrink: 0,
+        }}>
+        {members.length > 0 ? <Pencil size={iconSize} /> : <Users size={iconSize} />}
+      </button>
+      {showDropdown && ReactDOM.createPortal(
+        <div ref={dropRef} style={{
+          position: 'fixed', top: dropPos.top, left: dropPos.left, transform: 'translateX(-50%)', zIndex: 10000,
+          background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 150,
+        }}>
+          {tripMembers.map(tm => {
+            const isActive = memberIds.includes(tm.id)
+            return (
+              <button key={tm.id} onClick={() => toggleMember(tm.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 8px',
+                borderRadius: 6, border: 'none', background: isActive ? 'var(--bg-hover)' : 'none', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 11, color: 'var(--text-primary)', textAlign: 'left',
+              }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none' }}
+              >
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%', background: 'var(--bg-tertiary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700,
+                  color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
+                }}>
+                  {tm.avatar_url
+                    ? <img src={tm.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : tm.username?.[0]?.toUpperCase()
+                  }
+                </div>
+                <span style={{ flex: 1 }}>{tm.username}</span>
+                {isActive && <Check size={12} color="var(--text-primary)" />}
+              </button>
+            )
+          })}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+// ── Per-Person Inline (inside total card) ────────────────────────────────────
+function PerPersonInline({ tripId, budgetItems, currency, locale }) {
+  const [data, setData] = useState(null)
+  const fmt = (v) => fmtNum(v, locale, currency)
+
+  useEffect(() => {
+    budgetApi.perPersonSummary(tripId).then(d => setData(d.summary)).catch(() => {})
+  }, [tripId, budgetItems])
+
+  if (!data || data.length === 0) return null
+
+  return (
+    <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {data.map(person => (
+        <div key={person.user_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700,
+            color: 'rgba(255,255,255,0.7)', overflow: 'hidden', flexShrink: 0,
+          }}>
+            {person.avatar_url
+              ? <img src={person.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : person.username?.[0]?.toUpperCase()
+            }
+          </div>
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.7)' }}>{person.username}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{fmt(person.total_assigned)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Pie Chart (pure CSS conic-gradient) ──────────────────────────────────────
 function PieChart({ segments, size = 200, totalLabel }) {
   if (!segments.length) return null
@@ -148,14 +316,15 @@ function PieChart({ segments, size = 200, totalLabel }) {
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export default function BudgetPanel({ tripId }) {
-  const { trip, budgetItems, addBudgetItem, updateBudgetItem, deleteBudgetItem, loadBudgetItems, updateTrip } = useTripStore()
+export default function BudgetPanel({ tripId, tripMembers = [] }) {
+  const { trip, budgetItems, addBudgetItem, updateBudgetItem, deleteBudgetItem, loadBudgetItems, updateTrip, setBudgetItemMembers } = useTripStore()
   const { t, locale } = useTranslation()
   const [newCategoryName, setNewCategoryName] = useState('')
   const [editingCat, setEditingCat] = useState(null) // { name, value }
   const currency = trip?.currency || 'EUR'
 
   const fmt = (v, cur) => fmtNum(v, locale, cur)
+  const hasMultipleMembers = tripMembers.length > 1
 
   const setCurrency = (cur) => {
     if (tripId) updateTrip(tripId, { currency: cur })
@@ -282,8 +451,8 @@ export default function BudgetPanel({ tripId }) {
                     <thead>
                       <tr>
                         <th style={{ ...th, textAlign: 'left', minWidth: 100 }}>{t('budget.table.name')}</th>
-                        <th style={{ ...th, minWidth: 80 }}>{t('budget.table.total')}</th>
-                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 50 }}>{t('budget.table.persons')}</th>
+                        <th style={{ ...th, minWidth: 60 }}>{t('budget.table.total')}</th>
+                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 130 }}>{t('budget.table.persons')}</th>
                         <th className="hidden sm:table-cell" style={{ ...th, minWidth: 45 }}>{t('budget.table.days')}</th>
                         <th className="hidden md:table-cell" style={{ ...th, minWidth: 90 }}>{t('budget.table.perPerson')}</th>
                         <th className="hidden md:table-cell" style={{ ...th, minWidth: 80 }}>{t('budget.table.perDay')}</th>
@@ -297,16 +466,38 @@ export default function BudgetPanel({ tripId }) {
                         const pp = calcPP(item.total_price, item.persons)
                         const pd = calcPD(item.total_price, item.days)
                         const ppd = calcPPD(item.total_price, item.persons, item.days)
+                        const hasMembers = item.members?.length > 0
                         return (
                           <tr key={item.id} style={{ transition: 'background 0.1s' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                            <td style={td}><InlineEditCell value={item.name} onSave={v => handleUpdateField(item.id, 'name', v)} placeholder={t('budget.table.name')} locale={locale} editTooltip={t('budget.editTooltip')} /></td>
+                            <td style={td}>
+                              <InlineEditCell value={item.name} onSave={v => handleUpdateField(item.id, 'name', v)} placeholder={t('budget.table.name')} locale={locale} editTooltip={t('budget.editTooltip')} />
+                              {/* Mobile: larger chips under name since Persons column is hidden */}
+                              {hasMultipleMembers && (
+                                <div className="sm:hidden" style={{ marginTop: 4 }}>
+                                  <BudgetMemberChips
+                                    members={item.members || []}
+                                    tripMembers={tripMembers}
+                                    onSetMembers={(userIds) => setBudgetItemMembers(tripId, item.id, userIds)}
+                                    compact={false}
+                                  />
+                                </div>
+                              )}
+                            </td>
                             <td style={{ ...td, textAlign: 'center' }}>
                               <InlineEditCell value={item.total_price} type="number" onSave={v => handleUpdateField(item.id, 'total_price', v)} style={{ textAlign: 'center' }} placeholder="0,00" locale={locale} editTooltip={t('budget.editTooltip')} />
                             </td>
-                            <td className="hidden sm:table-cell" style={{ ...td, textAlign: 'center' }}>
-                              <InlineEditCell value={item.persons} type="number" decimals={0} onSave={v => handleUpdateField(item.id, 'persons', v != null ? parseInt(v) || null : null)} style={{ textAlign: 'center' }} placeholder="-" locale={locale} editTooltip={t('budget.editTooltip')} />
+                            <td className="hidden sm:table-cell" style={{ ...td, textAlign: 'center', position: 'relative' }}>
+                              {hasMultipleMembers ? (
+                                <BudgetMemberChips
+                                  members={item.members || []}
+                                  tripMembers={tripMembers}
+                                  onSetMembers={(userIds) => setBudgetItemMembers(tripId, item.id, userIds)}
+                                />
+                              ) : (
+                                <InlineEditCell value={item.persons} type="number" decimals={0} onSave={v => handleUpdateField(item.id, 'persons', v != null ? parseInt(v) || null : null)} style={{ textAlign: 'center' }} placeholder="-" locale={locale} editTooltip={t('budget.editTooltip')} />
+                              )}
                             </td>
                             <td className="hidden sm:table-cell" style={{ ...td, textAlign: 'center' }}>
                               <InlineEditCell value={item.days} type="number" decimals={0} onSave={v => handleUpdateField(item.id, 'days', v != null ? parseInt(v) || null : null)} style={{ textAlign: 'center' }} placeholder="-" locale={locale} editTooltip={t('budget.editTooltip')} />
@@ -375,6 +566,9 @@ export default function BudgetPanel({ tripId }) {
               {Number(grandTotal).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{SYMBOLS[currency] || currency} {currency}</div>
+            {hasMultipleMembers && (budgetItems || []).some(i => i.members?.length > 0) && (
+              <PerPersonInline tripId={tripId} budgetItems={budgetItems} currency={currency} locale={locale} />
+            )}
           </div>
 
           {pieSegments.length > 0 && (
@@ -382,6 +576,7 @@ export default function BudgetPanel({ tripId }) {
               background: 'var(--bg-card)', borderRadius: 16, padding: '20px 16px',
               border: '1px solid var(--border-primary)',
               boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+              marginBottom: 16,
             }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16, textAlign: 'center' }}>{t('budget.byCategory')}</div>
 
@@ -410,6 +605,7 @@ export default function BudgetPanel({ tripId }) {
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>

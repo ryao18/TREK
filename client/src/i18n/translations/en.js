@@ -630,7 +630,7 @@ const en = {
   'budget.table.days': 'Days',
   'budget.table.perPerson': 'Per Person',
   'budget.table.perDay': 'Per Day',
-  'budget.table.perPersonDay': 'Per Person/Day',
+  'budget.table.perPersonDay': 'P. p / Day',
   'budget.table.note': 'Note',
   'budget.newEntry': 'New Entry',
   'budget.defaultEntry': 'New Entry',
@@ -641,6 +641,10 @@ const en = {
   'budget.editTooltip': 'Click to edit',
   'budget.confirm.deleteCategory': 'Are you sure you want to delete the category "{name}" with {count} entries?',
   'budget.deleteCategory': 'Delete Category',
+  'budget.perPerson': 'Per Person',
+  'budget.paid': 'Paid',
+  'budget.open': 'Open',
+  'budget.noMembers': 'No members assigned',
 
   // Files
   'files.title': 'Files',

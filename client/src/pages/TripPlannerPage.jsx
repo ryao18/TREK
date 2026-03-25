@@ -675,8 +675,8 @@ export default function TripPlannerPage() {
         )}
 
         {activeTab === 'finanzplan' && (
-          <div style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', maxWidth: 1400, margin: '0 auto', width: '100%', padding: '8px 0' }}>
-            <BudgetPanel tripId={tripId} />
+          <div style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', maxWidth: 1800, margin: '0 auto', width: '100%', padding: '8px 0' }}>
+            <BudgetPanel tripId={tripId} tripMembers={tripMembers} />
           </div>
         )}
 

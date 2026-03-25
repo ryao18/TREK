@@ -9,6 +9,19 @@ function verifyTripOwnership(tripId, userId) {
   return canAccessTrip(tripId, userId);
 }
 
+function loadItemMembers(itemId) {
+  return db.prepare(`
+    SELECT bm.user_id, bm.paid, u.username, u.avatar
+    FROM budget_item_members bm
+    JOIN users u ON bm.user_id = u.id
+    WHERE bm.budget_item_id = ?
+  `).all(itemId);
+}
+
+function avatarUrl(user) {
+  return user.avatar ? `/uploads/avatars/${user.avatar}` : null;
+}
+
 // GET /api/trips/:tripId/budget
 router.get('/', authenticate, (req, res) => {
   const { tripId } = req.params;
@@ -20,7 +33,46 @@ router.get('/', authenticate, (req, res) => {
     'SELECT * FROM budget_items WHERE trip_id = ? ORDER BY category ASC, created_at ASC'
   ).all(tripId);
 
+  // Batch-load all members
+  const itemIds = items.map(i => i.id);
+  const membersByItem = {};
+  if (itemIds.length > 0) {
+    const allMembers = db.prepare(`
+      SELECT bm.budget_item_id, bm.user_id, bm.paid, u.username, u.avatar
+      FROM budget_item_members bm
+      JOIN users u ON bm.user_id = u.id
+      WHERE bm.budget_item_id IN (${itemIds.map(() => '?').join(',')})
+    `).all(...itemIds);
+    for (const m of allMembers) {
+      if (!membersByItem[m.budget_item_id]) membersByItem[m.budget_item_id] = [];
+      membersByItem[m.budget_item_id].push({
+        user_id: m.user_id, paid: m.paid, username: m.username, avatar_url: avatarUrl(m)
+      });
+    }
+  }
+  items.forEach(item => { item.members = membersByItem[item.id] || []; });
+
   res.json({ items });
+});
+
+// GET /api/trips/:tripId/budget/summary/per-person (must be before /:id routes)
+router.get('/summary/per-person', authenticate, (req, res) => {
+  const { tripId } = req.params;
+  if (!canAccessTrip(Number(tripId), req.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const summary = db.prepare(`
+    SELECT bm.user_id, u.username, u.avatar,
+      SUM(bi.total_price * 1.0 / (SELECT COUNT(*) FROM budget_item_members WHERE budget_item_id = bi.id)) as total_assigned,
+      SUM(CASE WHEN bm.paid = 1 THEN bi.total_price * 1.0 / (SELECT COUNT(*) FROM budget_item_members WHERE budget_item_id = bi.id) ELSE 0 END) as total_paid,
+      COUNT(bi.id) as items_count
+    FROM budget_item_members bm
+    JOIN budget_items bi ON bm.budget_item_id = bi.id
+    JOIN users u ON bm.user_id = u.id
+    WHERE bi.trip_id = ?
+    GROUP BY bm.user_id
+  `).all(tripId);
+
+  res.json({ summary: summary.map(s => ({ ...s, avatar_url: avatarUrl(s) })) });
 });
 
 // POST /api/trips/:tripId/budget
@@ -50,6 +102,7 @@ router.post('/', authenticate, (req, res) => {
   );
 
   const item = db.prepare('SELECT * FROM budget_items WHERE id = ?').get(result.lastInsertRowid);
+  item.members = [];
   res.status(201).json({ item });
   broadcast(tripId, 'budget:created', { item }, req.headers['x-socket-id']);
 });
@@ -87,8 +140,61 @@ router.put('/:id', authenticate, (req, res) => {
   );
 
   const updated = db.prepare('SELECT * FROM budget_items WHERE id = ?').get(id);
+  updated.members = loadItemMembers(id);
   res.json({ item: updated });
   broadcast(tripId, 'budget:updated', { item: updated }, req.headers['x-socket-id']);
+});
+
+// PUT /api/trips/:tripId/budget/:id/members
+router.put('/:id/members', authenticate, (req, res) => {
+  const { tripId, id } = req.params;
+  if (!canAccessTrip(Number(tripId), req.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const item = db.prepare('SELECT * FROM budget_items WHERE id = ? AND trip_id = ?').get(id, tripId);
+  if (!item) return res.status(404).json({ error: 'Budget item not found' });
+
+  const { user_ids } = req.body;
+  if (!Array.isArray(user_ids)) return res.status(400).json({ error: 'user_ids must be an array' });
+
+  // Preserve paid status for existing members
+  const existingPaid = {};
+  const existing = db.prepare('SELECT user_id, paid FROM budget_item_members WHERE budget_item_id = ?').all(id);
+  for (const e of existing) existingPaid[e.user_id] = e.paid;
+
+  db.prepare('DELETE FROM budget_item_members WHERE budget_item_id = ?').run(id);
+  if (user_ids.length > 0) {
+    const insert = db.prepare('INSERT OR IGNORE INTO budget_item_members (budget_item_id, user_id, paid) VALUES (?, ?, ?)');
+    for (const userId of user_ids) insert.run(id, userId, existingPaid[userId] || 0);
+    // Auto-update persons count
+    db.prepare('UPDATE budget_items SET persons = ? WHERE id = ?').run(user_ids.length, id);
+  } else {
+    db.prepare('UPDATE budget_items SET persons = NULL WHERE id = ?').run(id);
+  }
+
+  const members = loadItemMembers(id).map(m => ({ ...m, avatar_url: avatarUrl(m) }));
+  const updated = db.prepare('SELECT * FROM budget_items WHERE id = ?').get(id);
+  res.json({ members, item: updated });
+  broadcast(Number(tripId), 'budget:members-updated', { itemId: Number(id), members, persons: updated.persons }, req.headers['x-socket-id']);
+});
+
+// PUT /api/trips/:tripId/budget/:id/members/:userId/paid
+router.put('/:id/members/:userId/paid', authenticate, (req, res) => {
+  const { tripId, id, userId } = req.params;
+  if (!canAccessTrip(Number(tripId), req.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const { paid } = req.body;
+  db.prepare('UPDATE budget_item_members SET paid = ? WHERE budget_item_id = ? AND user_id = ?')
+    .run(paid ? 1 : 0, id, userId);
+
+  const member = db.prepare(`
+    SELECT bm.user_id, bm.paid, u.username, u.avatar
+    FROM budget_item_members bm JOIN users u ON bm.user_id = u.id
+    WHERE bm.budget_item_id = ? AND bm.user_id = ?
+  `).get(id, userId);
+
+  const result = member ? { ...member, avatar_url: avatarUrl(member) } : null;
+  res.json({ member: result });
+  broadcast(Number(tripId), 'budget:member-paid-updated', { itemId: Number(id), userId: Number(userId), paid: paid ? 1 : 0 }, req.headers['x-socket-id']);
 });
 
 // DELETE /api/trips/:tripId/budget/:id

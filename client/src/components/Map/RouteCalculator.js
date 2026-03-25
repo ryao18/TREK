@@ -41,12 +41,17 @@ export async function calculateRoute(waypoints, profile = 'driving') {
     duration = route.duration // driving: use OSRM value
   }
 
+  const walkingDuration = distance / (5000 / 3600) // 5 km/h
+  const drivingDuration = route.duration // OSRM driving value
+
   return {
     coordinates,
     distance,
     duration,
     distanceText: formatDistance(distance),
     durationText: formatDuration(duration),
+    walkingText: formatDuration(walkingDuration),
+    drivingText: formatDuration(drivingDuration),
   }
 }
 

@@ -118,7 +118,7 @@ export default function AddonManager() {
 }
 
 function AddonRow({ addon, onToggle, t }) {
-  const isComingSoon = addon.id === 'collab'
+  const isComingSoon = false
   return (
     <div className="flex items-center gap-4 px-6 py-4 border-b transition-colors hover:opacity-95" style={{ borderColor: 'var(--border-secondary)', opacity: isComingSoon ? 0.5 : 1, pointerEvents: isComingSoon ? 'none' : 'auto' }}>
       {/* Icon */}

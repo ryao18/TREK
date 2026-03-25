@@ -553,7 +553,7 @@ function initDb() {
       `);
       // Ensure collab addon exists for existing installations
       try {
-        _db.prepare("INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('collab', 'Collab', 'Notes, polls, and live chat for trip collaboration', 'trip', 'Users', 0, 6)").run();
+        _db.prepare("INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('collab', 'Collab', 'Notes, polls, and live chat for trip collaboration', 'trip', 'Users', 1, 6)").run();
       } catch {}
     },
     // 26: Per-assignment times (instead of shared place times)
@@ -582,6 +582,29 @@ function initDb() {
         CREATE INDEX IF NOT EXISTS idx_budget_item_members_item ON budget_item_members(budget_item_id);
         CREATE INDEX IF NOT EXISTS idx_budget_item_members_user ON budget_item_members(user_id);
       `);
+    },
+    // 28: Message reactions
+    () => {
+      _db.exec(`
+        CREATE TABLE IF NOT EXISTS collab_message_reactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_id INTEGER NOT NULL REFERENCES collab_messages(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          emoji TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(message_id, user_id, emoji)
+        );
+        CREATE INDEX IF NOT EXISTS idx_collab_reactions_msg ON collab_message_reactions(message_id);
+      `);
+    },
+    // 29: Soft-delete for chat messages
+    () => {
+      try { _db.exec('ALTER TABLE collab_messages ADD COLUMN deleted INTEGER DEFAULT 0'); } catch {}
+    },
+    // 30: Note attachments + website field
+    () => {
+      try { _db.exec('ALTER TABLE trip_files ADD COLUMN note_id INTEGER REFERENCES collab_notes(id) ON DELETE SET NULL'); } catch {}
+      try { _db.exec('ALTER TABLE collab_notes ADD COLUMN website TEXT'); } catch {}
     },
     // Future migrations go here (append only, never reorder)
   ];
@@ -629,7 +652,7 @@ function initDb() {
       { id: 'documents', name: 'Documents', description: 'Store and manage travel documents', type: 'trip', icon: 'FileText', enabled: 1, sort_order: 2 },
       { id: 'vacay', name: 'Vacay', description: 'Personal vacation day planner with calendar view', type: 'global', icon: 'CalendarDays', enabled: 1, sort_order: 10 },
       { id: 'atlas', name: 'Atlas', description: 'World map of your visited countries with travel stats', type: 'global', icon: 'Globe', enabled: 1, sort_order: 11 },
-      { id: 'collab', name: 'Collab', description: 'Notes, polls, and live chat for trip collaboration', type: 'trip', icon: 'Users', enabled: 0, sort_order: 6 },
+      { id: 'collab', name: 'Collab', description: 'Notes, polls, and live chat for trip collaboration', type: 'trip', icon: 'Users', enabled: 1, sort_order: 6 },
     ];
     const insertAddon = _db.prepare('INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const a of defaultAddons) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.enabled, a.sort_order);

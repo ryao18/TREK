@@ -57,7 +57,7 @@ function verifyTripOwnership(tripId, userId) {
 function formatFile(file) {
   return {
     ...file,
-    url: `/uploads/files/${file.filename}`,
+    url: file.filename?.startsWith('files/') ? `/uploads/${file.filename}` : `/uploads/files/${file.filename}`,
   };
 }
 

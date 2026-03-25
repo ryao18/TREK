@@ -92,7 +92,13 @@ export default function DayPlanSidebar({
 
   const dayNotes = tripStore.dayNotes || {}
 
-  const [expandedDays, setExpandedDays] = useState(() => new Set(days.map(d => d.id)))
+  const [expandedDays, setExpandedDays] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(`day-expanded-${tripId}`)
+      if (saved) return new Set(JSON.parse(saved))
+    } catch {}
+    return new Set(days.map(d => d.id))
+  })
   const [editingDayId, setEditingDayId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [isCalculating, setIsCalculating] = useState(false)
@@ -128,9 +134,20 @@ export default function DayPlanSidebar({
     return { placeId, assignmentId: '', noteId: '', fromDayId: 0 }
   }
 
+  // Only auto-expand genuinely new days (not on initial load from storage)
+  const prevDayCount = React.useRef(days.length)
   useEffect(() => {
-    setExpandedDays(prev => new Set([...prev, ...days.map(d => d.id)]))
-  }, [days.length])
+    if (days.length > prevDayCount.current) {
+      // New days added — expand only those
+      setExpandedDays(prev => {
+        const n = new Set(prev)
+        days.forEach(d => { if (!prev.has(d.id)) n.add(d.id) })
+        try { sessionStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n])) } catch {}
+        return n
+      })
+    }
+    prevDayCount.current = days.length
+  }, [days.length, tripId])
 
   useEffect(() => {
     if (editingDayId && inputRef.current) inputRef.current.focus()
@@ -154,6 +171,7 @@ export default function DayPlanSidebar({
     setExpandedDays(prev => {
       const n = new Set(prev)
       n.has(dayId) ? n.delete(dayId) : n.add(dayId)
+      try { sessionStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n])) } catch {}
       return n
     })
   }

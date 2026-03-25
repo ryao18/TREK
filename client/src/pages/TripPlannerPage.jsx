@@ -23,6 +23,7 @@ import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen 
 import { useTranslation } from '../i18n'
 import { joinTrip, leaveTrip, addListener, removeListener } from '../api/websocket'
 import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi } from '../api/client'
+import { calculateRoute } from '../components/Map/RouteCalculator'
 
 const MIN_SIDEBAR = 200
 const MAX_SIDEBAR = 520
@@ -65,10 +66,14 @@ export default function TripPlannerPage() {
     ...(enabledAddons.collab ? [{ id: 'collab', label: 'Collab' }] : []),
   ]
 
-  const [activeTab, setActiveTab] = useState('plan')
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = sessionStorage.getItem(`trip-tab-${tripId}`)
+    return saved || 'plan'
+  })
 
   const handleTabChange = (tabId) => {
     setActiveTab(tabId)
+    sessionStorage.setItem(`trip-tab-${tripId}`, tabId)
     if (tabId === 'finanzplan') tripStore.loadBudgetItems?.(tripId)
     if (tabId === 'dateien' && (!files || files.length === 0)) tripStore.loadFiles?.(tripId)
   }
@@ -102,7 +107,8 @@ export default function TripPlannerPage() {
   const [showReservationModal, setShowReservationModal] = useState(false)
   const [editingReservation, setEditingReservation] = useState(null)
   const [route, setRoute] = useState(null)
-  const [routeInfo, setRouteInfo] = useState(null)
+  const [routeInfo, setRouteInfo] = useState(null) // unused legacy
+  const [routeSegments, setRouteSegments] = useState([]) // { from, to, walkingText, drivingText }
   const [fitKey, setFitKey] = useState(0)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(null) // 'left' | 'right' | null
 
@@ -130,9 +136,21 @@ export default function TripPlannerPage() {
     const handler = useTripStore.getState().handleRemoteEvent
     joinTrip(tripId)
     addListener(handler)
+    // Reload files when collab notes change (attachments sync) — from WebSocket (other users)
+    const collabFileSync = (event) => {
+      if (event?.type === 'collab:note:deleted' || event?.type === 'collab:note:updated') {
+        tripStore.loadFiles?.(tripId)
+      }
+    }
+    addListener(collabFileSync)
+    // Reload files when local collab actions change files (own user)
+    const localFileSync = () => tripStore.loadFiles?.(tripId)
+    window.addEventListener('collab-files-changed', localFileSync)
     return () => {
       leaveTrip(tripId)
       removeListener(handler)
+      removeListener(collabFileSync)
+      window.removeEventListener('collab-files-changed', localFileSync)
     }
   }, [tripId])
 
@@ -167,17 +185,34 @@ export default function TripPlannerPage() {
     return places.filter(p => p.lat && p.lng)
   }, [places])
 
-  const updateRouteForDay = useCallback((dayId) => {
-    if (!dayId) { setRoute(null); setRouteInfo(null); return }
+  const routeCalcEnabled = useSettingsStore(s => s.settings.route_calculation) !== false
+
+  const updateRouteForDay = useCallback(async (dayId) => {
+    if (!dayId) { setRoute(null); setRouteSegments([]); return }
     const da = (tripStore.assignments[String(dayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
     const waypoints = da.map(a => a.place).filter(p => p?.lat && p?.lng)
     if (waypoints.length >= 2) {
       setRoute(waypoints.map(p => [p.lat, p.lng]))
+      if (!routeCalcEnabled) { setRouteSegments([]); return }
+      // Calculate per-segment travel times
+      const segments = []
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const from = [waypoints[i].lat, waypoints[i].lng]
+        const to = [waypoints[i + 1].lat, waypoints[i + 1].lng]
+        const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
+        try {
+          const result = await calculateRoute([{ lat: from[0], lng: from[1] }, { lat: to[0], lng: to[1] }], 'walking')
+          segments.push({ mid, from, to, walkingText: result.walkingText, drivingText: result.drivingText })
+        } catch {
+          segments.push({ mid, from, to, walkingText: '?', drivingText: '?' })
+        }
+      }
+      setRouteSegments(segments)
     } else {
       setRoute(null)
+      setRouteSegments([])
     }
-    setRouteInfo(null)
-  }, [tripStore])
+  }, [tripStore, routeCalcEnabled])
 
   const handleSelectDay = useCallback((dayId, skipFit) => {
     const changed = dayId !== selectedDayId
@@ -411,6 +446,7 @@ export default function TripPlannerPage() {
               places={mapPlaces()}
               dayPlaces={dayPlaces}
               route={route}
+              routeSegments={routeSegments}
               selectedPlaceId={selectedPlaceId}
               onMarkerClick={handleMarkerClick}
               onMapClick={handleMapClick}
@@ -424,19 +460,6 @@ export default function TripPlannerPage() {
               hasInspector={!!selectedPlace}
             />
 
-            {routeInfo && (
-              <div style={{
-                position: 'absolute', bottom: selectedPlace ? 180 : 20, left: '50%', transform: 'translateX(-50%)',
-                background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px)',
-                borderRadius: 99, padding: '6px 20px', zIndex: 30,
-                boxShadow: '0 2px 16px rgba(0,0,0,0.1)',
-                display: 'flex', gap: 12, fontSize: 13, color: '#374151',
-              }}>
-                <span>{routeInfo.distance}</span>
-                <span style={{ color: '#d1d5db' }}>·</span>
-                <span>{routeInfo.duration}</span>
-              </div>
-            )}
 
             <div className="hidden md:block" style={{ position: 'absolute', left: 10, top: 10, bottom: 10, zIndex: 20 }}>
               <button onClick={() => setLeftCollapsed(c => !c)}
@@ -479,7 +502,7 @@ export default function TripPlannerPage() {
                   onReorder={handleReorder}
                   onUpdateDayTitle={handleUpdateDayTitle}
                   onAssignToDay={handleAssignToDay}
-                  onRouteCalculated={(r) => { if (r) { setRoute(r.coordinates); setRouteInfo({ distance: r.distanceText, duration: r.durationText }) } else { setRoute(null); setRouteInfo(null) } }}
+                  onRouteCalculated={(r) => { if (r) { setRoute(r.coordinates); setRouteInfo({ distance: r.distanceText, duration: r.durationText, walkingText: r.walkingText, drivingText: r.drivingText }) } else { setRoute(null); setRouteInfo(null) } }}
                   reservations={reservations}
                   onAddReservation={(dayId) => { setEditingReservation(null); tripStore.setSelectedDay(dayId); setShowReservationModal(true) }}
                   onDayDetail={(day) => { setShowDayDetail(day); setSelectedPlaceId(null); setSelectedAssignmentId(null) }}
@@ -696,8 +719,8 @@ export default function TripPlannerPage() {
         )}
 
         {activeTab === 'collab' && (
-          <div style={{ height: '100%', overflow: 'hidden', overscrollBehavior: 'contain' }}>
-            <CollabPanel tripId={tripId} />
+          <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+            <CollabPanel tripId={tripId} tripMembers={tripMembers} />
           </div>
         )}
       </div>

@@ -204,6 +204,8 @@ export const collabApi = {
   createNote: (tripId, data) => apiClient.post(`/trips/${tripId}/collab/notes`, data).then(r => r.data),
   updateNote: (tripId, id, data) => apiClient.put(`/trips/${tripId}/collab/notes/${id}`, data).then(r => r.data),
   deleteNote: (tripId, id) => apiClient.delete(`/trips/${tripId}/collab/notes/${id}`).then(r => r.data),
+  uploadNoteFile: (tripId, noteId, formData) => apiClient.post(`/trips/${tripId}/collab/notes/${noteId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data),
+  deleteNoteFile: (tripId, noteId, fileId) => apiClient.delete(`/trips/${tripId}/collab/notes/${noteId}/files/${fileId}`).then(r => r.data),
   // Polls
   getPolls: (tripId) => apiClient.get(`/trips/${tripId}/collab/polls`).then(r => r.data),
   createPoll: (tripId, data) => apiClient.post(`/trips/${tripId}/collab/polls`, data).then(r => r.data),
@@ -214,6 +216,8 @@ export const collabApi = {
   getMessages: (tripId, before) => apiClient.get(`/trips/${tripId}/collab/messages${before ? `?before=${before}` : ''}`).then(r => r.data),
   sendMessage: (tripId, data) => apiClient.post(`/trips/${tripId}/collab/messages`, data).then(r => r.data),
   deleteMessage: (tripId, id) => apiClient.delete(`/trips/${tripId}/collab/messages/${id}`).then(r => r.data),
+  reactMessage: (tripId, id, emoji) => apiClient.post(`/trips/${tripId}/collab/messages/${id}/react`, { emoji }).then(r => r.data),
+  linkPreview: (tripId, url) => apiClient.get(`/trips/${tripId}/collab/link-preview?url=${encodeURIComponent(url)}`).then(r => r.data),
 }
 
 export const backupApi = {

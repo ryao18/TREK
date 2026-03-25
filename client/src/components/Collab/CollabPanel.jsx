@@ -1,33 +1,100 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuthStore } from '../../store/authStore'
+import { useTranslation } from '../../i18n'
+import { MessageCircle, StickyNote, BarChart3, Sparkles } from 'lucide-react'
 import CollabChat from './CollabChat'
 import CollabNotes from './CollabNotes'
 import CollabPolls from './CollabPolls'
+import WhatsNextWidget from './WhatsNextWidget'
 
-export default function CollabPanel({ tripId }) {
+function useIsDesktop(breakpoint = 1024) {
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= breakpoint)
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= breakpoint)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [breakpoint])
+  return isDesktop
+}
+
+const card = {
+  display: 'flex', flexDirection: 'column',
+  background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border-faint)',
+  overflow: 'hidden', minHeight: 0,
+}
+
+export default function CollabPanel({ tripId, tripMembers = [] }) {
   const { user } = useAuthStore()
+  const { t } = useTranslation()
+  const [mobileTab, setMobileTab] = useState('chat')
+  const isDesktop = useIsDesktop()
 
-  return (
-    <div style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
-      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ alignItems: 'start' }}>
+  const tabs = [
+    { id: 'chat', label: t('collab.tabs.chat') || 'Chat', icon: MessageCircle },
+    { id: 'notes', label: t('collab.tabs.notes') || 'Notes', icon: StickyNote },
+    { id: 'polls', label: t('collab.tabs.polls') || 'Polls', icon: BarChart3 },
+    { id: 'next', label: t('collab.whatsNext.title') || "What's Next", icon: Sparkles },
+  ]
 
-          {/* Chat — takes 1 column, full height */}
-          <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border-faint)', overflow: 'hidden', height: 500 }}>
-            <CollabChat tripId={tripId} currentUser={user} />
-          </div>
+  if (isDesktop) {
+    return (
+      <div style={{ height: '100%', display: 'flex', gap: 12, padding: 12, overflow: 'hidden', minHeight: 0 }}>
+        {/* Chat — left, fixed width */}
+        <div style={{ ...card, flex: '0 0 380px' }}>
+          <CollabChat tripId={tripId} currentUser={user} />
+        </div>
 
-          {/* Notes — takes 1 column */}
-          <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border-faint)', overflow: 'hidden', maxHeight: 500, display: 'flex', flexDirection: 'column' }}>
+        {/* Right column: Notes top, Polls + What's Next bottom */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden', minHeight: 0 }}>
+          {/* Notes — top */}
+          <div style={{ ...card, flex: 1 }}>
             <CollabNotes tripId={tripId} currentUser={user} />
           </div>
 
-          {/* Polls — takes 1 column */}
-          <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border-faint)', overflow: 'hidden', maxHeight: 500, display: 'flex', flexDirection: 'column' }}>
-            <CollabPolls tripId={tripId} currentUser={user} />
+          {/* Polls + What's Next — bottom row */}
+          <div style={{ flex: 1, display: 'flex', gap: 12, overflow: 'hidden', minHeight: 0 }}>
+            <div style={{ ...card, flex: 1 }}>
+              <CollabPolls tripId={tripId} currentUser={user} />
+            </div>
+            <div style={{ ...card, flex: 1 }}>
+              <WhatsNextWidget tripMembers={tripMembers} />
+            </div>
           </div>
-
         </div>
+      </div>
+    )
+  }
+
+  // Mobile: tab bar + single panel
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'absolute', inset: 0 }}>
+      <div style={{
+        display: 'flex', gap: 2, padding: '8px 12px', borderBottom: '1px solid var(--border-faint)',
+        background: 'var(--bg-card)', flexShrink: 0,
+      }}>
+        {tabs.map(tab => {
+          const Icon = tab.icon
+          const active = mobileTab === tab.id
+          return (
+            <button key={tab.id} onClick={() => setMobileTab(tab.id)} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '8px 0', borderRadius: 10, border: 'none', cursor: 'pointer',
+              background: active ? 'var(--accent)' : 'transparent',
+              color: active ? 'var(--accent-text)' : 'var(--text-muted)',
+              fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}>
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        {mobileTab === 'chat' && <CollabChat tripId={tripId} currentUser={user} />}
+        {mobileTab === 'notes' && <CollabNotes tripId={tripId} currentUser={user} />}
+        {mobileTab === 'polls' && <CollabPolls tripId={tripId} currentUser={user} />}
+        {mobileTab === 'next' && <WhatsNextWidget tripMembers={tripMembers} />}
       </div>
     </div>
   )

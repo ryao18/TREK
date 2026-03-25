@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { useDropzone } from 'react-dropzone'
-import { Upload, Trash2, ExternalLink, X, FileText, FileImage, File, MapPin, Ticket } from 'lucide-react'
+import { Upload, Trash2, ExternalLink, X, FileText, FileImage, File, MapPin, Ticket, StickyNote } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 
@@ -128,6 +128,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
     if (filterType === 'pdf') return f.mime_type === 'application/pdf'
     if (filterType === 'image') return isImage(f.mime_type)
     if (filterType === 'doc') return (f.mime_type || '').includes('word') || (f.mime_type || '').includes('excel') || (f.mime_type || '').includes('text')
+    if (filterType === 'collab') return !!f.note_id
     return true
   })
 
@@ -243,6 +244,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
           { id: 'pdf', label: t('files.filterPdf') },
           { id: 'image', label: t('files.filterImages') },
           { id: 'doc', label: t('files.filterDocs') },
+          ...(files.some(f => f.note_id) ? [{ id: 'collab', label: t('files.filterCollab') || 'Collab' }] : []),
         ].map(tab => (
           <button key={tab.id} onClick={() => setFilterType(tab.id)} style={{
             padding: '4px 12px', borderRadius: 99, border: 'none', cursor: 'pointer', fontSize: 12,
@@ -273,7 +275,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
               const linkedReservation = file.reservation_id
                 ? (reservations?.find(r => r.id === file.reservation_id) || { title: file.reservation_title })
                 : null
-              const fileUrl = file.url || `/uploads/files/${file.filename}`
+              const fileUrl = file.url || (file.filename?.startsWith('files/') ? `/uploads/${file.filename}` : `/uploads/files/${file.filename}`)
 
               return (
                 <div key={file.id} style={{
@@ -296,7 +298,15 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
                   >
                     {isImage(file.mime_type)
                       ? <img src={fileUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <FileIcon size={16} style={{ color: 'var(--text-muted)' }} />
+                      : (() => {
+                          const ext = (file.original_name || '').split('.').pop()?.toUpperCase() || '?'
+                          const isPdf = file.mime_type === 'application/pdf'
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', background: isPdf ? '#ef44441a' : 'var(--bg-tertiary)' }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: isPdf ? '#ef4444' : 'var(--text-muted)', letterSpacing: 0.3 }}>{ext}</span>
+                            </div>
+                          )
+                        })()
                     }
                   </div>
 
@@ -323,6 +333,12 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
                         <SourceBadge
                           icon={Ticket}
                           label={`${t('files.sourceBooking')} · ${linkedReservation.title || t('files.sourceBooking')}`}
+                        />
+                      )}
+                      {file.note_id && (
+                        <SourceBadge
+                          icon={StickyNote}
+                          label={t('files.sourceCollab') || 'Collab Notes'}
                         />
                       )}
                     </div>

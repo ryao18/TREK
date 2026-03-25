@@ -3,12 +3,9 @@ import { Plus, Trash2, X, Check, BarChart3, Lock, Clock } from 'lucide-react'
 import { collabApi } from '../../api/client'
 import { addListener, removeListener } from '../../api/websocket'
 import { useTranslation } from '../../i18n'
-
-// ── Constants ────────────────────────────────────────────────────────────────
+import ReactDOM from 'react-dom'
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif"
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeRemaining(deadline) {
   if (!deadline) return null
@@ -28,1019 +25,398 @@ function isExpired(deadline) {
 }
 
 function totalVotes(poll) {
-  if (!poll.options) return 0
-  return poll.options.reduce((s, o) => s + (o.voters?.length || 0), 0)
+  return (poll.options || []).reduce((s, o) => s + (o.voters?.length || 0), 0)
 }
 
-// ── Voter Avatars ────────────────────────────────────────────────────────────
-
-function VoterAvatars({ voters = [] }) {
-  const MAX = 4
-  const shown = voters.slice(0, MAX)
-  const extra = voters.length - MAX
-
-  if (!voters.length) return null
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', marginTop: 3, minHeight: 14 }}>
-      {shown.map((v, i) => (
-        <div
-          key={v.id || i}
-          title={v.username}
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: '50%',
-            border: '1.5px solid var(--bg-primary)',
-            marginLeft: i === 0 ? 0 : -4,
-            overflow: 'hidden',
-            background: 'var(--bg-tertiary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 7,
-            fontWeight: 700,
-            fontFamily: FONT,
-            color: 'var(--text-secondary)',
-            flexShrink: 0,
-            zIndex: MAX - i,
-            position: 'relative',
-          }}
-        >
-          {v.avatar ? (
-            <img
-              src={v.avatar}
-              alt=""
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            (v.username || '?')[0].toUpperCase()
-          )}
-        </div>
-      ))}
-      {extra > 0 && (
-        <span
-          style={{
-            fontSize: 9,
-            fontFamily: FONT,
-            color: 'var(--text-faint)',
-            marginLeft: 3,
-            fontWeight: 600,
-          }}
-        >
-          +{extra}
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ── Option Bar ───────────────────────────────────────────────────────────────
-
-function OptionBar({ option, index, poll, currentUser, onVote, isClosed }) {
-  const total = totalVotes(poll)
-  const count = option.voters?.length || 0
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0
-  const voted = option.voters?.some((v) => v.id === currentUser.id)
-  const canVote = !isClosed && !poll.is_closed
-
-  return (
-    <div
-      onClick={() => canVote && onVote(poll.id, index)}
-      style={{
-        position: 'relative',
-        width: '100%',
-        padding: '8px 12px',
-        borderRadius: 8,
-        border: voted
-          ? '1px solid var(--accent)'
-          : '1px solid var(--border-faint)',
-        overflow: 'hidden',
-        cursor: canVote ? 'pointer' : 'default',
-        marginTop: 4,
-        boxSizing: 'border-box',
-        fontFamily: FONT,
-      }}
-      onMouseEnter={(e) => {
-        if (canVote) e.currentTarget.style.borderColor = 'var(--accent)'
-      }}
-      onMouseLeave={(e) => {
-        if (canVote && !voted)
-          e.currentTarget.style.borderColor = 'var(--border-faint)'
-      }}
-    >
-      {/* Vote fill bar */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: `${pct}%`,
-          background: 'var(--accent)',
-          opacity: voted ? 0.15 : 0.1,
-          transition: 'width 0.3s',
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* Content row */}
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-          {voted && (
-            <Check
-              size={12}
-              style={{ color: 'var(--accent)', flexShrink: 0 }}
-              strokeWidth={2.5}
-            />
-          )}
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: voted ? 600 : 400,
-              color: 'var(--text-primary)',
-              fontFamily: FONT,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {option.text}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <span
-            style={{
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              fontFamily: FONT,
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {count}
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              fontFamily: FONT,
-              fontVariantNumeric: 'tabular-nums',
-              minWidth: 28,
-              textAlign: 'right',
-            }}
-          >
-            {pct}%
-          </span>
-        </div>
-      </div>
-
-      {/* Voter avatars */}
-      {option.voters?.length > 0 && (
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <VoterAvatars voters={option.voters} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Create Poll Form ─────────────────────────────────────────────────────────
-
-function CreatePollForm({ onSubmit, onCancel, t }) {
+// ── Create Poll Modal ────────────────────────────────────────────────────────
+function CreatePollModal({ onClose, onCreate, t }) {
   const [question, setQuestion] = useState('')
   const [options, setOptions] = useState(['', ''])
-  const [multipleChoice, setMultipleChoice] = useState(false)
-  const [deadline, setDeadline] = useState('')
+  const [multiChoice, setMultiChoice] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const canSubmit =
-    question.trim().length > 0 &&
-    options.filter((o) => o.trim()).length >= 2 &&
-    !submitting
+  const addOption = () => setOptions(prev => [...prev, ''])
+  const removeOption = (i) => setOptions(prev => prev.filter((_, j) => j !== i))
+  const updateOption = (i, v) => setOptions(prev => prev.map((o, j) => j === i ? v : o))
 
-  const addOption = () => setOptions((prev) => [...prev, ''])
-
-  const removeOption = (i) => {
-    if (options.length <= 2) return
-    setOptions((prev) => prev.filter((_, idx) => idx !== i))
-  }
-
-  const updateOption = (i, val) =>
-    setOptions((prev) => prev.map((o, idx) => (idx === i ? val : o)))
+  const canSubmit = question.trim() && options.filter(o => o.trim()).length >= 2 && !submitting
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!canSubmit) return
     setSubmitting(true)
     try {
-      await onSubmit({
-        question: question.trim(),
-        options: options.filter((o) => o.trim()).map((o) => o.trim()),
-        multiple_choice: multipleChoice,
-        deadline: deadline || undefined,
-      })
-      setQuestion('')
-      setOptions(['', ''])
-      setMultipleChoice(false)
-      setDeadline('')
-    } finally {
-      setSubmitting(false)
-    }
+      await onCreate({ question: question.trim(), options: options.filter(o => o.trim()), multiple_choice: multiChoice })
+      onClose()
+    } catch {} finally { setSubmitting(false) }
   }
 
-  return (
-    <form
-      onSubmit={handleSubmit}
-      style={{
-        background: 'var(--bg-secondary)',
-        borderRadius: 10,
-        padding: 12,
-        marginBottom: 8,
-        fontFamily: FONT,
-      }}
-    >
-      {/* Question */}
-      <input
-        type="text"
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder={t('collab.polls.question')}
-        style={{
-          width: '100%',
-          border: '1px solid var(--border-primary)',
-          borderRadius: 10,
-          padding: '8px 12px',
-          fontSize: 13,
-          background: 'var(--bg-input)',
-          color: 'var(--text-primary)',
-          fontFamily: 'inherit',
-          outline: 'none',
-          boxSizing: 'border-box',
-        }}
-        onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-        onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
-        autoFocus
-      />
-
-      {/* Options */}
-      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {options.map((opt, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="text"
-              value={opt}
-              onChange={(e) => updateOption(i, e.target.value)}
-              placeholder={`${t('collab.polls.addOption').replace('+', '').trim()} ${i + 1}`}
-              style={{
-                flex: 1,
-                border: '1px solid var(--border-primary)',
-                borderRadius: 10,
-                padding: '8px 12px',
-                fontSize: 13,
-                background: 'var(--bg-input)',
-                color: 'var(--text-primary)',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
-              onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
-            />
-            {options.length > 2 && (
-              <button
-                type="button"
-                onClick={() => removeOption(i)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 4,
-                  color: 'var(--text-faint)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  fontFamily: FONT,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger, #ef4444)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* + Add option link */}
-      <div
-        onClick={addOption}
-        style={{
-          fontSize: 11,
-          color: 'var(--text-muted)',
-          cursor: 'pointer',
-          fontFamily: FONT,
-          padding: '6px 0 2px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 3,
-        }}
-      >
-        <Plus size={11} />
-        {t('collab.polls.addOption')}
-      </div>
-
-      {/* Settings row */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          marginTop: 10,
-          flexWrap: 'wrap',
-        }}
-      >
-        {/* Multiple choice toggle */}
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 12,
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            userSelect: 'none',
-            fontFamily: FONT,
-          }}
-        >
-          <div
-            onClick={() => setMultipleChoice(!multipleChoice)}
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 4,
-              border: multipleChoice
-                ? '1px solid var(--accent)'
-                : '1px solid var(--border-primary)',
-              background: multipleChoice ? 'var(--accent)' : 'transparent',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            {multipleChoice && <Check size={9} style={{ color: '#fff' }} strokeWidth={3} />}
-          </div>
-          {t('collab.polls.multipleChoice')}
-        </label>
-
-        {/* Deadline */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Clock size={12} style={{ color: 'var(--text-faint)' }} />
-          <input
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            style={{
-              border: '1px solid var(--border-primary)',
-              borderRadius: 10,
-              padding: '8px 12px',
-              fontSize: 13,
-              background: 'var(--bg-input)',
-              color: 'var(--text-primary)',
-              fontFamily: 'inherit',
-              outline: 'none',
-            }}
-          />
+  return ReactDOM.createPortal(
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--overlay-bg, rgba(0,0,0,0.35))', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16, fontFamily: FONT }} onClick={onClose}>
+      <form style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 400, maxHeight: '90vh', overflow: 'auto', border: '1px solid var(--border-faint)' }} onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 12px', borderBottom: '1px solid var(--border-faint)' }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{t('collab.polls.new')}</h3>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: 2, display: 'flex' }}><X size={16} /></button>
         </div>
-      </div>
+        <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Question */}
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('collab.polls.question')}</div>
+            <input autoFocus value={question} onChange={e => setQuestion(e.target.value)} placeholder={t('collab.polls.questionPlaceholder') || 'Ask a question...'} style={{ width: '100%', border: '1px solid var(--border-primary)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
 
-      {/* Actions */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 8,
-          marginTop: 12,
+          {/* Options */}
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('collab.polls.options')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {options.map((opt, i) => (
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input value={opt} onChange={e => updateOption(i, e.target.value)} placeholder={`${t('collab.polls.option')} ${i + 1}`}
+                    style={{ flex: 1, border: '1px solid var(--border-primary)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none' }} />
+                  {options.length > 2 && (
+                    <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 2 }}><X size={14} /></button>
+                  )}
+                </div>
+              ))}
+              <button type="button" onClick={addOption} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 10, border: '1px dashed var(--border-faint)', background: 'transparent', cursor: 'pointer', color: 'var(--text-faint)', fontSize: 12, fontFamily: FONT }}>
+                <Plus size={12} /> {t('collab.polls.addOption')}
+              </button>
+            </div>
+          </div>
+
+          {/* Multi choice toggle */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <div onClick={() => setMultiChoice(!multiChoice)} style={{
+              width: 36, height: 20, borderRadius: 10, padding: 2, cursor: 'pointer',
+              background: multiChoice ? '#007AFF' : 'var(--border-primary)', transition: 'background 0.2s',
+              display: 'flex', alignItems: 'center',
+            }}>
+              <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'transform 0.2s', transform: multiChoice ? 'translateX(16px)' : 'translateX(0)' }} />
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: FONT }}>{t('collab.polls.multiChoice')}</span>
+          </label>
+
+          {/* Submit */}
+          <button type="submit" disabled={!canSubmit} style={{
+            width: '100%', borderRadius: 99, padding: '9px 14px', background: canSubmit ? 'var(--accent)' : 'var(--border-primary)',
+            color: canSubmit ? 'var(--accent-text)' : 'var(--text-faint)', fontSize: 13, fontWeight: 600, border: 'none', cursor: canSubmit ? 'pointer' : 'default', fontFamily: FONT,
+          }}>
+            {submitting ? '...' : t('collab.polls.create')}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  )
+}
+
+// ── Voter Chip with custom tooltip ────────────────────────────────────────────
+function VoterChip({ voter, offset }) {
+  const [hover, setHover] = useState(false)
+  const ref = React.useRef(null)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+
+  return (
+    <>
+      <div ref={ref}
+        onMouseEnter={() => {
+          if (ref.current) {
+            const rect = ref.current.getBoundingClientRect()
+            setPos({ top: rect.top - 6, left: rect.left + rect.width / 2 })
+          }
+          setHover(true)
         }}
-      >
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            background: 'none',
-            border: '1px solid var(--border-primary)',
-            borderRadius: 99,
-            padding: '5px 14px',
-            fontSize: 12,
-            fontWeight: 500,
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontFamily: FONT,
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-        >
-          {t('common.cancel', 'Cancel')}
-        </button>
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          style={{
-            background: canSubmit ? 'var(--accent)' : 'var(--bg-tertiary)',
-            border: 'none',
-            borderRadius: 99,
-            padding: '5px 14px',
-            fontSize: 12,
-            fontWeight: 600,
-            color: canSubmit ? '#fff' : 'var(--text-faint)',
-            cursor: canSubmit ? 'pointer' : 'not-allowed',
-            fontFamily: FONT,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-          onMouseEnter={(e) => {
-            if (canSubmit) e.currentTarget.style.opacity = '0.85'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.opacity = '1'
-          }}
-        >
-          <BarChart3 size={12} />
-          {t('collab.polls.create')}
-        </button>
+        onMouseLeave={() => setHover(false)}
+        style={{
+          width: 18, height: 18, borderRadius: '50%', background: 'var(--bg-tertiary)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 7, fontWeight: 700, color: 'var(--text-muted)', overflow: 'hidden',
+          border: '1.5px solid var(--bg-card)', marginLeft: offset ? -5 : 0, flexShrink: 0,
+        }}>
+        {voter.avatar_url ? <img src={voter.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (voter.username || '?')[0].toUpperCase()}
       </div>
-    </form>
+      {hover && ReactDOM.createPortal(
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, transform: 'translate(-50%, -100%)',
+          pointerEvents: 'none', zIndex: 10000, whiteSpace: 'nowrap',
+          background: 'var(--bg-card)', color: 'var(--text-primary)',
+          fontSize: 11, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid var(--border-faint)',
+        }}>
+          {voter.username}
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
 
 // ── Poll Card ────────────────────────────────────────────────────────────────
-
 function PollCard({ poll, currentUser, onVote, onClose, onDelete, t }) {
-  const isCreator = poll.created_by?.id === currentUser.id
+  const total = totalVotes(poll)
   const isClosed = poll.is_closed || isExpired(poll.deadline)
   const remaining = timeRemaining(poll.deadline)
-  const total = totalVotes(poll)
+  const hasVoted = (poll.options || []).some(o => (o.voters || []).some(v => String(v.user_id) === String(currentUser.id)))
 
   return (
-    <div
-      style={{
-        borderRadius: 10,
-        border: '1px solid var(--border-faint)',
-        padding: 12,
-        background: 'var(--bg-card)',
-        opacity: isClosed ? 0.6 : 1,
-        fontFamily: FONT,
-      }}
-    >
-      {/* Header row */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 8,
-          marginBottom: 8,
-        }}
-      >
+    <div style={{
+      borderRadius: 14, border: '1px solid var(--border-faint)', overflow: 'hidden',
+      background: 'var(--bg-card)', fontFamily: FONT,
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '10px 12px', display: 'flex', alignItems: 'flex-start', gap: 8,
+        background: isClosed ? 'var(--bg-secondary)' : 'transparent',
+      }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Question */}
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              fontFamily: FONT,
-              lineHeight: 1.35,
-              wordBreak: 'break-word',
-              margin: 0,
-            }}
-          >
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35, wordBreak: 'break-word' }}>
             {poll.question}
           </div>
-
-          {/* Meta line */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginTop: 3,
-              flexWrap: 'wrap',
-            }}
-          >
-            {/* by username */}
-            <span
-              style={{
-                fontSize: 10,
-                color: 'var(--text-faint)',
-                fontFamily: FONT,
-              }}
-            >
-              by {poll.created_by?.username || '?'}
-            </span>
-
-            {/* Vote count */}
-            <span
-              style={{
-                fontSize: 10,
-                color: 'var(--text-faint)',
-                fontFamily: FONT,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 3,
-              }}
-            >
-              <BarChart3 size={9} />
-              {total} {t('collab.polls.votes')}
-            </span>
-
-            {/* Multiple choice badge */}
-            {poll.multiple_choice && (
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 600,
-                  color: 'var(--accent)',
-                  padding: '1px 6px',
-                  borderRadius: 4,
-                  background: 'var(--bg-tertiary)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3,
-                  fontFamily: FONT,
-                }}
-              >
-                {t('collab.polls.multipleChoice')}
-              </span>
-            )}
-
-            {/* Closed badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
             {isClosed && (
-              <span
-                style={{
-                  fontSize: 9,
-                  padding: '1px 6px',
-                  borderRadius: 4,
-                  background: 'var(--bg-tertiary)',
-                  color: 'var(--text-faint)',
-                  fontWeight: 600,
-                  fontFamily: FONT,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 3,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3,
-                }}
-              >
-                <Lock size={8} />
-                {t('collab.polls.closed')}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', background: 'var(--bg-tertiary)', padding: '2px 7px', borderRadius: 99 }}>
+                <Lock size={8} /> {t('collab.polls.closed')}
               </span>
             )}
-
-            {/* Deadline countdown */}
-            {!isClosed && remaining && (
-              <span
-                style={{
-                  fontSize: 10,
-                  color: 'var(--text-faint)',
-                  fontFamily: FONT,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 3,
-                }}
-              >
-                <Clock size={9} />
-                {remaining}
+            {remaining && !isClosed && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: '#f59e0b', background: '#f59e0b18', padding: '2px 7px', borderRadius: 99 }}>
+                <Clock size={8} /> {remaining}
               </span>
             )}
+            {poll.multiple_choice && (
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', background: 'var(--bg-tertiary)', padding: '2px 7px', borderRadius: 99 }}>
+                {t('collab.polls.multiChoice')}
+              </span>
+            )}
+            <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>
+              {total} {total === 1 ? 'vote' : 'votes'}
+            </span>
           </div>
         </div>
-
-        {/* Creator actions: close / delete */}
-        {isCreator && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-            {!isClosed && (
-              <button
-                onClick={() => onClose(poll.id)}
-                title={t('collab.polls.close')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 4,
-                  color: 'var(--text-faint)',
-                  fontSize: 10,
-                  fontFamily: FONT,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-              >
-                <Lock size={12} />
-              </button>
-            )}
-            <button
-              onClick={() => onDelete(poll.id)}
-              title={t('common.delete', 'Delete')}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 4,
-                color: 'var(--text-faint)',
-                fontSize: 10,
-                fontFamily: FONT,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger, #ef4444)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
-            >
-              <Trash2 size={12} />
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+          {!isClosed && (
+            <button onClick={() => onClose(poll.id)} title={t('collab.polls.close')}
+              style={{ padding: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', borderRadius: 6 }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+              <Lock size={12} />
             </button>
-          </div>
-        )}
+          )}
+          <button onClick={() => onDelete(poll.id)} title={t('collab.polls.delete')}
+            style={{ padding: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', borderRadius: 6 }}
+            onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+            <Trash2 size={12} />
+          </button>
+        </div>
       </div>
 
       {/* Options */}
-      <div>
-        {poll.options?.map((opt, i) => (
-          <OptionBar
-            key={i}
-            option={opt}
-            index={i}
-            poll={poll}
-            currentUser={currentUser}
-            onVote={onVote}
-            isClosed={isClosed}
-          />
-        ))}
+      <div style={{ padding: '4px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {(poll.options || []).map((opt, idx) => {
+          const count = opt.voters?.length || 0
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0
+          const myVote = (opt.voters || []).some(v => String(v.user_id) === String(currentUser.id))
+          const isWinner = isClosed && count === Math.max(...(poll.options || []).map(o => o.voters?.length || 0)) && count > 0
+
+          return (
+            <button key={idx} onClick={() => !isClosed && onVote(poll.id, idx)}
+              disabled={isClosed}
+              style={{
+                position: 'relative', display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 12px', borderRadius: 10, border: 'none', cursor: isClosed ? 'default' : 'pointer',
+                background: 'var(--bg-secondary)', fontFamily: FONT, textAlign: 'left', width: '100%',
+                overflow: 'hidden', transition: 'transform 0.1s',
+              }}
+              onMouseEnter={e => { if (!isClosed) e.currentTarget.style.transform = 'scale(1.01)' }}
+              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              {/* Progress bar background */}
+              <div style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0,
+                width: `${pct}%`, borderRadius: 10,
+                background: myVote ? '#007AFF20' : isWinner ? '#10b98118' : 'var(--bg-tertiary)',
+                transition: 'width 0.4s ease',
+              }} />
+
+              {/* Check circle */}
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%', flexShrink: 0, position: 'relative',
+                border: myVote ? '2px solid #007AFF' : '2px solid var(--border-primary)',
+                background: myVote ? '#007AFF' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s',
+              }}>
+                {myVote && <Check size={11} color="#fff" strokeWidth={3} />}
+              </div>
+
+              {/* Label */}
+              <span style={{
+                flex: 1, fontSize: 13, fontWeight: myVote || isWinner ? 600 : 400,
+                color: 'var(--text-primary)', position: 'relative', zIndex: 1,
+              }}>
+                {typeof opt === 'string' ? opt : opt.label || opt}
+              </span>
+
+              {/* Voter avatars */}
+              {(opt.voters || []).length > 0 && (hasVoted || isClosed) && (
+                <div style={{ display: 'flex', position: 'relative', zIndex: 1 }}>
+                  {(opt.voters || []).slice(0, 3).map((v, vi) => (
+                    <VoterChip key={v.user_id || vi} voter={v} offset={vi > 0} />
+                  ))}
+                </div>
+              )}
+
+              {/* Percentage */}
+              {(hasVoted || isClosed) && (
+                <span style={{
+                  fontSize: 12, fontWeight: 700, color: myVote ? '#007AFF' : 'var(--text-muted)',
+                  position: 'relative', zIndex: 1, minWidth: 32, textAlign: 'right',
+                }}>
+                  {pct}%
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-
-function CollabPolls({ tripId, currentUser }) {
+export default function CollabPolls({ tripId, currentUser }) {
   const { t } = useTranslation()
   const [polls, setPolls] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
 
-  // ── Load polls ──
-  const loadPolls = useCallback(async () => {
-    try {
-      const data = await collabApi.getPolls(tripId)
+  useEffect(() => {
+    collabApi.getPolls(tripId).then(data => {
       setPolls(Array.isArray(data) ? data : data.polls || [])
-    } catch (err) {
-      console.error('Failed to load polls:', err)
-    } finally {
-      setLoading(false)
-    }
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [tripId])
 
-  useEffect(() => {
-    loadPolls()
-  }, [loadPolls])
-
-  // ── WebSocket ──
+  // WebSocket
   useEffect(() => {
     const handler = (msg) => {
-      if (!msg || !msg.type) return
-
+      if (!msg?.type) return
       if (msg.type === 'collab:poll:created' && msg.poll) {
-        setPolls((prev) => {
-          if (prev.some((p) => p.id === msg.poll.id)) return prev
-          return [msg.poll, ...prev]
-        })
+        setPolls(prev => prev.some(p => p.id === msg.poll.id) ? prev : [msg.poll, ...prev])
       }
-
       if (msg.type === 'collab:poll:voted' && msg.poll) {
-        setPolls((prev) =>
-          prev.map((p) => (p.id === msg.poll.id ? msg.poll : p))
-        )
+        setPolls(prev => prev.map(p => p.id === msg.poll.id ? msg.poll : p))
       }
-
       if (msg.type === 'collab:poll:closed' && msg.poll) {
-        setPolls((prev) =>
-          prev.map((p) => (p.id === msg.poll.id ? { ...p, ...msg.poll, is_closed: true } : p))
-        )
+        setPolls(prev => prev.map(p => p.id === msg.poll.id ? { ...p, ...msg.poll, is_closed: true } : p))
       }
-
       if (msg.type === 'collab:poll:deleted') {
-        const deletedId = msg.pollId || msg.poll?.id || msg.id
-        if (deletedId) {
-          setPolls((prev) => prev.filter((p) => p.id !== deletedId))
-        }
+        const id = msg.pollId || msg.poll?.id
+        if (id) setPolls(prev => prev.filter(p => p.id !== id))
       }
     }
-
     addListener(handler)
     return () => removeListener(handler)
   }, [])
 
-  // ── Actions ──
-  const handleCreate = useCallback(
-    async (data) => {
-      const result = await collabApi.createPoll(tripId, data)
-      const created = result.poll || result
-      setPolls((prev) => {
-        if (prev.some((p) => p.id === created.id)) return prev
-        return [created, ...prev]
-      })
-      setShowForm(false)
-    },
-    [tripId]
-  )
+  const handleCreate = useCallback(async (data) => {
+    const result = await collabApi.createPoll(tripId, data)
+    const created = result.poll || result
+    setPolls(prev => prev.some(p => p.id === created.id) ? prev : [created, ...prev])
+    setShowForm(false)
+  }, [tripId])
 
-  const handleVote = useCallback(
-    async (pollId, optionIndex) => {
-      try {
-        const result = await collabApi.votePoll(tripId, pollId, optionIndex)
-        const updated = result.poll || result
-        setPolls((prev) =>
-          prev.map((p) => (p.id === updated.id ? updated : p))
-        )
-      } catch (err) {
-        console.error('Vote failed:', err)
-      }
-    },
-    [tripId]
-  )
+  const handleVote = useCallback(async (pollId, optionIndex) => {
+    try {
+      const result = await collabApi.votePoll(tripId, pollId, optionIndex)
+      const updated = result.poll || result
+      setPolls(prev => prev.map(p => p.id === updated.id ? updated : p))
+    } catch {}
+  }, [tripId])
 
-  const handleClose = useCallback(
-    async (pollId) => {
-      try {
-        await collabApi.closePoll(tripId, pollId)
-        setPolls((prev) =>
-          prev.map((p) => (p.id === pollId ? { ...p, is_closed: true } : p))
-        )
-      } catch (err) {
-        console.error('Close poll failed:', err)
-      }
-    },
-    [tripId]
-  )
+  const handleClose = useCallback(async (pollId) => {
+    try {
+      await collabApi.closePoll(tripId, pollId)
+      setPolls(prev => prev.map(p => p.id === pollId ? { ...p, is_closed: true } : p))
+    } catch {}
+  }, [tripId])
 
-  const handleDelete = useCallback(
-    async (pollId) => {
-      try {
-        await collabApi.deletePoll(tripId, pollId)
-        setPolls((prev) => prev.filter((p) => p.id !== pollId))
-      } catch (err) {
-        console.error('Delete poll failed:', err)
-      }
-    },
-    [tripId]
-  )
+  const handleDelete = useCallback(async (pollId) => {
+    try {
+      await collabApi.deletePoll(tripId, pollId)
+      setPolls(prev => prev.filter(p => p.id !== pollId))
+    } catch {}
+  }, [tripId])
 
-  // ── Separate active / closed ──
-  const activePolls = polls.filter(
-    (p) => !p.is_closed && !isExpired(p.deadline)
-  )
-  const closedPolls = polls.filter(
-    (p) => p.is_closed || isExpired(p.deadline)
-  )
+  const activePolls = polls.filter(p => !p.is_closed && !isExpired(p.deadline))
+  const closedPolls = polls.filter(p => p.is_closed || isExpired(p.deadline))
 
-  // ── Deadline countdown ticker ──
+  // Deadline ticker
   const [, setTick] = useState(0)
   useEffect(() => {
-    const hasDeadlines = polls.some((p) => p.deadline && !p.is_closed)
-    if (!hasDeadlines) return
-    const iv = setInterval(() => setTick((t) => t + 1), 30000)
+    if (!polls.some(p => p.deadline && !p.is_closed)) return
+    const iv = setInterval(() => setTick(t => t + 1), 30000)
     return () => clearInterval(iv)
   }, [polls])
 
-  // ── Render ──
+  if (loading) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT }}>
+        <div style={{ width: 20, height: 20, border: '2px solid var(--border-primary)', borderTopColor: 'var(--text-primary)', borderRadius: '50%', animation: 'collab-poll-spin 0.7s linear infinite' }} />
+        <style>{`@keyframes collab-poll-spin { to { transform: rotate(360deg) } }`}</style>
+      </div>
+    )
+  }
+
   return (
-    <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: FONT,
-      }}
-    >
-      {/* Header — fixed */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--border-faint)',
-          flexShrink: 0,
-        }}
-      >
-        <h3
-          style={{
-            margin: 0,
-            fontSize: 14,
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            fontFamily: FONT,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <BarChart3 size={14} style={{ color: 'var(--accent)' }} />
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', fontFamily: FONT }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', flexShrink: 0 }}>
+        <h3 style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 7, letterSpacing: 0.3, textTransform: 'uppercase' }}>
+          <BarChart3 size={14} color="var(--text-faint)" />
           {t('collab.polls.title')}
         </h3>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            style={{
-              background: 'var(--accent)',
-              border: 'none',
-              borderRadius: 99,
-              padding: '4px 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              color: '#fff',
-              cursor: 'pointer',
-              fontFamily: FONT,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.85')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-          >
-            <Plus size={11} />
-            {t('collab.polls.new')}
-          </button>
-        )}
+        <button onClick={() => setShowForm(true)} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 99, padding: '6px 12px',
+          background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 11, fontWeight: 600,
+          fontFamily: FONT, border: 'none', cursor: 'pointer',
+        }}>
+          <Plus size={12} /> {t('collab.polls.new')}
+        </button>
       </div>
 
-      {/* Content — scrollable */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: 12,
-        }}
-      >
-        {/* Create form */}
-        {showForm && (
-          <CreatePollForm
-            onSubmit={handleCreate}
-            onCancel={() => setShowForm(false)}
-            t={t}
-          />
-        )}
-
-        {/* Loading */}
-        {loading && (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '32px 0',
-              color: 'var(--text-faint)',
-              fontSize: 12,
-              fontFamily: FONT,
-            }}
-          >
-            ...
+      {/* Content */}
+      <div className="chat-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px' }}>
+        {polls.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 20px', textAlign: 'center', height: '100%' }}>
+            <BarChart3 size={36} color="var(--text-faint)" strokeWidth={1.3} style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>{t('collab.polls.empty')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>{t('collab.polls.emptyHint')}</div>
           </div>
-        )}
-
-        {/* Empty state */}
-        {!loading && polls.length === 0 && !showForm && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '40px 16px',
-              textAlign: 'center',
-            }}
-          >
-            <BarChart3
-              size={36}
-              style={{
-                color: 'var(--text-faint)',
-                marginBottom: 10,
-              }}
-            />
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                fontFamily: FONT,
-                marginBottom: 4,
-              }}
-            >
-              {t('collab.polls.empty')}
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: 'var(--text-faint)',
-                fontFamily: FONT,
-              }}
-            >
-              {t('collab.polls.emptyDesc', 'Create a poll to get started')}
-            </div>
-          </div>
-        )}
-
-        {/* Active polls */}
-        {!loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {activePolls.map((poll) => (
-              <PollCard
-                key={poll.id}
-                poll={poll}
-                currentUser={currentUser}
-                onVote={handleVote}
-                onClose={handleClose}
-                onDelete={handleDelete}
-                t={t}
-              />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {activePolls.length > 0 && activePolls.map(poll => (
+              <PollCard key={poll.id} poll={poll} currentUser={currentUser} onVote={handleVote} onClose={handleClose} onDelete={handleDelete} t={t} />
             ))}
+            {closedPolls.length > 0 && (
+              <>
+                {activePolls.length > 0 && (
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.3, padding: '8px 0 2px' }}>
+                    {t('collab.polls.closedSection') || 'Closed'}
+                  </div>
+                )}
+                {closedPolls.map(poll => (
+                  <PollCard key={poll.id} poll={poll} currentUser={currentUser} onVote={handleVote} onClose={handleClose} onDelete={handleDelete} t={t} />
+                ))}
+              </>
+            )}
           </div>
         )}
-
-        {/* Closed polls divider + section */}
-        {!loading && closedPolls.length > 0 && (
-          <>
-            {activePolls.length > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  margin: '12px 0 8px',
-                }}
-              >
-                <div
-                  style={{
-                    flex: 1,
-                    height: 1,
-                    background: 'var(--border-faint)',
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: 'var(--text-faint)',
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                    fontFamily: FONT,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  <Lock size={9} />
-                  {t('collab.polls.closed')}
-                </span>
-                <div
-                  style={{
-                    flex: 1,
-                    height: 1,
-                    background: 'var(--border-faint)',
-                  }}
-                />
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {closedPolls.map((poll) => (
-                <PollCard
-                  key={poll.id}
-                  poll={poll}
-                  currentUser={currentUser}
-                  onVote={handleVote}
-                  onClose={handleClose}
-                  onDelete={handleDelete}
-                  t={t}
-                />
-              ))}
-            </div>
-          </>
-        )}
       </div>
+
+      {/* Create Modal */}
+      {showForm && <CreatePollModal onClose={() => setShowForm(false)} onCreate={handleCreate} t={t} />}
     </div>
   )
 }
-
-export default CollabPolls

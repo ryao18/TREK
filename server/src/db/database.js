@@ -594,22 +594,19 @@ function initDb() {
     console.error('Error seeding categories:', err.message);
   }
 
-  // Seed: default addons
+  // Seed: default addons (INSERT OR IGNORE so migration-inserted rows don't block seeding)
   try {
-    const existingAddons = _db.prepare('SELECT COUNT(*) as count FROM addons').get();
-    if (existingAddons.count === 0) {
-      const defaultAddons = [
-        { id: 'packing', name: 'Packing List', description: 'Pack your bags with checklists per trip', type: 'trip', icon: 'ListChecks', sort_order: 0 },
-        { id: 'budget', name: 'Budget Planner', description: 'Track expenses and plan your travel budget', type: 'trip', icon: 'Wallet', sort_order: 1 },
-        { id: 'documents', name: 'Documents', description: 'Store and manage travel documents', type: 'trip', icon: 'FileText', sort_order: 2 },
-        { id: 'vacay', name: 'Vacay', description: 'Personal vacation day planner with calendar view', type: 'global', icon: 'CalendarDays', sort_order: 10 },
-        { id: 'atlas', name: 'Atlas', description: 'World map of your visited countries with travel stats', type: 'global', icon: 'Globe', sort_order: 11 },
-        { id: 'collab', name: 'Collab', description: 'Notes, polls, and live chat for trip collaboration', type: 'trip', icon: 'Users', sort_order: 6 },
-      ];
-      const insertAddon = _db.prepare('INSERT INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, 1, ?)');
-      for (const a of defaultAddons) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.sort_order);
-      console.log('Default addons seeded');
-    }
+    const defaultAddons = [
+      { id: 'packing', name: 'Packing List', description: 'Pack your bags with checklists per trip', type: 'trip', icon: 'ListChecks', enabled: 1, sort_order: 0 },
+      { id: 'budget', name: 'Budget Planner', description: 'Track expenses and plan your travel budget', type: 'trip', icon: 'Wallet', enabled: 1, sort_order: 1 },
+      { id: 'documents', name: 'Documents', description: 'Store and manage travel documents', type: 'trip', icon: 'FileText', enabled: 1, sort_order: 2 },
+      { id: 'vacay', name: 'Vacay', description: 'Personal vacation day planner with calendar view', type: 'global', icon: 'CalendarDays', enabled: 1, sort_order: 10 },
+      { id: 'atlas', name: 'Atlas', description: 'World map of your visited countries with travel stats', type: 'global', icon: 'Globe', enabled: 1, sort_order: 11 },
+      { id: 'collab', name: 'Collab', description: 'Notes, polls, and live chat for trip collaboration', type: 'trip', icon: 'Users', enabled: 0, sort_order: 6 },
+    ];
+    const insertAddon = _db.prepare('INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const a of defaultAddons) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.enabled, a.sort_order);
+    console.log('Default addons seeded');
   } catch (err) {
     console.error('Error seeding addons:', err.message);
   }

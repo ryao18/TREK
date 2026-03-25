@@ -504,7 +504,7 @@ const en = {
   'dayplan.pdfError': 'Failed to export PDF',
 
   // Places Sidebar
-  'places.addPlace': 'Add Place',
+  'places.addPlace': 'Add Place/Activity',
   'places.assignToDay': 'Add to which day?',
   'places.all': 'All',
   'places.unplanned': 'Unplanned',
@@ -529,6 +529,8 @@ const en = {
   'places.formTime': 'Time',
   'places.startTime': 'Start',
   'places.endTime': 'End',
+  'places.endTimeBeforeStart': 'End time is before start time',
+  'places.timeCollision': 'Time overlap with:',
   'places.formWebsite': 'Website',
   'places.formNotesPlaceholder': 'Personal notes...',
   'places.formReservation': 'Reservation',
@@ -864,8 +866,8 @@ const en = {
   'planner.placeN': '{n} places',
   'planner.addNote': 'Add note',
   'planner.noEntries': 'No entries for this day',
-  'planner.addPlace': 'Add place',
-  'planner.addPlaceShort': '+ Add place',
+  'planner.addPlace': 'Add place/activity',
+  'planner.addPlaceShort': '+ Add place/activity',
   'planner.resPending': 'Reservation pending · ',
   'planner.resConfirmed': 'Reservation confirmed · ',
   'planner.notePlaceholder': 'Note\u2026',

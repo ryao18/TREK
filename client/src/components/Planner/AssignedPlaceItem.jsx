@@ -117,7 +117,7 @@ export default function AssignedPlaceItem({ assignment, dayId, onRemove, onEdit 
         <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           {onEdit && (
             <button
-              onClick={() => onEdit(place)}
+              onClick={() => onEdit(place, assignment.id)}
               className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
               title="Edit place"
             >

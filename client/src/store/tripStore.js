@@ -275,6 +275,21 @@ export const useTripStore = create((set, get) => ({
     }
   },
 
+  refreshDays: async (tripId) => {
+    try {
+      const daysData = await daysApi.list(tripId)
+      const assignmentsMap = {}
+      const dayNotesMap = {}
+      for (const day of daysData.days) {
+        assignmentsMap[String(day.id)] = day.assignments || []
+        dayNotesMap[String(day.id)] = day.notes_items || []
+      }
+      set({ days: daysData.days, assignments: assignmentsMap, dayNotes: dayNotesMap })
+    } catch (err) {
+      console.error('Failed to refresh days:', err)
+    }
+  },
+
   refreshPlaces: async (tripId) => {
     try {
       const data = await placesApi.list(tripId)
@@ -302,7 +317,7 @@ export const useTripStore = create((set, get) => ({
         assignments: Object.fromEntries(
           Object.entries(state.assignments).map(([dayId, items]) => [
             dayId,
-            items.map(a => a.place?.id === placeId ? { ...a, place: data.place } : a)
+            items.map(a => a.place?.id === placeId ? { ...a, place: { ...data.place, place_time: a.place.place_time, end_time: a.place.end_time } } : a)
           ])
         ),
       }))

@@ -504,7 +504,7 @@ const de = {
   'dayplan.pdfError': 'Fehler beim PDF-Export',
 
   // Places Sidebar
-  'places.addPlace': 'Ort hinzufügen',
+  'places.addPlace': 'Ort/Aktivität hinzufügen',
   'places.assignToDay': 'Zu welchem Tag hinzufügen?',
   'places.all': 'Alle',
   'places.unplanned': 'Ungeplant',
@@ -529,6 +529,8 @@ const de = {
   'places.formTime': 'Uhrzeit',
   'places.startTime': 'Start',
   'places.endTime': 'Ende',
+  'places.endTimeBeforeStart': 'Endzeit liegt vor der Startzeit',
+  'places.timeCollision': 'Zeitliche Überschneidung mit:',
   'places.formWebsite': 'Website',
   'places.formNotesPlaceholder': 'Persönliche Notizen...',
   'places.formReservation': 'Reservierung',
@@ -864,8 +866,8 @@ const de = {
   'planner.placeN': '{n} Orte',
   'planner.addNote': 'Notiz hinzufügen',
   'planner.noEntries': 'Keine Einträge für diesen Tag',
-  'planner.addPlace': 'Ort hinzufügen',
-  'planner.addPlaceShort': '+ Ort hinzufügen',
+  'planner.addPlace': 'Ort/Aktivität hinzufügen',
+  'planner.addPlaceShort': '+ Ort/Aktivität hinzufügen',
   'planner.resPending': 'Reservierung ausstehend · ',
   'planner.resConfirmed': 'Reservierung bestätigt · ',
   'planner.notePlaceholder': 'Notiz\u2026',

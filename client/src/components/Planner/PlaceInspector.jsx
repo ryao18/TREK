@@ -550,7 +550,7 @@ function ParticipantsBox({ tripMembers, participantIds, allJoined, onSetParticip
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 700,
                 color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
               }}>
-                {member.avatar ? <img src={member.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
+                {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || `/uploads/avatars/${member.avatar}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
               </div>
               <span style={{ textDecoration: isHovered && canRemove ? 'line-through' : 'none' }}>{member.username}</span>
             </div>
@@ -590,7 +590,7 @@ function ParticipantsBox({ tripMembers, participantIds, allJoined, onSetParticip
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700,
                       color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
                     }}>
-                      {member.avatar ? <img src={member.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
+                      {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || `/uploads/avatars/${member.avatar}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
                     </div>
                     {member.username}
                   </button>

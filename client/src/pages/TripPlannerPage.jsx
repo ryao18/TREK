@@ -96,6 +96,7 @@ export default function TripPlannerPage() {
   }, [])
   const [showPlaceForm, setShowPlaceForm] = useState(false)
   const [editingPlace, setEditingPlace] = useState(null)
+  const [editingAssignmentId, setEditingAssignmentId] = useState(null)
   const [showTripForm, setShowTripForm] = useState(false)
   const [showMembersModal, setShowMembersModal] = useState(false)
   const [showReservationModal, setShowReservationModal] = useState(false)
@@ -210,7 +211,14 @@ export default function TripPlannerPage() {
     const pendingFiles = data._pendingFiles
     delete data._pendingFiles
     if (editingPlace) {
-      await tripStore.updatePlace(tripId, editingPlace.id, data)
+      // Always strip time fields from place update — time is per-assignment only
+      const { place_time, end_time, ...placeData } = data
+      await tripStore.updatePlace(tripId, editingPlace.id, placeData)
+      // If editing from assignment context, save time per-assignment
+      if (editingAssignmentId) {
+        await assignmentsApi.updateTime(tripId, editingAssignmentId, { place_time: place_time || null, end_time: end_time || null })
+        await tripStore.refreshDays(tripId)
+      }
       // Upload pending files with place_id
       if (pendingFiles?.length > 0) {
         for (const file of pendingFiles) {
@@ -233,7 +241,7 @@ export default function TripPlannerPage() {
       }
       toast.success(t('trip.toast.placeAdded'))
     }
-  }, [editingPlace, tripId, tripStore, toast])
+  }, [editingPlace, editingAssignmentId, tripId, tripStore, toast])
 
   const handleDeletePlace = useCallback(async (placeId) => {
     if (!confirm(t('trip.confirm.deletePlace'))) return
@@ -476,7 +484,7 @@ export default function TripPlannerPage() {
                   onAddReservation={(dayId) => { setEditingReservation(null); tripStore.setSelectedDay(dayId); setShowReservationModal(true) }}
                   onDayDetail={(day) => { setShowDayDetail(day); setSelectedPlaceId(null); setSelectedAssignmentId(null) }}
                   onRemoveAssignment={handleRemoveAssignment}
-                  onEditPlace={(place) => { setEditingPlace(place); setShowPlaceForm(true) }}
+                  onEditPlace={(place, assignmentId) => { setEditingPlace(place); setEditingAssignmentId(assignmentId || null); setShowPlaceForm(true) }}
                   onDeletePlace={(placeId) => handleDeletePlace(placeId)}
                   accommodations={tripAccommodations}
                 />
@@ -535,7 +543,7 @@ export default function TripPlannerPage() {
                     onPlaceClick={handlePlaceClick}
                     onAddPlace={() => { setEditingPlace(null); setShowPlaceForm(true) }}
                     onAssignToDay={handleAssignToDay}
-                    onEditPlace={(place) => { setEditingPlace(place); setShowPlaceForm(true) }}
+                    onEditPlace={(place) => { setEditingPlace(place); setEditingAssignmentId(null); setShowPlaceForm(true) }}
                     onDeletePlace={(placeId) => handleDeletePlace(placeId)}
                   />
                 </div>
@@ -588,7 +596,18 @@ export default function TripPlannerPage() {
                 assignments={assignments}
                 reservations={reservations}
                 onClose={() => setSelectedPlaceId(null)}
-                onEdit={() => { setEditingPlace(selectedPlace); setShowPlaceForm(true) }}
+                onEdit={() => {
+                  // When editing from assignment context, use assignment-level times
+                  if (selectedAssignmentId) {
+                    const assignmentObj = Object.values(assignments).flat().find(a => a.id === selectedAssignmentId)
+                    const placeWithAssignmentTimes = assignmentObj?.place ? { ...selectedPlace, place_time: assignmentObj.place.place_time, end_time: assignmentObj.place.end_time } : selectedPlace
+                    setEditingPlace(placeWithAssignmentTimes)
+                  } else {
+                    setEditingPlace(selectedPlace)
+                  }
+                  setEditingAssignmentId(selectedAssignmentId || null)
+                  setShowPlaceForm(true)
+                }}
                 onDelete={() => handleDeletePlace(selectedPlace.id)}
                 onAssignToDay={handleAssignToDay}
                 onRemoveAssignment={handleRemoveAssignment}
@@ -683,7 +702,7 @@ export default function TripPlannerPage() {
         )}
       </div>
 
-      <PlaceFormModal isOpen={showPlaceForm} onClose={() => { setShowPlaceForm(false); setEditingPlace(null) }} onSave={handleSavePlace} place={editingPlace} tripId={tripId} categories={categories} onCategoryCreated={cat => tripStore.addCategory?.(cat)} />
+      <PlaceFormModal isOpen={showPlaceForm} onClose={() => { setShowPlaceForm(false); setEditingPlace(null); setEditingAssignmentId(null) }} onSave={handleSavePlace} place={editingPlace} assignmentId={editingAssignmentId} dayAssignments={editingAssignmentId ? Object.values(assignments).flat() : []} tripId={tripId} categories={categories} onCategoryCreated={cat => tripStore.addCategory?.(cat)} />
       <TripFormModal isOpen={showTripForm} onClose={() => setShowTripForm(false)} onSave={async (data) => { await tripStore.updateTrip(tripId, data); toast.success(t('trip.toast.tripUpdated')) }} trip={trip} />
       <TripMembersModal isOpen={showMembersModal} onClose={() => setShowMembersModal(false)} tripId={tripId} tripTitle={trip?.title} />
       <ReservationModal isOpen={showReservationModal} onClose={() => { setShowReservationModal(false); setEditingReservation(null) }} onSave={handleSaveReservation} reservation={editingReservation} days={days} places={places} assignments={assignments} selectedDayId={selectedDayId} files={files} onFileUpload={(fd) => tripStore.addFile(tripId, fd)} onFileDelete={(id) => tripStore.deleteFile(tripId, id)} />

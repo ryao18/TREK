@@ -13,7 +13,9 @@ function getAssignmentWithPlace(assignmentId) {
   const a = db.prepare(`
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      p.place_time, p.end_time, p.duration_minutes, p.notes as place_notes,
+      COALESCE(da.assignment_time, p.place_time) as place_time,
+      COALESCE(da.assignment_end_time, p.end_time) as end_time,
+      p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
     FROM day_assignments da
@@ -87,7 +89,9 @@ router.get('/trips/:tripId/days/:dayId/assignments', authenticate, (req, res) =>
   const assignments = db.prepare(`
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
       p.lat, p.lng, p.address, p.category_id, p.price, p.currency as place_currency,
-      p.place_time, p.end_time, p.duration_minutes, p.notes as place_notes,
+      COALESCE(da.assignment_time, p.place_time) as place_time,
+      COALESCE(da.assignment_end_time, p.end_time) as end_time,
+      p.duration_minutes, p.notes as place_notes,
       p.image_url, p.transport_mode, p.google_place_id, p.website, p.phone,
       c.name as category_name, c.color as category_color, c.icon as category_icon
     FROM day_assignments da
@@ -275,6 +279,27 @@ router.get('/trips/:tripId/assignments/:id/participants', authenticate, (req, re
   `).all(id);
 
   res.json({ participants });
+});
+
+// PUT /api/trips/:tripId/assignments/:id/time — update per-assignment time
+router.put('/trips/:tripId/assignments/:id/time', authenticate, (req, res) => {
+  const { tripId, id } = req.params;
+  if (!canAccessTrip(Number(tripId), req.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const assignment = db.prepare(`
+    SELECT da.* FROM day_assignments da
+    JOIN days d ON da.day_id = d.id
+    WHERE da.id = ? AND d.trip_id = ?
+  `).get(id, tripId);
+  if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
+
+  const { place_time, end_time } = req.body;
+  db.prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?')
+    .run(place_time ?? null, end_time ?? null, id);
+
+  const updated = getAssignmentWithPlace(id);
+  res.json({ assignment: updated });
+  broadcast(Number(tripId), 'assignment:updated', { assignment: updated }, req.headers['x-socket-id']);
 });
 
 // PUT /api/trips/:tripId/assignments/:id/participants — set participants (replace all)

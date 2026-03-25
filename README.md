@@ -131,15 +131,23 @@ docker compose up -d
 
 ### Updating
 
+**Docker Compose** (recommended):
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+**Docker Run** — use the same volume paths from your original `docker run` command:
+
 ```bash
 docker pull mauriceboe/nomad
 docker rm -f nomad
-docker run -d --name nomad -p 3000:3000 -v /your/data:/app/data -v /your/uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
+docker run -d --name nomad -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
 ```
 
-Or with Docker Compose: `docker compose pull && docker compose up -d`
+> **Tip:** Not sure which paths you used? Run `docker inspect nomad --format '{{json .Mounts}}'` before removing the container.
 
-Your data is persisted in the mounted `data` and `uploads` volumes.
+Your data is persisted in the mounted `data` and `uploads` volumes — updates never touch your existing data.
 
 ### Reverse Proxy (recommended)
 

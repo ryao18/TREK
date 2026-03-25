@@ -447,17 +447,8 @@ export default function PlaceFormModal({
           )}
         </div>
 
-        {/* Time & Reservation */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Visit Time</label>
-            <input
-              type="time"
-              value={formData.place_time}
-              onChange={e => update('place_time', e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-            />
-          </div>
+        {/* Reservation */}
+        <div className="grid grid-cols-1 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Reservation</label>
             <select

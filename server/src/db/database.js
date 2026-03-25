@@ -556,6 +556,19 @@ function initDb() {
         _db.prepare("INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES ('collab', 'Collab', 'Notes, polls, and live chat for trip collaboration', 'trip', 'Users', 0, 6)").run();
       } catch {}
     },
+    // 26: Per-assignment times (instead of shared place times)
+    () => {
+      try { _db.exec('ALTER TABLE day_assignments ADD COLUMN assignment_time TEXT'); } catch {}
+      try { _db.exec('ALTER TABLE day_assignments ADD COLUMN assignment_end_time TEXT'); } catch {}
+      // Copy existing place times to assignments as initial values
+      try {
+        _db.exec(`
+          UPDATE day_assignments SET
+            assignment_time = (SELECT place_time FROM places WHERE places.id = day_assignments.place_id),
+            assignment_end_time = (SELECT end_time FROM places WHERE places.id = day_assignments.place_id)
+        `);
+      } catch {}
+    },
     // Future migrations go here (append only, never reorder)
   ];
 

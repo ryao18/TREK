@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Modal from '../shared/Modal'
 import CustomSelect from '../shared/CustomSelect'
 import { mapsApi } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { useToast } from '../shared/Toast'
-import { Search, Paperclip, X } from 'lucide-react'
+import { Search, Paperclip, X, AlertTriangle } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import CustomTimePicker from '../shared/CustomTimePicker'
 
@@ -24,7 +24,7 @@ const DEFAULT_FORM = {
 
 export default function PlaceFormModal({
   isOpen, onClose, onSave, place, tripId, categories,
-  onCategoryCreated,
+  onCategoryCreated, assignmentId, dayAssignments = [],
 }) {
   const [form, setForm] = useState(DEFAULT_FORM)
   const [mapsSearch, setMapsSearch] = useState('')
@@ -125,6 +125,8 @@ export default function PlaceFormModal({
       }
     }
   }
+
+  const hasTimeError = place && form.place_time && form.end_time && form.place_time.length >= 5 && form.end_time.length >= 5 && form.end_time <= form.place_time
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -293,23 +295,17 @@ export default function PlaceFormModal({
           )}
         </div>
 
-        {/* Time */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.startTime')}</label>
-            <CustomTimePicker
-              value={form.place_time}
-              onChange={v => handleChange('place_time', v)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.endTime')}</label>
-            <CustomTimePicker
-              value={form.end_time}
-              onChange={v => handleChange('end_time', v)}
-            />
-          </div>
-        </div>
+        {/* Time — only shown when editing, not when creating */}
+        {place && (
+          <TimeSection
+            form={form}
+            handleChange={handleChange}
+            assignmentId={assignmentId}
+            dayAssignments={dayAssignments}
+            hasTimeError={hasTimeError}
+            t={t}
+          />
+        )}
 
         {/* Website */}
         <div>
@@ -364,7 +360,7 @@ export default function PlaceFormModal({
           </button>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || hasTimeError}
             className="px-6 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-60 font-medium"
           >
             {isSaving ? t('common.saving') : place ? t('common.update') : t('common.add')}
@@ -372,5 +368,64 @@ export default function PlaceFormModal({
         </div>
       </form>
     </Modal>
+  )
+}
+
+function TimeSection({ form, handleChange, assignmentId, dayAssignments, hasTimeError, t }) {
+
+  const collisions = useMemo(() => {
+    if (!assignmentId || !form.place_time || form.place_time.length < 5) return []
+    // Find the day_id for the current assignment
+    const current = dayAssignments.find(a => a.id === assignmentId)
+    if (!current) return []
+    const myStart = form.place_time
+    const myEnd = form.end_time && form.end_time.length >= 5 ? form.end_time : null
+    return dayAssignments.filter(a => {
+      if (a.id === assignmentId) return false
+      if (a.day_id !== current.day_id) return false
+      const aStart = a.place?.place_time
+      const aEnd = a.place?.end_time
+      if (!aStart) return false
+      // Check overlap: two intervals overlap if start < otherEnd AND otherStart < end
+      const s1 = myStart, e1 = myEnd || myStart
+      const s2 = aStart, e2 = aEnd || aStart
+      return s1 < (e2 || '23:59') && s2 < (e1 || '23:59') && s1 !== e2 && s2 !== e1
+    })
+  }, [assignmentId, dayAssignments, form.place_time, form.end_time])
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.startTime')}</label>
+          <CustomTimePicker
+            value={form.place_time}
+            onChange={v => handleChange('place_time', v)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.endTime')}</label>
+          <CustomTimePicker
+            value={form.end_time}
+            onChange={v => handleChange('end_time', v)}
+          />
+        </div>
+      </div>
+      {hasTimeError && (
+        <div className="flex items-center gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg text-xs" style={{ background: 'var(--bg-warning, #fef3c7)', color: 'var(--text-warning, #92400e)' }}>
+          <AlertTriangle size={13} className="shrink-0" />
+          {t('places.endTimeBeforeStart')}
+        </div>
+      )}
+      {collisions.length > 0 && (
+        <div className="flex items-start gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg text-xs" style={{ background: 'var(--bg-warning, #fef3c7)', color: 'var(--text-warning, #92400e)' }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+          <span>
+            {t('places.timeCollision')}{' '}
+            {collisions.map(a => a.place?.name).filter(Boolean).join(', ')}
+          </span>
+        </div>
+      )}
+    </div>
   )
 }

@@ -172,7 +172,7 @@ export function CustomDateTimePicker({ value, onChange, placeholder, style = {} 
   }
   const handleTimeChange = (t) => {
     const d = datePart || new Date().toISOString().split('T')[0]
-    onChange(t ? `${d}T${t}` : `${d}T00:00`)
+    onChange(t ? `${d}T${t}` : d)
   }
 
   return (

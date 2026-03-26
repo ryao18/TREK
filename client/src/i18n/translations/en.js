@@ -577,6 +577,8 @@ const en = {
   'reservations.editTitle': 'Edit Reservation',
   'reservations.status': 'Status',
   'reservations.datetime': 'Date & Time',
+  'reservations.startTime': 'Start time',
+  'reservations.endTime': 'End time',
   'reservations.date': 'Date',
   'reservations.time': 'Time',
   'reservations.timeAlt': 'Time (alternative, e.g. 19:30)',

@@ -23,7 +23,7 @@ import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen 
 import { useTranslation } from '../i18n'
 import { joinTrip, leaveTrip, addListener, removeListener } from '../api/websocket'
 import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi } from '../api/client'
-import { calculateRoute } from '../components/Map/RouteCalculator'
+import { calculateRoute, calculateSegments } from '../components/Map/RouteCalculator'
 import ConfirmDialog from '../components/shared/ConfirmDialog'
 
 const MIN_SIDEBAR = 200
@@ -188,31 +188,29 @@ export default function TripPlannerPage() {
   }, [places])
 
   const routeCalcEnabled = useSettingsStore(s => s.settings.route_calculation) !== false
+  const routeAbortRef = useRef(null)
 
   const updateRouteForDay = useCallback(async (dayId) => {
+    // Abort any previous calculation
+    if (routeAbortRef.current) routeAbortRef.current.abort()
+
     if (!dayId) { setRoute(null); setRouteSegments([]); return }
     const da = (tripStore.assignments[String(dayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
     const waypoints = da.map(a => a.place).filter(p => p?.lat && p?.lng)
-    if (waypoints.length >= 2) {
-      setRoute(waypoints.map(p => [p.lat, p.lng]))
-      if (!routeCalcEnabled) { setRouteSegments([]); return }
-      // Calculate per-segment travel times
-      const segments = []
-      for (let i = 0; i < waypoints.length - 1; i++) {
-        const from = [waypoints[i].lat, waypoints[i].lng]
-        const to = [waypoints[i + 1].lat, waypoints[i + 1].lng]
-        const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
-        try {
-          const result = await calculateRoute([{ lat: from[0], lng: from[1] }, { lat: to[0], lng: to[1] }], 'walking')
-          segments.push({ mid, from, to, walkingText: result.walkingText, drivingText: result.drivingText })
-        } catch {
-          segments.push({ mid, from, to, walkingText: '?', drivingText: '?' })
-        }
-      }
-      setRouteSegments(segments)
-    } else {
-      setRoute(null)
-      setRouteSegments([])
+    if (waypoints.length < 2) { setRoute(null); setRouteSegments([]); return }
+
+    setRoute(waypoints.map(p => [p.lat, p.lng]))
+    if (!routeCalcEnabled) { setRouteSegments([]); return }
+
+    // Single OSRM request for all segments
+    const controller = new AbortController()
+    routeAbortRef.current = controller
+
+    try {
+      const segments = await calculateSegments(waypoints, { signal: controller.signal })
+      if (!controller.signal.aborted) setRouteSegments(segments)
+    } catch (err) {
+      if (err.name !== 'AbortError') setRouteSegments([])
     }
   }, [tripStore, routeCalcEnabled])
 
@@ -231,8 +229,7 @@ export default function TripPlannerPage() {
       setSelectedPlaceId(placeId)
     }
     if (placeId) { setShowDayDetail(null); setLeftCollapsed(false); setRightCollapsed(false) }
-    updateRouteForDay(selectedDayId)
-  }, [selectedDayId, updateRouteForDay, selectAssignment, setSelectedPlaceId])
+  }, [selectAssignment, setSelectedPlaceId])
 
   const handleMarkerClick = useCallback((placeId) => {
     const opening = placeId !== undefined
@@ -366,16 +363,10 @@ export default function TripPlannerPage() {
     return map
   }, [selectedDayId, assignments])
 
-  // Auto-update route when assignments change
+  // Auto-update route + segments when assignments change
   useEffect(() => {
-    if (!selectedDayId) return
-    const da = (assignments[String(selectedDayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
-    const waypoints = da.map(a => a.place).filter(p => p?.lat && p?.lng)
-    if (waypoints.length >= 2) {
-      setRoute(waypoints.map(p => [p.lat, p.lng]))
-    } else {
-      setRoute(null)
-    }
+    if (!selectedDayId) { setRoute(null); setRouteSegments([]); return }
+    updateRouteForDay(selectedDayId)
   }, [selectedDayId, assignments])
 
   // Places assigned to selected day (with coords) — used for map fitting

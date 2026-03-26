@@ -4,7 +4,8 @@ import CustomSelect from '../shared/CustomSelect'
 import { Plane, Hotel, Utensils, Train, Car, Ship, Ticket, FileText, Users, Paperclip, X, ExternalLink, Link2 } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
-import { CustomDateTimePicker } from '../shared/CustomDateTimePicker'
+import { CustomDatePicker } from '../shared/CustomDateTimePicker'
+import CustomTimePicker from '../shared/CustomTimePicker'
 
 const TYPE_OPTIONS = [
   { value: 'flight',     labelKey: 'reservations.type.flight',     Icon: Plane },
@@ -25,8 +26,9 @@ function buildAssignmentOptions(days, assignments, t, locale) {
     if (da.length === 0) continue
     const dayLabel = day.title || t('dayplan.dayN', { n: day.day_number })
     const dateStr = day.date ? ` · ${formatDate(day.date, locale)}` : ''
+    const groupLabel = `${dayLabel}${dateStr}`
     // Group header (non-selectable)
-    options.push({ value: `_header_${day.id}`, label: `${dayLabel}${dateStr}`, disabled: true, isHeader: true })
+    options.push({ value: `_header_${day.id}`, label: groupLabel, disabled: true, isHeader: true })
     for (let i = 0; i < da.length; i++) {
       const place = da[i].place
       if (!place) continue
@@ -34,6 +36,9 @@ function buildAssignmentOptions(days, assignments, t, locale) {
       options.push({
         value: da[i].id,
         label: `  ${i + 1}. ${place.name}${timeStr}`,
+        searchLabel: place.name,
+        groupLabel,
+        dayDate: day.date || null,
       })
     }
   }
@@ -66,6 +71,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         type: reservation.type || 'other',
         status: reservation.status || 'pending',
         reservation_time: reservation.reservation_time ? reservation.reservation_time.slice(0, 16) : '',
+        reservation_end_time: reservation.reservation_end_time || '',
         location: reservation.location || '',
         confirmation_number: reservation.confirmation_number || '',
         notes: reservation.notes || '',
@@ -74,7 +80,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     } else {
       setForm({
         title: '', type: 'other', status: 'pending',
-        reservation_time: '', location: '', confirmation_number: '',
+        reservation_time: '', reservation_end_time: '', location: '', confirmation_number: '',
         notes: '', assignment_id: '',
       })
       setPendingFiles([])
@@ -169,34 +175,66 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
             placeholder={t('reservations.titlePlaceholder')} style={inputStyle} />
         </div>
 
-        {/* Assignment Picker */}
-        {assignmentOptions.length > 0 && (
-          <div>
-            <label style={labelStyle}>
-              <Link2 size={10} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />
-              {t('reservations.linkAssignment')}
-            </label>
-            <CustomSelect
-              value={form.assignment_id}
-              onChange={value => set('assignment_id', value)}
-              placeholder={t('reservations.pickAssignment')}
-              options={[
-                { value: '', label: t('reservations.noAssignment') },
-                ...assignmentOptions,
-              ]}
-              searchable
-              size="sm"
+        {/* Assignment Picker + Date */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {assignmentOptions.length > 0 && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={labelStyle}>
+                <Link2 size={10} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />
+                {t('reservations.linkAssignment')}
+              </label>
+              <CustomSelect
+                value={form.assignment_id}
+                onChange={value => {
+                  set('assignment_id', value)
+                  const opt = assignmentOptions.find(o => o.value === value)
+                  if (opt?.dayDate) {
+                    setForm(prev => {
+                      if (prev.reservation_time) return prev
+                      return { ...prev, reservation_time: opt.dayDate }
+                    })
+                  }
+                }}
+                placeholder={t('reservations.pickAssignment')}
+                options={[
+                  { value: '', label: t('reservations.noAssignment') },
+                  ...assignmentOptions,
+                ]}
+                searchable
+                size="sm"
+              />
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <label style={labelStyle}>{t('reservations.date')}</label>
+            <CustomDatePicker
+              value={(() => { const [d] = (form.reservation_time || '').split('T'); return d || '' })()}
+              onChange={d => {
+                const [, t] = (form.reservation_time || '').split('T')
+                set('reservation_time', d ? (t ? `${d}T${t}` : d) : '')
+              }}
             />
           </div>
-        )}
+        </div>
 
-        {/* Date/Time + Status */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label style={labelStyle}>{t('reservations.datetime')}</label>
-            <CustomDateTimePicker value={form.reservation_time} onChange={v => set('reservation_time', v)} />
+        {/* Start Time + End Time + Status */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <label style={labelStyle}>{t('reservations.startTime')}</label>
+            <CustomTimePicker
+              value={(() => { const [, t] = (form.reservation_time || '').split('T'); return t || '' })()}
+              onChange={t => {
+                const [d] = (form.reservation_time || '').split('T')
+                const date = d || new Date().toISOString().split('T')[0]
+                set('reservation_time', t ? `${date}T${t}` : date)
+              }}
+            />
           </div>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <label style={labelStyle}>{t('reservations.endTime')}</label>
+            <CustomTimePicker value={form.reservation_end_time} onChange={v => set('reservation_end_time', v)} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <label style={labelStyle}>{t('reservations.status')}</label>
             <CustomSelect
               value={form.status}

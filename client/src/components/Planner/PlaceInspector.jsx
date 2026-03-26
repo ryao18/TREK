@@ -347,10 +347,13 @@ export default function PlaceInspector({
                             <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{new Date(res.reservation_time).toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })}</div>
                           </div>
                         )}
-                        {res.reservation_time && (
+                        {res.reservation_time?.includes('T') && (
                           <div>
                             <div style={{ fontSize: 8, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{t('reservations.time')}</div>
-                            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>{new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}</div>
+                            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginTop: 1 }}>
+                              {new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}
+                              {res.reservation_end_time && ` – ${res.reservation_end_time}`}
+                            </div>
                           </div>
                         )}
                         {res.confirmation_number && (

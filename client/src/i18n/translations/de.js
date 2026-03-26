@@ -577,6 +577,8 @@ const de = {
   'reservations.editTitle': 'Reservierung bearbeiten',
   'reservations.status': 'Status',
   'reservations.datetime': 'Datum & Uhrzeit',
+  'reservations.startTime': 'Startzeit',
+  'reservations.endTime': 'Endzeit',
   'reservations.date': 'Datum',
   'reservations.time': 'Uhrzeit',
   'reservations.timeAlt': 'Uhrzeit (alternativ, z.B. 19:30)',

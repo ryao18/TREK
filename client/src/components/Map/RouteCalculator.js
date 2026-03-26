@@ -7,7 +7,7 @@ const OSRM_BASE = 'https://router.project-osrm.org/route/v1'
  * @param {string} profile - 'driving' | 'walking' | 'cycling'
  * @returns {Promise<{coordinates: Array<[number,number]>, distance: number, duration: number, distanceText: string, durationText: string}>}
  */
-export async function calculateRoute(waypoints, profile = 'driving') {
+export async function calculateRoute(waypoints, profile = 'driving', { signal } = {}) {
   if (!waypoints || waypoints.length < 2) {
     throw new Error('At least 2 waypoints required')
   }
@@ -16,7 +16,7 @@ export async function calculateRoute(waypoints, profile = 'driving') {
   // OSRM public API only supports driving; we override duration for other modes
   const url = `${OSRM_BASE}/driving/${coords}?overview=full&geometries=geojson&steps=false`
 
-  const response = await fetch(url)
+  const response = await fetch(url, { signal })
   if (!response.ok) {
     throw new Error('Route could not be calculated')
   }
@@ -98,6 +98,36 @@ export function optimizeRoute(places) {
     result.push(current)
   }
   return result
+}
+
+/**
+ * Calculate per-leg travel times in a single OSRM request
+ * Returns array of { mid, walkingText, drivingText } for each leg
+ */
+export async function calculateSegments(waypoints, { signal } = {}) {
+  if (!waypoints || waypoints.length < 2) return []
+
+  const coords = waypoints.map(p => `${p.lng},${p.lat}`).join(';')
+  const url = `${OSRM_BASE}/driving/${coords}?overview=false&geometries=geojson&steps=false&annotations=distance,duration`
+
+  const response = await fetch(url, { signal })
+  if (!response.ok) throw new Error('Route could not be calculated')
+
+  const data = await response.json()
+  if (data.code !== 'Ok' || !data.routes?.[0]) throw new Error('No route found')
+
+  const legs = data.routes[0].legs
+  return legs.map((leg, i) => {
+    const from = [waypoints[i].lat, waypoints[i].lng]
+    const to = [waypoints[i + 1].lat, waypoints[i + 1].lng]
+    const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
+    const walkingDuration = leg.distance / (5000 / 3600) // 5 km/h
+    return {
+      mid, from, to,
+      walkingText: formatDuration(walkingDuration),
+      drivingText: formatDuration(leg.duration),
+    }
+  })
 }
 
 function formatDistance(meters) {

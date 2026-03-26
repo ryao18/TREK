@@ -33,7 +33,29 @@ export default function CustomSelect({
 
   const selected = options.find(o => o.value === value)
   const filtered = searchable && search
-    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    ? (() => {
+        const q = search.toLowerCase()
+        const result = []
+        let currentHeader = null
+        let headerAdded = false
+        for (const o of options) {
+          if (o.isHeader) {
+            currentHeader = o
+            headerAdded = false
+            continue
+          }
+          // Match against label, searchLabel, or groupLabel
+          const haystack = [o.label, o.searchLabel, o.groupLabel].filter(Boolean).join(' ').toLowerCase()
+          if (haystack.includes(q)) {
+            if (currentHeader && !headerAdded) {
+              result.push(currentHeader)
+              headerAdded = true
+            }
+            result.push(o)
+          }
+        }
+        return result
+      })()
     : options
 
   const sm = size === 'sm'

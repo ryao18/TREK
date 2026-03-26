@@ -182,6 +182,7 @@ function initDb() {
       assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
       reservation_time TEXT,
+      reservation_end_time TEXT,
       location TEXT,
       confirmation_number TEXT,
       notes TEXT,
@@ -605,6 +606,10 @@ function initDb() {
     () => {
       try { _db.exec('ALTER TABLE trip_files ADD COLUMN note_id INTEGER REFERENCES collab_notes(id) ON DELETE SET NULL'); } catch {}
       try { _db.exec('ALTER TABLE collab_notes ADD COLUMN website TEXT'); } catch {}
+    },
+    // 28: Add end_time to reservations
+    () => {
+      try { _db.exec('ALTER TABLE reservations ADD COLUMN reservation_end_time TEXT'); } catch {}
     },
     // Future migrations go here (append only, never reorder)
   ];

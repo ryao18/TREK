@@ -804,6 +804,7 @@ export default function PlannerSidebar({
                           <div className="flex items-center gap-1 mt-1 text-xs text-slate-700">
                             <Clock className="w-3 h-3" />
                             {formatDateTime(r.reservation_time)}
+                            {r.reservation_end_time && ` – ${r.reservation_end_time}`}
                           </div>
                         )}
                         {r.location && <div className="text-xs text-gray-500 mt-0.5">📍 {r.location}</div>}

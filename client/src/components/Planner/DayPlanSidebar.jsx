@@ -762,9 +762,10 @@ export default function DayPlanSidebar({
                                   }}>
                                     {(() => { const RI = RES_ICONS[res.type] || Ticket; return <RI size={8} /> })()}
                                     <span className="hidden sm:inline">{confirmed ? t('planner.resConfirmed') : t('planner.resPending')}</span>
-                                    {res.reservation_time && (
+                                    {res.reservation_time?.includes('T') && (
                                       <span style={{ fontWeight: 400 }}>
                                         {new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}
+                                        {res.reservation_end_time && ` – ${res.reservation_end_time}`}
                                       </span>
                                     )}
                                   </div>

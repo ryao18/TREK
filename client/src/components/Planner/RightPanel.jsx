@@ -514,6 +514,7 @@ export function RightPanel({
                             <div className="flex items-center gap-1 mt-1 text-xs text-slate-700">
                               <Clock className="w-3 h-3" />
                               {formatDateTime(reservation.reservation_time)}
+                              {reservation.reservation_end_time && ` – ${reservation.reservation_end_time}`}
                             </div>
                           )}
                           {reservation.location && (

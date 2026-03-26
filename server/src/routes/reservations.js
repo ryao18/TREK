@@ -31,7 +31,7 @@ router.get('/', authenticate, (req, res) => {
 // POST /api/trips/:tripId/reservations
 router.post('/', authenticate, (req, res) => {
   const { tripId } = req.params;
-  const { title, reservation_time, location, confirmation_number, notes, day_id, place_id, assignment_id, status, type } = req.body;
+  const { title, reservation_time, reservation_end_time, location, confirmation_number, notes, day_id, place_id, assignment_id, status, type } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
@@ -39,8 +39,8 @@ router.post('/', authenticate, (req, res) => {
   if (!title) return res.status(400).json({ error: 'Title is required' });
 
   const result = db.prepare(`
-    INSERT INTO reservations (trip_id, day_id, place_id, assignment_id, title, reservation_time, location, confirmation_number, notes, status, type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO reservations (trip_id, day_id, place_id, assignment_id, title, reservation_time, reservation_end_time, location, confirmation_number, notes, status, type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     tripId,
     day_id || null,
@@ -48,6 +48,7 @@ router.post('/', authenticate, (req, res) => {
     assignment_id || null,
     title,
     reservation_time || null,
+    reservation_end_time || null,
     location || null,
     confirmation_number || null,
     notes || null,
@@ -70,7 +71,7 @@ router.post('/', authenticate, (req, res) => {
 // PUT /api/trips/:tripId/reservations/:id
 router.put('/:id', authenticate, (req, res) => {
   const { tripId, id } = req.params;
-  const { title, reservation_time, location, confirmation_number, notes, day_id, place_id, assignment_id, status, type } = req.body;
+  const { title, reservation_time, reservation_end_time, location, confirmation_number, notes, day_id, place_id, assignment_id, status, type } = req.body;
 
   const trip = verifyTripOwnership(tripId, req.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
@@ -82,6 +83,7 @@ router.put('/:id', authenticate, (req, res) => {
     UPDATE reservations SET
       title = COALESCE(?, title),
       reservation_time = ?,
+      reservation_end_time = ?,
       location = ?,
       confirmation_number = ?,
       notes = ?,
@@ -94,6 +96,7 @@ router.put('/:id', authenticate, (req, res) => {
   `).run(
     title || null,
     reservation_time !== undefined ? (reservation_time || null) : reservation.reservation_time,
+    reservation_end_time !== undefined ? (reservation_end_time || null) : reservation.reservation_end_time,
     location !== undefined ? (location || null) : reservation.location,
     confirmation_number !== undefined ? (confirmation_number || null) : reservation.confirmation_number,
     notes !== undefined ? (notes || null) : reservation.notes,

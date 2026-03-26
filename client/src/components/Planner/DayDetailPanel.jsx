@@ -248,9 +248,10 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.title}</span>
                           {linkedAssignment?.place && <span style={{ fontSize: 9, color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>· {linkedAssignment.place.name}</span>}
                         </div>
-                        {r.reservation_time && (
+                        {r.reservation_time?.includes('T') && (
                           <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                             {new Date(r.reservation_time).toLocaleTimeString(language === 'de' ? 'de-DE' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: is12h })}
+                            {r.reservation_end_time && ` – ${fmtTime(r.reservation_end_time)}`}
                           </span>
                         )}
                       </div>

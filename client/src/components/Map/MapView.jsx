@@ -162,11 +162,11 @@ function MapClickHandler({ onClick }) {
 // ── Route travel time label ──
 function RouteLabel({ midpoint, walkingText, drivingText }) {
   const map = useMap()
-  const [visible, setVisible] = useState(map ? map.getZoom() >= 16 : false)
+  const [visible, setVisible] = useState(map ? map.getZoom() >= 12 : false)
 
   useEffect(() => {
     if (!map) return
-    const check = () => setVisible(map.getZoom() >= 16)
+    const check = () => setVisible(map.getZoom() >= 12)
     check()
     map.on('zoomend', check)
     return () => map.off('zoomend', check)

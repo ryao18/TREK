@@ -62,10 +62,12 @@
 - **Real-Time Sync** — Plan together via WebSocket — changes appear instantly across all connected users
 - **Multi-User** — Invite members to collaborate on shared trips with role-based access
 - **Single Sign-On (OIDC)** — Login with Google, Apple, Authentik, Keycloak, or any OIDC provider
+- **Collab** — Chat with your group, share notes, create polls, and track who's signed up for each day's activities
 
 ### Addons (modular, admin-toggleable)
 - **Vacay** — Personal vacation day planner with calendar view, public holidays (100+ countries), company holidays, user fusion with live sync, and carry-over tracking
 - **Atlas** — Interactive world map with visited countries, travel stats, continent breakdown, streak tracking, and liquid glass UI effects
+- **Collab** — Chat with your group, share notes, create polls, and track who's signed up for each day's activities
 - **Dashboard Widgets** — Currency converter and timezone clock, toggleable per user
 
 ### Customization & Admin

@@ -58,7 +58,8 @@ app.use(helmet({
       connectSrc: ["'self'", "ws:", "wss:", "https:", "http:"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
       objectSrc: ["'self'"],
-      frameAncestors: ["'none'"],
+      frameSrc: ["'self'"],
+      frameAncestors: ["'self'"],
     }
   },
   crossOriginEmbedderPolicy: false,

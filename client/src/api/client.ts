@@ -41,6 +41,10 @@ apiClient.interceptors.response.use(
 export const authApi = {
   register: (data: { username: string; email: string; password: string }) => apiClient.post('/auth/register', data).then(r => r.data),
   login: (data: { email: string; password: string }) => apiClient.post('/auth/login', data).then(r => r.data),
+  verifyMfaLogin: (data: { mfa_token: string; code: string }) => apiClient.post('/auth/mfa/verify-login', data).then(r => r.data),
+  mfaSetup: () => apiClient.post('/auth/mfa/setup', {}).then(r => r.data),
+  mfaEnable: (data: { code: string }) => apiClient.post('/auth/mfa/enable', data).then(r => r.data),
+  mfaDisable: (data: { password: string; code: string }) => apiClient.post('/auth/mfa/disable', data).then(r => r.data),
   me: () => apiClient.get('/auth/me').then(r => r.data),
   updateMapsKey: (key: string | null) => apiClient.put('/auth/me/maps-key', { maps_api_key: key }).then(r => r.data),
   updateApiKeys: (data: Record<string, string | null>) => apiClient.put('/auth/me/api-keys', data).then(r => r.data),

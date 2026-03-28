@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../i18n'
 import { authApi } from '../api/client'
-import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route, Shield } from 'lucide-react'
+import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route, Shield, KeyRound } from 'lucide-react'
 
 interface AppConfig {
   has_users: boolean
@@ -25,7 +25,7 @@ export default function LoginPage(): React.ReactElement {
   const [error, setError] = useState<string>('')
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
 
-  const { login, register, demoLogin } = useAuthStore()
+  const { login, register, demoLogin, completeMfaLogin } = useAuthStore()
   const { setLanguageLocal } = useSettingsStore()
   const navigate = useNavigate()
 
@@ -83,18 +83,39 @@ export default function LoginPage(): React.ReactElement {
   }
 
   const [showTakeoff, setShowTakeoff] = useState<boolean>(false)
+  const [mfaStep, setMfaStep] = useState(false)
+  const [mfaToken, setMfaToken] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
     try {
+      if (mode === 'login' && mfaStep) {
+        if (!mfaCode.trim()) {
+          setError(t('login.mfaCodeRequired'))
+          setIsLoading(false)
+          return
+        }
+        await completeMfaLogin(mfaToken, mfaCode)
+        setShowTakeoff(true)
+        setTimeout(() => navigate('/dashboard'), 2600)
+        return
+      }
       if (mode === 'register') {
         if (!username.trim()) { setError('Username is required'); setIsLoading(false); return }
         if (password.length < 6) { setError('Password must be at least 6 characters'); setIsLoading(false); return }
         await register(username, email, password)
       } else {
-        await login(email, password)
+        const result = await login(email, password)
+        if ('mfa_required' in result && result.mfa_required && 'mfa_token' in result) {
+          setMfaToken(result.mfa_token)
+          setMfaStep(true)
+          setMfaCode('')
+          setIsLoading(false)
+          return
+        }
       }
       setShowTakeoff(true)
       setTimeout(() => navigate('/dashboard'), 2600)
@@ -435,16 +456,53 @@ export default function LoginPage(): React.ReactElement {
 
           <div style={{ background: 'white', borderRadius: 20, border: '1px solid #e5e7eb', padding: '36px 32px', boxShadow: '0 2px 16px rgba(0,0,0,0.06)' }}>
             <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800, color: '#111827' }}>
-              {mode === 'register' ? (!appConfig?.has_users ? t('login.createAdmin') : t('login.createAccount')) : t('login.title')}
+              {mode === 'login' && mfaStep
+                ? t('login.mfaTitle')
+                : mode === 'register'
+                  ? (!appConfig?.has_users ? t('login.createAdmin') : t('login.createAccount'))
+                  : t('login.title')}
             </h2>
             <p style={{ margin: '0 0 28px', fontSize: 13.5, color: '#9ca3af' }}>
-              {mode === 'register' ? (!appConfig?.has_users ? t('login.createAdminHint') : t('login.createAccountHint')) : t('login.subtitle')}
+              {mode === 'login' && mfaStep
+                ? t('login.mfaSubtitle')
+                : mode === 'register'
+                  ? (!appConfig?.has_users ? t('login.createAdminHint') : t('login.createAccountHint'))
+                  : t('login.subtitle')}
             </p>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {error && (
                 <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, fontSize: 13, color: '#dc2626' }}>
                   {error}
+                </div>
+              )}
+
+              {mode === 'login' && mfaStep && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 6 }}>{t('login.mfaCodeLabel')}</label>
+                  <div style={{ position: 'relative' }}>
+                    <KeyRound size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={mfaCode}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      placeholder="000000"
+                      required
+                      style={inputBase}
+                      onFocus={(e: React.FocusEvent<HTMLInputElement>) => e.target.style.borderColor = '#111827'}
+                      onBlur={(e: React.FocusEvent<HTMLInputElement>) => e.target.style.borderColor = '#e5e7eb'}
+                    />
+                  </div>
+                  <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>{t('login.mfaHint')}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setMfaStep(false); setMfaToken(''); setMfaCode(''); setError('') }}
+                    style={{ marginTop: 8, background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                  >
+                    {t('login.mfaBack')}
+                  </button>
                 </div>
               )}
 
@@ -465,6 +523,7 @@ export default function LoginPage(): React.ReactElement {
               )}
 
               {/* Email */}
+              {!(mode === 'login' && mfaStep) && (
               <div>
                 <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 6 }}>{t('common.email')}</label>
                 <div style={{ position: 'relative' }}>
@@ -477,8 +536,10 @@ export default function LoginPage(): React.ReactElement {
                   />
                 </div>
               </div>
+              )}
 
               {/* Password */}
+              {!(mode === 'login' && mfaStep) && (
               <div>
                 <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 6 }}>{t('common.password')}</label>
                 <div style={{ position: 'relative' }}>
@@ -497,6 +558,7 @@ export default function LoginPage(): React.ReactElement {
                   </button>
                 </div>
               </div>
+              )}
 
               <button type="submit" disabled={isLoading} style={{
                 marginTop: 4, width: '100%', padding: '12px', background: '#111827', color: 'white',
@@ -508,8 +570,8 @@ export default function LoginPage(): React.ReactElement {
                 onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = '#111827'}
               >
                 {isLoading
-                  ? <><div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />{mode === 'register' ? t('login.creating') : t('login.signingIn')}</>
-                  : <><Plane size={16} />{mode === 'register' ? t('login.createAccount') : t('login.signIn')}</>
+                  ? <><div style={{ width: 15, height: 15, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />{mode === 'register' ? t('login.creating') : (mode === 'login' && mfaStep ? t('login.mfaVerify') : t('login.signingIn'))}</>
+                  : <><Plane size={16} />{mode === 'register' ? t('login.createAccount') : (mode === 'login' && mfaStep ? t('login.mfaVerify') : t('login.signIn'))}</>
                 }
               </button>
             </form>
@@ -518,7 +580,7 @@ export default function LoginPage(): React.ReactElement {
             {showRegisterOption && appConfig?.has_users && !appConfig?.demo_mode && (
               <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: '#9ca3af' }}>
                 {mode === 'login' ? t('login.noAccount') + ' ' : t('login.hasAccount') + ' '}
-                <button onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError('') }}
+                <button onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setMfaStep(false); setMfaToken(''); setMfaCode('') }}
                   style={{ background: 'none', border: 'none', color: '#111827', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
                   {mode === 'login' ? t('login.register') : t('login.signIn')}
                 </button>

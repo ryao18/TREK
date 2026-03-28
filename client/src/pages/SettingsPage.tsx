@@ -6,7 +6,7 @@ import { useTranslation } from '../i18n'
 import Navbar from '../components/Layout/Navbar'
 import CustomSelect from '../components/shared/CustomSelect'
 import { useToast } from '../components/shared/Toast'
-import { Save, Map, Palette, User, Moon, Sun, Monitor, Shield, Camera, Trash2, Lock } from 'lucide-react'
+import { Save, Map, Palette, User, Moon, Sun, Monitor, Shield, Camera, Trash2, Lock, KeyRound } from 'lucide-react'
 import { authApi, adminApi } from '../api/client'
 import type { LucideIcon } from 'lucide-react'
 import type { UserWithOidc } from '../types'
@@ -46,7 +46,7 @@ function Section({ title, icon: Icon, children }: SectionProps): React.ReactElem
 }
 
 export default function SettingsPage(): React.ReactElement {
-  const { user, updateProfile, uploadAvatar, deleteAvatar, logout } = useAuthStore()
+  const { user, updateProfile, uploadAvatar, deleteAvatar, logout, loadUser, demoMode } = useAuthStore()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean | 'blocked'>(false)
   const avatarInputRef = React.useRef<HTMLInputElement>(null)
   const { settings, updateSetting, updateSettings } = useSettingsStore()
@@ -71,6 +71,13 @@ export default function SettingsPage(): React.ReactElement {
   const [currentPassword, setCurrentPassword] = useState<string>('')
   const [newPassword, setNewPassword] = useState<string>('')
   const [confirmPassword, setConfirmPassword] = useState<string>('')
+
+  const [mfaQr, setMfaQr] = useState<string | null>(null)
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null)
+  const [mfaSetupCode, setMfaSetupCode] = useState('')
+  const [mfaDisablePwd, setMfaDisablePwd] = useState('')
+  const [mfaDisableCode, setMfaDisableCode] = useState('')
+  const [mfaLoading, setMfaLoading] = useState(false)
 
   useEffect(() => {
     setMapTileUrl(settings.map_tile_url || '')
@@ -444,6 +451,145 @@ export default function SettingsPage(): React.ReactElement {
                   <Lock size={14} />
                   {t('settings.updatePassword')}
                 </button>
+              </div>
+            </div>
+
+            {/* MFA */}
+            <div style={{ paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--border-secondary)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <KeyRound className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+                <h3 className="font-semibold text-base m-0" style={{ color: 'var(--text-primary)' }}>{t('settings.mfa.title')}</h3>
+              </div>
+              <div className="space-y-3">
+                <p className="text-sm m-0" style={{ color: 'var(--text-muted)', lineHeight: 1.5 }}>{t('settings.mfa.description')}</p>
+                {demoMode ? (
+                  <p className="text-sm text-amber-700 m-0">{t('settings.mfa.demoBlocked')}</p>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium m-0" style={{ color: 'var(--text-secondary)' }}>
+                      {user?.mfa_enabled ? t('settings.mfa.enabled') : t('settings.mfa.disabled')}
+                    </p>
+
+                    {!user?.mfa_enabled && !mfaQr && (
+                      <button
+                        type="button"
+                        disabled={mfaLoading}
+                        onClick={async () => {
+                          setMfaLoading(true)
+                          try {
+                            const data = await authApi.mfaSetup() as { qr_data_url: string; secret: string }
+                            setMfaQr(data.qr_data_url)
+                            setMfaSecret(data.secret)
+                            setMfaSetupCode('')
+                          } catch (err: unknown) {
+                            toast.error(getApiErrorMessage(err, t('common.error')))
+                          } finally {
+                            setMfaLoading(false)
+                          }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        style={{ border: '1px solid var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                      >
+                        {mfaLoading ? <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-700 rounded-full animate-spin" /> : <KeyRound size={14} />}
+                        {t('settings.mfa.setup')}
+                      </button>
+                    )}
+
+                    {!user?.mfa_enabled && mfaQr && (
+                      <div className="space-y-3">
+                        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t('settings.mfa.scanQr')}</p>
+                        <img src={mfaQr} alt="" className="rounded-lg border mx-auto block" style={{ maxWidth: 200, borderColor: 'var(--border-primary)' }} />
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>{t('settings.mfa.secretLabel')}</label>
+                          <code className="block text-xs p-2 rounded break-all" style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)' }}>{mfaSecret}</code>
+                        </div>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={mfaSetupCode}
+                          onChange={(e) => setMfaSetupCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                          placeholder={t('settings.mfa.codePlaceholder')}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={mfaLoading || mfaSetupCode.length < 6}
+                            onClick={async () => {
+                              setMfaLoading(true)
+                              try {
+                                await authApi.mfaEnable({ code: mfaSetupCode })
+                                toast.success(t('settings.mfa.toastEnabled'))
+                                setMfaQr(null)
+                                setMfaSecret(null)
+                                setMfaSetupCode('')
+                                await loadUser()
+                              } catch (err: unknown) {
+                                toast.error(getApiErrorMessage(err, t('common.error')))
+                              } finally {
+                                setMfaLoading(false)
+                              }
+                            }}
+                            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:opacity-50"
+                          >
+                            {t('settings.mfa.enable')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setMfaQr(null); setMfaSecret(null); setMfaSetupCode('') }}
+                            className="px-4 py-2 rounded-lg text-sm border"
+                            style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)' }}
+                          >
+                            {t('settings.mfa.cancelSetup')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {user?.mfa_enabled && (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{t('settings.mfa.disableTitle')}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('settings.mfa.disableHint')}</p>
+                        <input
+                          type="password"
+                          value={mfaDisablePwd}
+                          onChange={(e) => setMfaDisablePwd(e.target.value)}
+                          placeholder={t('settings.currentPassword')}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                        />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={mfaDisableCode}
+                          onChange={(e) => setMfaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                          placeholder={t('settings.mfa.codePlaceholder')}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                        />
+                        <button
+                          type="button"
+                          disabled={mfaLoading || !mfaDisablePwd || mfaDisableCode.length < 6}
+                          onClick={async () => {
+                            setMfaLoading(true)
+                            try {
+                              await authApi.mfaDisable({ password: mfaDisablePwd, code: mfaDisableCode })
+                              toast.success(t('settings.mfa.toastDisabled'))
+                              setMfaDisablePwd('')
+                              setMfaDisableCode('')
+                              await loadUser()
+                            } catch (err: unknown) {
+                              toast.error(getApiErrorMessage(err, t('common.error')))
+                            } finally {
+                              setMfaLoading(false)
+                            }
+                          }}
+                          className="px-4 py-2 rounded-lg text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {t('settings.mfa.disable')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 

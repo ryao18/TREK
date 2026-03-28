@@ -2,10 +2,10 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="client/public/logo-light.svg" />
     <source media="(prefers-color-scheme: light)" srcset="client/public/logo-dark.svg" />
-    <img src="client/public/logo-light.svg" alt="NOMAD" height="60" />
+    <img src="client/public/logo-light.svg" alt="TREK" height="60" />
   </picture>
   <br />
-  <em>Navigation Organizer for Maps, Activities & Destinations</em>
+  <em>Your Trips. Your Plan.</em>
 </p>
 
 <p align="center">
@@ -18,10 +18,10 @@
 <p align="center">
   A self-hosted, real-time collaborative travel planner with interactive maps, budgets, packing lists, and more.
   <br />
-  <strong><a href="https://demo-nomad.pakulat.org">Live Demo</a></strong> — Try NOMAD without installing. Resets hourly.
+  <strong><a href="https://demo-nomad.pakulat.org">Live Demo</a></strong> — Try TREK without installing. Resets hourly.
 </p>
 
-![NOMAD Screenshot](docs/screenshot.png)
+![TREK Screenshot](docs/screenshot.png)
 ![NOMAD Screenshot 2](docs/screenshot-2.png)
 
 <details>
@@ -50,7 +50,7 @@
 - **Budget Tracking** — Category-based expenses with pie chart, per-person/per-day splitting, and multi-currency support
 - **Packing Lists** — Categorized checklists with progress tracking, color coding, and smart suggestions
 - **Document Manager** — Attach documents, tickets, and PDFs to trips, places, or reservations (up to 50 MB per file)
-- **PDF Export** — Export complete trip plans as PDF with cover page, images, notes, and NOMAD branding
+- **PDF Export** — Export complete trip plans as PDF with cover page, images, notes, and TREK branding
 
 ### Mobile & PWA
 - **Progressive Web App** — Install on iOS and Android directly from the browser, no App Store needed
@@ -99,12 +99,12 @@ The app runs on port `3000`. The first user to register becomes the admin.
 
 ### Install as App (PWA)
 
-NOMAD works as a Progressive Web App — no App Store needed:
+TREK works as a Progressive Web App — no App Store needed:
 
-1. Open your NOMAD instance in the browser (HTTPS required)
+1. Open your TREK instance in the browser (HTTPS required)
 2. **iOS**: Share button → "Add to Home Screen"
 3. **Android**: Menu → "Install app" or "Add to Home Screen"
-4. NOMAD launches fullscreen with its own icon, just like a native app
+4. TREK launches fullscreen with its own icon, just like a native app
 
 <details>
 <summary>Docker Compose (recommended for production)</summary>
@@ -113,7 +113,7 @@ NOMAD works as a Progressive Web App — no App Store needed:
 services:
   app:
     image: mauriceboe/nomad:latest
-    container_name: nomad
+    container_name: trek
     ports:
       - "3000:3000"
     environment:
@@ -143,19 +143,19 @@ docker compose pull && docker compose up -d
 
 ```bash
 docker pull mauriceboe/nomad
-docker rm -f nomad
-docker run -d --name nomad -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
+docker rm -f trek
+docker run -d --name trek -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
 ```
 
-> **Tip:** Not sure which paths you used? Run `docker inspect nomad --format '{{json .Mounts}}'` before removing the container.
+> **Tip:** Not sure which paths you used? Run `docker inspect trek --format '{{json .Mounts}}'` before removing the container.
 
 Your data is persisted in the mounted `data` and `uploads` volumes — updates never touch your existing data.
 
 ### Reverse Proxy (recommended)
 
-For production, put NOMAD behind a reverse proxy with HTTPS (e.g. Nginx, Caddy, Traefik).
+For production, put TREK behind a reverse proxy with HTTPS (e.g. Nginx, Caddy, Traefik).
 
-> **Important:** NOMAD uses WebSockets for real-time sync. Your reverse proxy must support WebSocket upgrades on the `/ws` path.
+> **Important:** TREK uses WebSockets for real-time sync. Your reverse proxy must support WebSocket upgrades on the `/ws` path.
 
 <details>
 <summary>Nginx</summary>
@@ -220,14 +220,14 @@ API keys are configured in the **Admin Panel** after login. Keys set by the admi
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project and enable the **Places API (New)**
 3. Create an API key under Credentials
-4. In NOMAD: Admin Panel → Settings → Google Maps
+4. In TREK: Admin Panel → Settings → Google Maps
 
 ## Building from Source
 
 ```bash
 git clone https://github.com/mauriceboe/NOMAD.git
 cd NOMAD
-docker build -t nomad .
+docker build -t trek .
 ```
 
 ## Data & Backups

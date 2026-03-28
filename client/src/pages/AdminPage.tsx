@@ -247,7 +247,7 @@ export default function AdminPage(): React.ReactElement {
 
   const handleSaveUser = async () => {
     try {
-      const payload = {
+      const payload: { username?: string; email?: string; role: string; password?: string } = {
         username: editForm.username.trim() || undefined,
         email: editForm.email.trim() || undefined,
         role: editForm.role,

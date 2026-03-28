@@ -1,6 +1,6 @@
 services:
   app:
-    image: mauriceboe/nomad:latest
+    image: mauriceboe/trek:latest
     container_name: trek
     ports:
       - "3000:3000"

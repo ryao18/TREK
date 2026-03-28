@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3" /></a>
-  <a href="https://hub.docker.com/r/mauriceboe/nomad"><img src="https://img.shields.io/docker/pulls/mauriceboe/nomad" alt="Docker Pulls" /></a>
-  <a href="https://github.com/mauriceboe/NOMAD"><img src="https://img.shields.io/github/stars/mauriceboe/NOMAD" alt="GitHub Stars" /></a>
-  <a href="https://github.com/mauriceboe/NOMAD/commits"><img src="https://img.shields.io/github/last-commit/mauriceboe/NOMAD" alt="Last Commit" /></a>
+  <a href="https://hub.docker.com/r/mauriceboe/trek"><img src="https://img.shields.io/docker/pulls/mauriceboe/trek" alt="Docker Pulls" /></a>
+  <a href="https://github.com/mauriceboe/TREK"><img src="https://img.shields.io/github/stars/mauriceboe/TREK" alt="GitHub Stars" /></a>
+  <a href="https://github.com/mauriceboe/TREK/commits"><img src="https://img.shields.io/github/last-commit/mauriceboe/TREK" alt="Last Commit" /></a>
 </p>
 
 <p align="center">
@@ -92,7 +92,7 @@
 ## Quick Start
 
 ```bash
-docker run -d -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/nomad
+docker run -d -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads mauriceboe/trek
 ```
 
 The app runs on port `3000`. The first user to register becomes the admin.
@@ -112,7 +112,7 @@ TREK works as a Progressive Web App — no App Store needed:
 ```yaml
 services:
   app:
-    image: mauriceboe/nomad:latest
+    image: mauriceboe/trek:latest
     container_name: trek
     ports:
       - "3000:3000"
@@ -142,9 +142,9 @@ docker compose pull && docker compose up -d
 **Docker Run** — use the same volume paths from your original `docker run` command:
 
 ```bash
-docker pull mauriceboe/nomad
+docker pull mauriceboe/trek
 docker rm -f trek
-docker run -d --name trek -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/nomad
+docker run -d --name trek -p 3000:3000 -v ./data:/app/data -v ./uploads:/app/uploads --restart unless-stopped mauriceboe/trek
 ```
 
 > **Tip:** Not sure which paths you used? Run `docker inspect trek --format '{{json .Mounts}}'` before removing the container.
@@ -225,7 +225,7 @@ API keys are configured in the **Admin Panel** after login. Keys set by the admi
 ## Building from Source
 
 ```bash
-git clone https://github.com/mauriceboe/NOMAD.git
+git clone https://github.com/mauriceboe/TREK.git
 cd NOMAD
 docker build -t trek .
 ```

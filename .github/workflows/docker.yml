@@ -80,7 +80,12 @@ jobs:
         working-directory: /tmp/digests
         run: |
           mapfile -t digests < <(printf 'mauriceboe/trek@sha256:%s\n' *)
-          docker buildx imagetools create -t mauriceboe/trek:latest -t mauriceboe/trek:${{ steps.version.outputs.VERSION }} "${digests[@]}"
+          docker buildx imagetools create \
+            -t mauriceboe/trek:latest \
+            -t mauriceboe/trek:${{ steps.version.outputs.VERSION }} \
+            -t mauriceboe/nomad:latest \
+            -t mauriceboe/nomad:${{ steps.version.outputs.VERSION }} \
+            "${digests[@]}"
 
       - name: Inspect manifest
         run: docker buildx imagetools inspect mauriceboe/trek:latest

@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { StringParams } from '../types';
 import archiver from 'archiver';
 import unzipper from 'unzipper';
 import multer from 'multer';
@@ -17,7 +18,7 @@ const MAX_BACKUP_UPLOAD_SIZE = 500 * 1024 * 1024; // 500 MB
 
 const backupAttempts = new Map<string, { count: number; first: number }>();
 function backupRateLimiter(maxAttempts: number, windowMs: number) {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request<StringParams>, res: Response, next: NextFunction) => {
     const key = req.ip || 'unknown';
     const now = Date.now();
     const record = backupAttempts.get(key);
@@ -119,7 +120,7 @@ router.post('/create', backupRateLimiter(3, BACKUP_RATE_WINDOW), async (_req: Re
   }
 });
 
-router.get('/download/:filename', (req: Request, res: Response) => {
+router.get('/download/:filename', (req: Request<StringParams>, res: Response) => {
   const { filename } = req.params;
 
   if (!/^backup-[\w\-]+\.zip$/.test(filename)) {
@@ -182,7 +183,7 @@ async function restoreFromZip(zipPath: string, res: Response) {
   }
 }
 
-router.post('/restore/:filename', async (req: Request, res: Response) => {
+router.post('/restore/:filename', async (req: Request<StringParams>, res: Response) => {
   const { filename } = req.params;
   if (!/^backup-[\w\-]+\.zip$/.test(filename)) {
     return res.status(400).json({ error: 'Invalid filename' });
@@ -203,7 +204,7 @@ const uploadTmp = multer({
   limits: { fileSize: MAX_BACKUP_UPLOAD_SIZE },
 });
 
-router.post('/upload-restore', uploadTmp.single('backup'), async (req: Request, res: Response) => {
+router.post('/upload-restore', uploadTmp.single('backup'), async (req: Request<StringParams>, res: Response) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const zipPath = req.file.path;
   await restoreFromZip(zipPath, res);
@@ -243,7 +244,7 @@ function parseAutoBackupBody(body: Record<string, unknown>): {
   return { enabled, interval, keep_days };
 }
 
-router.put('/auto-settings', (req: Request, res: Response) => {
+router.put('/auto-settings', (req: Request<StringParams>, res: Response) => {
   try {
     const settings = parseAutoBackupBody((req.body || {}) as Record<string, unknown>);
     scheduler.saveSettings(settings);
@@ -259,7 +260,7 @@ router.put('/auto-settings', (req: Request, res: Response) => {
   }
 });
 
-router.delete('/:filename', (req: Request, res: Response) => {
+router.delete('/:filename', (req: Request<StringParams>, res: Response) => {
   const { filename } = req.params;
 
   if (!/^backup-[\w\-]+\.zip$/.test(filename)) {

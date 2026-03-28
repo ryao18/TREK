@@ -270,9 +270,14 @@ export default function LoginPage(): React.ReactElement {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif", position: 'relative' }}>
 
-      {/* Sprach-Toggle oben rechts */}
+      {/* Language toggle */}
       <button
-        onClick={() => setLanguageLocal(language === 'en' ? 'de' : 'en')}
+        onClick={() => {
+          const languages = ['en', 'es', 'de']
+          const currentIndex = languages.indexOf(language)
+          const nextLanguage = languages[(currentIndex + 1) % languages.length]
+          setLanguageLocal(nextLanguage)
+        }}
         style={{
           position: 'absolute', top: 16, right: 16, zIndex: 10,
           display: 'flex', alignItems: 'center', gap: 6,
@@ -286,7 +291,7 @@ export default function LoginPage(): React.ReactElement {
         onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'rgba(0,0,0,0.06)'}
       >
         <Globe size={14} />
-        {language === 'en' ? 'EN' : 'DE'}
+        {language.toUpperCase()}
       </button>
 
       {/* Left — branding */}

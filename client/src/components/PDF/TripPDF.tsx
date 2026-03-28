@@ -190,7 +190,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
       <div class="day-section${di > 0 ? ' page-break' : ''}">
         <div class="day-header">
           <span class="day-tag">${escHtml(tr('dayplan.dayN', { n: day.day_number })).toUpperCase()}</span>
-          <span class="day-title">${escHtml(day.title || `Tag ${day.day_number}`)}</span>
+          <span class="day-title">${escHtml(day.title || tr('dayplan.dayN', { n: day.day_number }))}</span>
           ${day.date ? `<span class="day-date">${shortDate(day.date, loc)}</span>` : ''}
           ${cost ? `<span class="day-cost">${cost}</span>` : ''}
         </div>
@@ -199,7 +199,7 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
   }).join('')
 
   const html = `<!DOCTYPE html>
-<html lang="de">
+<html lang="${loc.split('-')[0]}">
 <head>
 <meta charset="UTF-8">
 <base href="${window.location.origin}/">

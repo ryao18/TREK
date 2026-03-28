@@ -64,8 +64,8 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
-// Redirect HTTP to HTTPS in production
-if (process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false') {
+// Redirect HTTP to HTTPS (opt-in via FORCE_HTTPS=true)
+if (process.env.FORCE_HTTPS === 'true') {
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.secure || req.headers['x-forwarded-proto'] === 'https') return next();
     res.redirect(301, 'https://' + req.headers.host + req.url);
@@ -172,7 +172,7 @@ import * as scheduler from './scheduler';
 
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
-  console.log(`NOMAD API running on port ${PORT}`);
+  console.log(`TREK API running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   if (process.env.DEMO_MODE === 'true') console.log('Demo mode: ENABLED');
   if (process.env.DEMO_MODE === 'true' && process.env.NODE_ENV === 'production') {

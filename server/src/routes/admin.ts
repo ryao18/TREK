@@ -171,7 +171,7 @@ router.get('/version-check', async (_req: Request, res: Response) => {
   try {
     const resp = await fetch(
       'https://api.github.com/repos/mauriceboe/NOMAD/releases/latest',
-      { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'NOMAD-Server' } }
+      { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'TREK-Server' } }
     );
     if (!resp.ok) return res.json({ current: currentVersion, latest: currentVersion, update_available: false });
     const data = await resp.json() as { tag_name?: string; html_url?: string };

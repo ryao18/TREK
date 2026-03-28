@@ -84,10 +84,10 @@ router.get('/app-config', (_req: Request, res: Response) => {
   const isDemo = process.env.DEMO_MODE === 'true';
   const { version } = require('../../package.json');
   const hasGoogleKey = !!db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
-  const oidcDisplayName = (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_display_name'").get() as { value: string } | undefined)?.value || null;
+  const oidcDisplayName = process.env.OIDC_DISPLAY_NAME || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_display_name'").get() as { value: string } | undefined)?.value || null;
   const oidcConfigured = !!(
-    (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_issuer'").get() as { value: string } | undefined)?.value &&
-    (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_client_id'").get() as { value: string } | undefined)?.value
+    (process.env.OIDC_ISSUER || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_issuer'").get() as { value: string } | undefined)?.value) &&
+    (process.env.OIDC_CLIENT_ID || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_client_id'").get() as { value: string } | undefined)?.value)
   );
   res.json({
     allow_registration: isDemo ? false : allowRegistration,
@@ -98,7 +98,7 @@ router.get('/app-config', (_req: Request, res: Response) => {
     oidc_display_name: oidcConfigured ? (oidcDisplayName || 'SSO') : undefined,
     allowed_file_types: (db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get() as { value: string } | undefined)?.value || 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv',
     demo_mode: isDemo,
-    demo_email: isDemo ? 'demo@nomad.app' : undefined,
+    demo_email: isDemo ? 'demo@trek.app' : undefined,
     demo_password: isDemo ? 'demo12345' : undefined,
   });
 });
@@ -107,7 +107,7 @@ router.post('/demo-login', (_req: Request, res: Response) => {
   if (process.env.DEMO_MODE !== 'true') {
     return res.status(404).json({ error: 'Not found' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get('demo@nomad.app') as User | undefined;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get('demo@trek.app') as User | undefined;
   if (!user) return res.status(500).json({ error: 'Demo user not found' });
   const token = generateToken(user);
   const { password_hash, maps_api_key, openweather_api_key, unsplash_api_key, ...safe } = user;
@@ -205,7 +205,7 @@ router.get('/me', authenticate, (req: Request, res: Response) => {
 
 router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  if (process.env.DEMO_MODE === 'true' && authReq.user.email === 'demo@nomad.app') {
+  if (process.env.DEMO_MODE === 'true' && authReq.user.email === 'demo@trek.app') {
     return res.status(403).json({ error: 'Password change is disabled in demo mode.' });
   }
   const { current_password, new_password } = req.body;
@@ -229,7 +229,7 @@ router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req
 
 router.delete('/me', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  if (process.env.DEMO_MODE === 'true' && authReq.user.email === 'demo@nomad.app') {
+  if (process.env.DEMO_MODE === 'true' && authReq.user.email === 'demo@trek.app') {
     return res.status(403).json({ error: 'Account deletion is disabled in demo mode.' });
   }
   if (authReq.user.role === 'admin') {
@@ -495,6 +495,32 @@ router.get('/travel-stats', authenticate, (req: Request, res: Response) => {
     totalDays: tripStats?.days || 0,
     totalPlaces: places.length,
   });
+});
+
+// GitHub releases proxy (cached, avoids client-side rate limits)
+let releasesCache: { data: unknown[]; fetchedAt: number } | null = null;
+const RELEASES_CACHE_TTL = 30 * 60 * 1000;
+
+router.get('/github-releases', authenticate, async (req: Request, res: Response) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const perPage = Math.min(parseInt(req.query.per_page as string) || 10, 30);
+
+  if (page === 1 && releasesCache && Date.now() - releasesCache.fetchedAt < RELEASES_CACHE_TTL) {
+    return res.json(releasesCache.data.slice(0, perPage));
+  }
+
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/mauriceboe/NOMAD/releases?per_page=${perPage}&page=${page}`,
+      { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'TREK-Server' } }
+    );
+    if (!resp.ok) return res.json([]);
+    const data = await resp.json();
+    if (page === 1) releasesCache = { data, fetchedAt: Date.now() };
+    res.json(data);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch releases' });
+  }
 });
 
 export default router;

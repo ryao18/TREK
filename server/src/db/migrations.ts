@@ -193,6 +193,18 @@ function runMigrations(db: Database.Database): void {
     () => {
       try { db.exec('ALTER TABLE reservations ADD COLUMN reservation_end_time TEXT'); } catch {}
     },
+    () => {
+      try { db.exec('ALTER TABLE places ADD COLUMN osm_id TEXT'); } catch {}
+    },
+    () => {
+      try { db.exec('ALTER TABLE trip_files ADD COLUMN uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL'); } catch {}
+      try { db.exec('ALTER TABLE trip_files ADD COLUMN starred INTEGER DEFAULT 0'); } catch {}
+      try { db.exec('ALTER TABLE trip_files ADD COLUMN deleted_at TEXT'); } catch {}
+    },
+    () => {
+      try { db.exec('ALTER TABLE reservations ADD COLUMN accommodation_id INTEGER REFERENCES day_accommodations(id) ON DELETE SET NULL'); } catch {}
+      try { db.exec('ALTER TABLE reservations ADD COLUMN metadata TEXT'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

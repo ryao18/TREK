@@ -211,19 +211,52 @@ router.post('/upload-restore', uploadTmp.single('backup'), async (req: Request, 
 });
 
 router.get('/auto-settings', (_req: Request, res: Response) => {
-  res.json({ settings: scheduler.loadSettings() });
+  try {
+    res.json({ settings: scheduler.loadSettings() });
+  } catch (err: unknown) {
+    console.error('[backup] GET auto-settings:', err);
+    res.status(500).json({ error: 'Could not load backup settings' });
+  }
 });
 
+function parseAutoBackupBody(body: Record<string, unknown>): {
+  enabled: boolean;
+  interval: string;
+  keep_days: number;
+} {
+  const enabled = body.enabled === true || body.enabled === 'true' || body.enabled === 1;
+  const rawInterval = body.interval;
+  const interval =
+    typeof rawInterval === 'string' && scheduler.VALID_INTERVALS.includes(rawInterval)
+      ? rawInterval
+      : 'daily';
+  const rawKeep = body.keep_days;
+  let keepNum: number;
+  if (typeof rawKeep === 'number' && Number.isFinite(rawKeep)) {
+    keepNum = Math.floor(rawKeep);
+  } else if (typeof rawKeep === 'string' && rawKeep.trim() !== '') {
+    keepNum = parseInt(rawKeep, 10);
+  } else {
+    keepNum = NaN;
+  }
+  const keep_days = Number.isFinite(keepNum) && keepNum >= 0 ? keepNum : 7;
+  return { enabled, interval, keep_days };
+}
+
 router.put('/auto-settings', (req: Request, res: Response) => {
-  const { enabled, interval, keep_days } = req.body;
-  const settings = {
-    enabled: !!enabled,
-    interval: scheduler.VALID_INTERVALS.includes(interval) ? interval : 'daily',
-    keep_days: Number.isInteger(keep_days) && keep_days >= 0 ? keep_days : 7,
-  };
-  scheduler.saveSettings(settings);
-  scheduler.start();
-  res.json({ settings });
+  try {
+    const settings = parseAutoBackupBody((req.body || {}) as Record<string, unknown>);
+    scheduler.saveSettings(settings);
+    scheduler.start();
+    res.json({ settings });
+  } catch (err: unknown) {
+    console.error('[backup] PUT auto-settings:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({
+      error: 'Could not save auto-backup settings',
+      detail: process.env.NODE_ENV !== 'production' ? msg : undefined,
+    });
+  }
 });
 
 router.delete('/:filename', (req: Request, res: Response) => {

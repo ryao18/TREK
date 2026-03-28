@@ -1,4 +1,4 @@
-const de: Record<string, string> = {
+const de: Record<string, string | { name: string; category: string }[]> = {
   // Allgemein
   'common.save': 'Speichern',
   'common.cancel': 'Abbrechen',
@@ -390,6 +390,10 @@ const de: Record<string, string> = {
   'vacay.publicHolidaysHint': 'Feiertage im Kalender markieren',
   'vacay.selectCountry': 'Land wählen',
   'vacay.selectRegion': 'Region wählen (optional)',
+  'vacay.addCalendar': 'Kalender hinzufügen',
+  'vacay.calendarLabel': 'Bezeichnung (optional)',
+  'vacay.calendarColor': 'Farbe',
+  'vacay.noCalendars': 'Noch keine Feiertagskalender angelegt',
   'vacay.companyHolidays': 'Betriebsferien',
   'vacay.companyHolidaysHint': 'Erlaubt das Markieren von unternehmensweiten Feiertagen',
   'vacay.companyHolidaysNoDeduct': 'Betriebsferien werden nicht vom Urlaubskontingent abgezogen.',

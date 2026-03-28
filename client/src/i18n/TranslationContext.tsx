@@ -3,7 +3,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import de from './translations/de'
 import en from './translations/en'
 
-type TranslationStrings = Record<string, string>
+type TranslationStrings = Record<string, string | { name: string; category: string }[]>
 
 const translations: Record<string, TranslationStrings> = { de, en }
 
@@ -27,7 +27,7 @@ export function TranslationProvider({ children }: TranslationProviderProps) {
     const fallback = translations.de
 
     function t(key: string, params?: Record<string, string | number>): string {
-      let val: string = strings[key] ?? fallback[key] ?? key
+      let val: string = (strings[key] ?? fallback[key] ?? key) as string
       if (params) {
         Object.entries(params).forEach(([k, v]) => {
           val = val.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v))

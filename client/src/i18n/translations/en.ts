@@ -1,4 +1,4 @@
-const en: Record<string, string> = {
+const en: Record<string, string | { name: string; category: string }[]> = {
   // Common
   'common.save': 'Save',
   'common.cancel': 'Cancel',
@@ -390,6 +390,10 @@ const en: Record<string, string> = {
   'vacay.publicHolidaysHint': 'Mark public holidays in the calendar',
   'vacay.selectCountry': 'Select country',
   'vacay.selectRegion': 'Select region (optional)',
+  'vacay.addCalendar': 'Add calendar',
+  'vacay.calendarLabel': 'Label (optional)',
+  'vacay.calendarColor': 'Color',
+  'vacay.noCalendars': 'No holiday calendars added yet',
   'vacay.companyHolidays': 'Company Holidays',
   'vacay.companyHolidaysHint': 'Allow marking company-wide holiday days',
   'vacay.companyHolidaysNoDeduct': 'Company holidays do not count towards vacation days.',

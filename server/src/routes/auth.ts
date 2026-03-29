@@ -633,14 +633,21 @@ router.post('/mfa/setup', authenticate, (req: Request, res: Response) => {
   if (row?.mfa_enabled) {
     return res.status(400).json({ error: 'MFA is already enabled' });
   }
-  const secret = authenticator.generateSecret();
-  mfaSetupPending.set(authReq.user.id, { secret, exp: Date.now() + MFA_SETUP_TTL_MS });
-  const otpauth_url = authenticator.keyuri(authReq.user.email, 'NOMAD', secret);
+  let secret: string, otpauth_url: string;
+  try {
+    secret = authenticator.generateSecret();
+    mfaSetupPending.set(authReq.user.id, { secret, exp: Date.now() + MFA_SETUP_TTL_MS });
+    otpauth_url = authenticator.keyuri(authReq.user.email, 'TREK', secret);
+  } catch (err) {
+    console.error('[MFA] Setup error:', err);
+    return res.status(500).json({ error: 'MFA setup failed' });
+  }
   QRCode.toDataURL(otpauth_url)
     .then((qr_data_url: string) => {
       res.json({ secret, otpauth_url, qr_data_url });
     })
-    .catch(() => {
+    .catch((err: unknown) => {
+      console.error('[MFA] QR code generation error:', err);
       res.status(500).json({ error: 'Could not generate QR code' });
     });
 });

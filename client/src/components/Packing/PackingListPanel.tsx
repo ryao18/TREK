@@ -2,10 +2,10 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useTripStore } from '../../store/tripStore'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
-import { packingApi, tripsApi } from '../../api/client'
+import { packingApi, tripsApi, adminApi } from '../../api/client'
 import {
   CheckSquare, Square, Trash2, Plus, ChevronDown, ChevronRight,
-  Sparkles, X, Pencil, Check, MoreHorizontal, CheckCheck, RotateCcw, Luggage, UserPlus,
+  X, Pencil, Check, MoreHorizontal, CheckCheck, RotateCcw, Luggage, UserPlus, Package, FolderPlus,
 } from 'lucide-react'
 import type { PackingItem } from '../../types'
 
@@ -207,17 +207,21 @@ interface KategorieGruppeProps {
   allCategories: string[]
   onRename: (oldName: string, newName: string) => Promise<void>
   onDeleteAll: (items: PackingItem[]) => Promise<void>
+  onAddItem: (category: string, name: string) => Promise<void>
   assignees: CategoryAssignee[]
   tripMembers: TripMember[]
   onSetAssignees: (category: string, userIds: number[]) => Promise<void>
 }
 
-function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, onDeleteAll, assignees, tripMembers, onSetAssignees }: KategorieGruppeProps) {
+function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, onDeleteAll, onAddItem, assignees, tripMembers, onSetAssignees }: KategorieGruppeProps) {
   const [offen, setOffen] = useState(true)
   const [editingName, setEditingName] = useState(false)
   const [editKatName, setEditKatName] = useState(kategorie)
   const [showMenu, setShowMenu] = useState(false)
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
+  const [showAddItem, setShowAddItem] = useState(false)
+  const [newItemName, setNewItemName] = useState('')
+  const addItemRef = useRef<HTMLInputElement>(null)
   const assigneeDropdownRef = useRef<HTMLDivElement>(null)
   const { togglePackingItem } = useTripStore()
   const toast = useToast()
@@ -400,6 +404,43 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
           {items.map(item => (
             <ArtikelZeile key={item.id} item={item} tripId={tripId} categories={allCategories} onCategoryChange={() => {}} />
           ))}
+          {/* Inline add item */}
+          {showAddItem ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px' }}>
+              <input
+                ref={addItemRef}
+                autoFocus
+                value={newItemName}
+                onChange={e => setNewItemName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newItemName.trim()) {
+                    onAddItem(kategorie, newItemName.trim())
+                    setNewItemName('')
+                    setTimeout(() => addItemRef.current?.focus(), 30)
+                  }
+                  if (e.key === 'Escape') { setShowAddItem(false); setNewItemName('') }
+                }}
+                placeholder={t('packing.addItemPlaceholder')}
+                style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-primary)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', color: 'var(--text-primary)', background: 'var(--bg-input)' }}
+              />
+              <button onClick={() => { if (newItemName.trim()) { onAddItem(kategorie, newItemName.trim()); setNewItemName(''); setTimeout(() => addItemRef.current?.focus(), 30) } }}
+                disabled={!newItemName.trim()}
+                style={{ padding: '5px 8px', borderRadius: 8, border: 'none', background: newItemName.trim() ? 'var(--text-primary)' : 'var(--border-primary)', color: 'var(--bg-primary)', cursor: newItemName.trim() ? 'pointer' : 'default', display: 'flex' }}>
+                <Plus size={14} />
+              </button>
+              <button onClick={() => { setShowAddItem(false); setNewItemName('') }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'var(--text-faint)' }}>
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => { setShowAddItem(true); setTimeout(() => addItemRef.current?.focus(), 30) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', margin: '2px 4px', borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-faint)', fontFamily: 'inherit' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+              <Plus size={12} /> {t('packing.addItem')}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -436,12 +477,9 @@ interface PackingListPanelProps {
 }
 
 export default function PackingListPanel({ tripId, items }: PackingListPanelProps) {
-  const [neuerName, setNeuerName] = useState('')
-  const [neueKategorie, setNeueKategorie] = useState('')
-  const [zeigeVorschlaege, setZeigeVorschlaege] = useState(false)
   const [filter, setFilter] = useState('alle') // 'alle' | 'offen' | 'erledigt'
-  const [showKatDropdown, setShowKatDropdown] = useState(false)
-  const katInputRef = useRef(null)
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
   const { addPackingItem, updatePackingItem, deletePackingItem } = useTripStore()
   const toast = useToast()
   const { t } = useTranslation()
@@ -494,21 +532,20 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
   const abgehakt = items.filter(i => i.checked).length
   const fortschritt = items.length > 0 ? Math.round((abgehakt / items.length) * 100) : 0
 
-  const handleAdd = async (e) => {
-    e.preventDefault()
-    if (!neuerName.trim()) return
-    const kat = neueKategorie.trim() || (allCategories[0] || t('packing.defaultCategory'))
+  const handleAddItemToCategory = async (category: string, name: string) => {
     try {
-      await addPackingItem(tripId, { name: neuerName.trim(), category: kat })
-      setNeuerName('')
+      await addPackingItem(tripId, { name, category })
     } catch { toast.error(t('packing.toast.addError')) }
   }
 
-  const vorschlaege = t('packing.suggestions.items') || VORSCHLAEGE
-
-  const handleVorschlag = async (v) => {
-    try { await addPackingItem(tripId, { name: v.name, category: v.category || v.kategorie }) }
-    catch { toast.error(t('packing.toast.addError')) }
+  const handleAddNewCategory = async () => {
+    if (!newCatName.trim()) return
+    // Create a first item in the new category to make it appear
+    try {
+      await addPackingItem(tripId, { name: '...', category: newCatName.trim() })
+      setNewCatName('')
+      setAddingCategory(false)
+    } catch { toast.error(t('packing.toast.addError')) }
   }
 
   const handleRenameCategory = async (oldName, newName) => {
@@ -531,8 +568,39 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
     }
   }
 
-  const vorhandeneNamen = new Set(items.map(i => i.name.toLowerCase()))
-  const verfuegbareVorschlaege = vorschlaege.filter(v => !vorhandeneNamen.has(v.name.toLowerCase()))
+  // Templates
+  const [availableTemplates, setAvailableTemplates] = useState<{ id: number; name: string; item_count: number }[]>([])
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
+  const [applyingTemplate, setApplyingTemplate] = useState(false)
+  const templateDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    adminApi.packingTemplates().then(d => setAvailableTemplates(d.templates || [])).catch(() => {})
+  }, [tripId])
+
+  useEffect(() => {
+    if (!showTemplateDropdown) return
+    const handler = (e: MouseEvent) => {
+      if (templateDropdownRef.current && !templateDropdownRef.current.contains(e.target as Node)) setShowTemplateDropdown(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showTemplateDropdown])
+
+  const handleApplyTemplate = async (templateId: number) => {
+    setApplyingTemplate(true)
+    try {
+      const data = await packingApi.applyTemplate(tripId, templateId)
+      toast.success(t('packing.templateApplied', { count: data.count }))
+      setShowTemplateDropdown(false)
+      // Reload packing items
+      window.location.reload()
+    } catch {
+      toast.error(t('packing.templateError'))
+    } finally {
+      setApplyingTemplate(false)
+    }
+  }
 
   const font = { fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }
 
@@ -558,15 +626,45 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                 <span className="sm:hidden">{t('packing.clearCheckedShort', { count: abgehakt })}</span>
               </button>
             )}
-            <button onClick={() => setZeigeVorschlaege(v => !v)} style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
-              border: '1px solid', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-              background: zeigeVorschlaege ? 'var(--text-primary)' : 'var(--bg-card)',
-              borderColor: zeigeVorschlaege ? 'var(--text-primary)' : 'var(--border-primary)',
-              color: zeigeVorschlaege ? 'var(--bg-primary)' : 'var(--text-muted)',
-            }}>
-              <Sparkles size={12} /> {t('packing.suggestions')}
-            </button>
+            {availableTemplates.length > 0 && (
+              <div ref={templateDropdownRef} style={{ position: 'relative' }}>
+                <button onClick={() => setShowTemplateDropdown(v => !v)} disabled={applyingTemplate} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
+                  border: '1px solid', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                  background: showTemplateDropdown ? 'var(--text-primary)' : 'var(--bg-card)',
+                  borderColor: showTemplateDropdown ? 'var(--text-primary)' : 'var(--border-primary)',
+                  color: showTemplateDropdown ? 'var(--bg-primary)' : 'var(--text-muted)',
+                }}>
+                  <Package size={12} /> {t('packing.applyTemplate')}
+                </button>
+                {showTemplateDropdown && (
+                  <div style={{
+                    position: 'absolute', right: 0, top: '100%', marginTop: 6, zIndex: 50,
+                    background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 200,
+                  }}>
+                    {availableTemplates.map(tmpl => (
+                      <button key={tmpl.id} onClick={() => handleApplyTemplate(tmpl.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                          padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                          background: 'transparent', fontFamily: 'inherit', fontSize: 12, color: 'var(--text-primary)',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <Package size={13} style={{ color: 'var(--text-faint)' }} />
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ fontWeight: 600 }}>{tmpl.name}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>{tmpl.item_count} {t('admin.packingTemplates.items')}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -585,71 +683,33 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
           </div>
         )}
 
-        <form onSubmit={handleAdd} style={{ display: 'flex', gap: 6 }}>
-          <input
-            type="text" value={neuerName} onChange={e => setNeuerName(e.target.value)}
-            placeholder={t('packing.addPlaceholder')}
-            style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 13.5, fontFamily: 'inherit', outline: 'none', color: 'var(--text-primary)' }}
-          />
-          <div style={{ position: 'relative' }}>
+        {addingCategory ? (
+          <div style={{ display: 'flex', gap: 6 }}>
             <input
-              ref={katInputRef}
-              type="text" value={neueKategorie}
-              onChange={e => { setNeueKategorie(e.target.value); setShowKatDropdown(true) }}
-              onFocus={() => setShowKatDropdown(true)}
-              onBlur={() => setTimeout(() => setShowKatDropdown(false), 150)}
-              placeholder={allCategories[0] || t('packing.categoryPlaceholder')}
-              style={{ width: 120, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 13, fontFamily: 'inherit', outline: 'none', color: 'var(--text-secondary)' }}
+              autoFocus
+              type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddNewCategory(); if (e.key === 'Escape') { setAddingCategory(false); setNewCatName('') } }}
+              placeholder={t('packing.newCategoryPlaceholder')}
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 13.5, fontFamily: 'inherit', outline: 'none', color: 'var(--text-primary)' }}
             />
-            {showKatDropdown && allCategories.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 50, padding: 4, marginTop: 2 }}>
-                {allCategories.filter(c => !neueKategorie || c.toLowerCase().includes(neueKategorie.toLowerCase())).map(cat => (
-                  <button key={cat} type="button" onMouseDown={() => setNeueKategorie(cat)} style={{
-                    display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-                    padding: '6px 10px', background: 'none', border: 'none', cursor: 'pointer',
-                    fontSize: 12.5, fontFamily: 'inherit', color: 'var(--text-secondary)', borderRadius: 7, textAlign: 'left',
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: katColor(cat, allCategories), flexShrink: 0 }} />
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button type="submit" style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            <Plus size={16} />
-          </button>
-        </form>
-      </div>
-
-      {/* ── Vorschläge ── */}
-      {zeigeVorschlaege && (
-        <div style={{ borderBottom: '1px solid rgba(0,0,0,0.06)', background: 'var(--bg-secondary)', padding: '10px 20px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{t('packing.suggestionsTitle')}</span>
-            <button onClick={() => setZeigeVorschlaege(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
-              <X size={14} style={{ color: 'var(--text-faint)' }} />
+            <button onClick={handleAddNewCategory} disabled={!newCatName.trim()}
+              style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: newCatName.trim() ? 'var(--text-primary)' : 'var(--border-primary)', color: 'var(--bg-primary)', cursor: newCatName.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}>
+              <Check size={16} />
+            </button>
+            <button onClick={() => { setAddingCategory(false); setNewCatName('') }}
+              style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-faint)' }}>
+              <X size={16} />
             </button>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, maxHeight: 110, overflowY: 'auto' }}>
-            {verfuegbareVorschlaege.map((v, i) => (
-              <button key={i} onClick={() => handleVorschlag(v)} style={{
-                fontSize: 12, padding: '4px 10px', borderRadius: 99, border: '1px solid var(--border-primary)',
-                background: 'var(--bg-card)', cursor: 'pointer', color: 'var(--text-secondary)', fontFamily: 'inherit', transition: 'all 0.1s',
-              }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--text-primary)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = 'var(--text-primary)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-card)'; e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-primary)' }}
-              >
-                + {v.name}
-              </button>
-            ))}
-            {verfuegbareVorschlaege.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: 0 }}>{t('packing.allSuggested')}</p>}
-          </div>
-        </div>
-      )}
+        ) : (
+          <button onClick={() => setAddingCategory(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '9px 14px', borderRadius: 10, border: '1px dashed var(--border-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-faint)', fontFamily: 'inherit', transition: 'all 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-faint)' }}>
+            <FolderPlus size={14} /> {t('packing.addCategory')}
+          </button>
+        )}
+      </div>
 
       {/* ── Filter-Tabs ── */}
       {items.length > 0 && (
@@ -688,6 +748,7 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                 allCategories={allCategories}
                 onRename={handleRenameCategory}
                 onDeleteAll={handleDeleteCategory}
+                onAddItem={handleAddItemToCategory}
                 assignees={categoryAssignees[kat] || []}
                 tripMembers={tripMembers}
                 onSetAssignees={handleSetAssignees}

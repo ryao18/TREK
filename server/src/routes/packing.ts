@@ -91,6 +91,39 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
   broadcast(tripId, 'packing:deleted', { itemId: Number(id) }, req.headers['x-socket-id'] as string);
 });
 
+// ── Apply template ──────────────────────────────────────────────────────────
+
+router.post('/apply-template/:templateId', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId, templateId } = req.params;
+
+  const trip = verifyTripOwnership(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  const templateItems = db.prepare(`
+    SELECT ti.name, tc.name as category
+    FROM packing_template_items ti
+    JOIN packing_template_categories tc ON ti.category_id = tc.id
+    WHERE tc.template_id = ?
+    ORDER BY tc.sort_order, ti.sort_order
+  `).all(templateId) as { name: string; category: string }[];
+  if (templateItems.length === 0) return res.status(404).json({ error: 'Template not found or empty' });
+
+  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM packing_items WHERE trip_id = ?').get(tripId) as { max: number | null };
+  let sortOrder = (maxOrder.max !== null ? maxOrder.max : -1) + 1;
+
+  const insert = db.prepare('INSERT INTO packing_items (trip_id, name, checked, category, sort_order) VALUES (?, ?, 0, ?, ?)');
+  const added: any[] = [];
+  for (const ti of templateItems) {
+    const result = insert.run(tripId, ti.name, ti.category, sortOrder++);
+    const item = db.prepare('SELECT * FROM packing_items WHERE id = ?').get(result.lastInsertRowid);
+    added.push(item);
+  }
+
+  res.json({ items: added, count: added.length });
+  broadcast(tripId, 'packing:template-applied', { items: added }, req.headers['x-socket-id'] as string);
+});
+
 // ── Category assignees ──────────────────────────────────────────────────────
 
 router.get('/category-assignees', authenticate, (req: Request, res: Response) => {

@@ -12,6 +12,7 @@ import CategoryManager from '../components/Admin/CategoryManager'
 import BackupPanel from '../components/Admin/BackupPanel'
 import GitHubPanel from '../components/Admin/GitHubPanel'
 import AddonManager from '../components/Admin/AddonManager'
+import PackingTemplateManager from '../components/Admin/PackingTemplateManager'
 import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, AlertTriangle, RefreshCw, GitBranch, Sun, Link2, Copy, Plus } from 'lucide-react'
 import CustomSelect from '../components/shared/CustomSelect'
 
@@ -57,6 +58,7 @@ export default function AdminPage(): React.ReactElement {
   const TABS = [
     { id: 'users', label: t('admin.tabs.users') },
     { id: 'categories', label: t('admin.tabs.categories') },
+    { id: 'templates', label: t('admin.tabs.templates') },
     { id: 'addons', label: t('admin.tabs.addons') },
     { id: 'settings', label: t('admin.tabs.settings') },
     { id: 'backup', label: t('admin.tabs.backup') },
@@ -644,6 +646,8 @@ export default function AdminPage(): React.ReactElement {
           </Modal>
 
           {activeTab === 'categories' && <CategoryManager />}
+
+          {activeTab === 'templates' && <PackingTemplateManager />}
 
           {activeTab === 'addons' && <AddonManager />}
 

@@ -229,6 +229,28 @@ function runMigrations(db: Database.Database): void {
         UNIQUE(trip_id, category_name, user_id)
       )`);
     },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS packing_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      db.exec(`CREATE TABLE IF NOT EXISTS packing_template_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER NOT NULL REFERENCES packing_templates(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )`);
+      // Recreate items table with category_id FK (replaces old template_id-based schema)
+      try { db.exec('DROP TABLE IF EXISTS packing_template_items'); } catch {}
+      db.exec(`CREATE TABLE packing_template_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category_id INTEGER NOT NULL REFERENCES packing_template_categories(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

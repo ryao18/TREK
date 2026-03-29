@@ -410,7 +410,7 @@ export default function SettingsPage(): React.ReactElement {
 
             {/* Change Password */}
             {!oidcOnlyMode && (
-            <div style={{ paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--border-secondary)' }}>
+            <div style={{ paddingTop: 16, marginTop: 16, borderTop: '1px solid var(--border-secondary)' }}>
               <label className="block text-sm font-medium text-slate-700 mb-3">{t('settings.changePassword')}</label>
               <div className="space-y-3">
                 <input
@@ -461,7 +461,7 @@ export default function SettingsPage(): React.ReactElement {
             )}
 
             {/* MFA */}
-            <div style={{ paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--border-secondary)' }}>
+            <div style={{ paddingTop: 16, marginTop: 16, borderTop: '1px solid var(--border-secondary)' }}>
               <div className="flex items-center gap-2 mb-3">
                 <KeyRound className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
                 <h3 className="font-semibold text-base m-0" style={{ color: 'var(--text-primary)' }}>{t('settings.mfa.title')}</h3>

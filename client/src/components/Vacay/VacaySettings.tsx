@@ -238,26 +238,35 @@ function CalendarRow({ cal, countries, onUpdate, onDelete }: {
     fetchRegionOptions(selectedCountry).then(setRegions)
   }, [selectedCountry])
 
+  const PRESET_COLORS = ['#fecaca', '#fed7aa', '#fde68a', '#bbf7d0', '#a5f3fc', '#c7d2fe', '#e9d5ff', '#fda4af', '#6366f1', '#ef4444', '#22c55e', '#3b82f6']
+  const [showColorPicker, setShowColorPicker] = useState(false)
+
   return (
-    <div className="flex gap-2 items-start p-2 rounded-lg" style={{ background: 'var(--bg-secondary)' }}>
-      <input
-        type="color"
-        value={localColor}
-        onChange={e => setLocalColor(e.target.value)}
-        onBlur={() => { if (localColor !== cal.color) onUpdate({ color: localColor }) }}
-        className="w-7 h-7 shrink-0 rounded cursor-pointer p-0"
-        style={{ border: 'none', background: 'transparent' }}
-        title={t('vacay.calendarColor')}
-      />
+    <div className="flex gap-3 items-start p-3 rounded-xl" style={{ background: 'var(--bg-secondary)' }}>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          onClick={() => setShowColorPicker(!showColorPicker)}
+          style={{ width: 28, height: 28, borderRadius: 8, background: localColor, border: '2px solid var(--border-primary)', cursor: 'pointer' }}
+          title={t('vacay.calendarColor')}
+        />
+        {showColorPicker && (
+          <div style={{ position: 'absolute', top: 34, left: 0, zIndex: 50, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, width: 120 }}>
+            {PRESET_COLORS.map(c => (
+              <button key={c} onClick={() => { setLocalColor(c); setShowColorPicker(false); if (c !== cal.color) onUpdate({ color: c }) }}
+                style={{ width: 24, height: 24, borderRadius: 6, background: c, border: localColor === c ? '2px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer' }} />
+            ))}
+          </div>
+        )}
+      </div>
       <div className="flex-1 min-w-0 space-y-1.5">
         <input
           type="text"
           value={localLabel}
           onChange={e => setLocalLabel(e.target.value)}
           onBlur={() => { const v = localLabel.trim() || null; if (v !== cal.label) onUpdate({ label: v }) }}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
           placeholder={t('vacay.calendarLabel')}
-          className="w-full text-xs px-2 py-1 rounded"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+          style={{ width: '100%', fontSize: 12, padding: '6px 10px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none' }}
         />
         <CustomSelect
           value={selectedCountry}
@@ -314,24 +323,33 @@ function AddCalendarForm({ countries, onAdd, onCancel }: {
 
   const canAdd = selectedCountry && (regions.length === 0 || selectedRegion !== '')
 
+  const PRESET_COLORS = ['#fecaca', '#fed7aa', '#fde68a', '#bbf7d0', '#a5f3fc', '#c7d2fe', '#e9d5ff', '#fda4af', '#6366f1', '#ef4444', '#22c55e', '#3b82f6']
+  const [showColorPicker, setShowColorPicker] = useState(false)
+
   return (
-    <div className="flex gap-2 items-start p-2 rounded-lg border border-dashed" style={{ borderColor: 'var(--border-primary)' }}>
-      <input
-        type="color"
-        value={color}
-        onChange={e => setColor(e.target.value)}
-        className="w-7 h-7 shrink-0 rounded cursor-pointer p-0"
-        style={{ border: 'none', background: 'transparent' }}
-        title={t('vacay.calendarColor')}
-      />
+    <div className="flex gap-3 items-start p-3 rounded-xl border border-dashed" style={{ borderColor: 'var(--border-primary)' }}>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <button
+          onClick={() => setShowColorPicker(!showColorPicker)}
+          style={{ width: 28, height: 28, borderRadius: 8, background: color, border: '2px solid var(--border-primary)', cursor: 'pointer' }}
+          title={t('vacay.calendarColor')}
+        />
+        {showColorPicker && (
+          <div style={{ position: 'absolute', top: 34, left: 0, zIndex: 50, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, width: 120 }}>
+            {PRESET_COLORS.map(c => (
+              <button key={c} onClick={() => { setColor(c); setShowColorPicker(false) }}
+                style={{ width: 24, height: 24, borderRadius: 6, background: c, border: color === c ? '2px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer' }} />
+            ))}
+          </div>
+        )}
+      </div>
       <div className="flex-1 min-w-0 space-y-1.5">
         <input
           type="text"
           value={label}
           onChange={e => setLabel(e.target.value)}
           placeholder={t('vacay.calendarLabel')}
-          className="w-full text-xs px-2 py-1 rounded"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+          style={{ width: '100%', fontSize: 12, padding: '6px 10px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none' }}
         />
         <CustomSelect
           value={selectedCountry}

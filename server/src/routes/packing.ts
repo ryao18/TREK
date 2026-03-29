@@ -91,6 +91,58 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
   broadcast(tripId, 'packing:deleted', { itemId: Number(id) }, req.headers['x-socket-id'] as string);
 });
 
+// ── Category assignees ──────────────────────────────────────────────────────
+
+router.get('/category-assignees', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId } = req.params;
+  const trip = verifyTripOwnership(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  const rows = db.prepare(`
+    SELECT pca.category_name, pca.user_id, u.username, u.avatar
+    FROM packing_category_assignees pca
+    JOIN users u ON pca.user_id = u.id
+    WHERE pca.trip_id = ?
+  `).all(tripId);
+
+  // Group by category
+  const assignees: Record<string, { user_id: number; username: string; avatar: string | null }[]> = {};
+  for (const row of rows as any[]) {
+    if (!assignees[row.category_name]) assignees[row.category_name] = [];
+    assignees[row.category_name].push({ user_id: row.user_id, username: row.username, avatar: row.avatar });
+  }
+
+  res.json({ assignees });
+});
+
+router.put('/category-assignees/:categoryName', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { tripId, categoryName } = req.params;
+  const { user_ids } = req.body;
+
+  const trip = verifyTripOwnership(tripId, authReq.user.id);
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  const cat = decodeURIComponent(categoryName);
+  db.prepare('DELETE FROM packing_category_assignees WHERE trip_id = ? AND category_name = ?').run(tripId, cat);
+
+  if (Array.isArray(user_ids) && user_ids.length > 0) {
+    const insert = db.prepare('INSERT OR IGNORE INTO packing_category_assignees (trip_id, category_name, user_id) VALUES (?, ?, ?)');
+    for (const uid of user_ids) insert.run(tripId, cat, uid);
+  }
+
+  const rows = db.prepare(`
+    SELECT pca.user_id, u.username, u.avatar
+    FROM packing_category_assignees pca
+    JOIN users u ON pca.user_id = u.id
+    WHERE pca.trip_id = ? AND pca.category_name = ?
+  `).all(tripId, cat);
+
+  res.json({ assignees: rows });
+  broadcast(tripId, 'packing:assignees', { category: cat, assignees: rows }, req.headers['x-socket-id'] as string);
+});
+
 router.put('/reorder', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;

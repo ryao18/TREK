@@ -1,10 +1,11 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useTripStore } from '../../store/tripStore'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
+import { packingApi, tripsApi } from '../../api/client'
 import {
   CheckSquare, Square, Trash2, Plus, ChevronDown, ChevronRight,
-  Sparkles, X, Pencil, Check, MoreHorizontal, CheckCheck, RotateCcw, Luggage,
+  Sparkles, X, Pencil, Check, MoreHorizontal, CheckCheck, RotateCcw, Luggage, UserPlus,
 } from 'lucide-react'
 import type { PackingItem } from '../../types'
 
@@ -186,6 +187,19 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }: ArtikelZei
 }
 
 // ── Kategorie-Gruppe ───────────────────────────────────────────────────────
+interface TripMember {
+  id: number
+  username: string
+  avatar?: string | null
+  avatar_url?: string | null
+}
+
+interface CategoryAssignee {
+  user_id: number
+  username: string
+  avatar?: string | null
+}
+
 interface KategorieGruppeProps {
   kategorie: string
   items: PackingItem[]
@@ -193,16 +207,32 @@ interface KategorieGruppeProps {
   allCategories: string[]
   onRename: (oldName: string, newName: string) => Promise<void>
   onDeleteAll: (items: PackingItem[]) => Promise<void>
+  assignees: CategoryAssignee[]
+  tripMembers: TripMember[]
+  onSetAssignees: (category: string, userIds: number[]) => Promise<void>
 }
 
-function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, onDeleteAll }: KategorieGruppeProps) {
+function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, onDeleteAll, assignees, tripMembers, onSetAssignees }: KategorieGruppeProps) {
   const [offen, setOffen] = useState(true)
   const [editingName, setEditingName] = useState(false)
   const [editKatName, setEditKatName] = useState(kategorie)
   const [showMenu, setShowMenu] = useState(false)
+  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false)
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null)
   const { togglePackingItem } = useTripStore()
   const toast = useToast()
   const { t } = useTranslation()
+  useEffect(() => {
+    if (!showAssigneeDropdown) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(e.target as Node)) {
+        setShowAssigneeDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAssigneeDropdown])
+
   const abgehakt = items.filter(i => i.checked).length
   const alleAbgehakt = abgehakt === items.length
   const dot = katColor(kategorie, allCategories)
@@ -247,10 +277,97 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
             style={{ flex: 1, fontSize: 12.5, fontWeight: 600, border: 'none', borderBottom: '2px solid var(--text-primary)', outline: 'none', background: 'transparent', fontFamily: 'inherit', color: 'var(--text-primary)', padding: '0 2px' }}
           />
         ) : (
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', flex: 1 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             {kategorie}
           </span>
         )}
+
+        {/* Assignee chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flex: 1, minWidth: 0, marginLeft: 4 }}>
+          {assignees.map(a => (
+            <div key={a.user_id} style={{ position: 'relative' }}
+              onClick={e => { e.stopPropagation(); onSetAssignees(kategorie, assignees.filter(x => x.user_id !== a.user_id).map(x => x.user_id)) }}
+            >
+              <div className="assignee-chip"
+                style={{
+                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                  background: `hsl(${a.username.charCodeAt(0) * 37 % 360}, 55%, 55%)`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 10, fontWeight: 700, color: 'white', textTransform: 'uppercase',
+                  border: '2px solid var(--bg-card)', transition: 'opacity 0.15s',
+                }}
+              >
+                {a.username[0]}
+              </div>
+              <div className="assignee-tooltip" style={{
+                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                marginTop: 6, padding: '3px 8px', borderRadius: 6, zIndex: 60,
+                background: 'var(--text-primary)', color: 'var(--bg-primary)',
+                fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap',
+                pointerEvents: 'none', opacity: 0, transition: 'opacity 0.15s',
+              }}>
+                {a.username}
+              </div>
+            </div>
+          ))}
+          <div ref={assigneeDropdownRef} style={{ position: 'relative' }}>
+            <button onClick={e => { e.stopPropagation(); setShowAssigneeDropdown(v => !v) }}
+              style={{
+                width: 20, height: 20, borderRadius: '50%', border: '1.5px dashed var(--border-primary)',
+                background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-faint)', flexShrink: 0, padding: 0, transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-muted)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-faint)' }}
+            >
+              <UserPlus size={10} />
+            </button>
+            {showAssigneeDropdown && (
+              <div style={{
+                position: 'absolute', left: 0, top: '100%', marginTop: 4, zIndex: 50,
+                background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 160,
+              }}>
+                {tripMembers.map(m => {
+                  const isAssigned = assignees.some(a => a.user_id === m.id)
+                  return (
+                    <button key={m.id} onClick={e => {
+                      e.stopPropagation()
+                      const newIds = isAssigned
+                        ? assignees.filter(a => a.user_id !== m.id).map(a => a.user_id)
+                        : [...assignees.map(a => a.user_id), m.id]
+                      onSetAssignees(kategorie, newIds)
+                    }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                        padding: '6px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                        background: isAssigned ? 'var(--bg-hover)' : 'transparent',
+                        fontFamily: 'inherit', fontSize: 12, color: 'var(--text-primary)',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => { if (!isAssigned) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+                      onMouseLeave={e => { if (!isAssigned) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <div style={{
+                        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                        background: `hsl(${m.username.charCodeAt(0) * 37 % 360}, 55%, 55%)`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 700, color: 'white', textTransform: 'uppercase',
+                      }}>
+                        {m.username[0]}
+                      </div>
+                      <span style={{ flex: 1 }}>{m.username}</span>
+                      {isAssigned && <Check size={12} style={{ color: 'var(--text-muted)' }} />}
+                    </button>
+                  )
+                })}
+                {tripMembers.length === 0 && (
+                  <div style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text-faint)' }}>{t('packing.noMembers')}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         <span style={{
           fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 99,
@@ -328,6 +445,31 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
   const { addPackingItem, updatePackingItem, deletePackingItem } = useTripStore()
   const toast = useToast()
   const { t } = useTranslation()
+
+  // Trip members & category assignees
+  const [tripMembers, setTripMembers] = useState<TripMember[]>([])
+  const [categoryAssignees, setCategoryAssignees] = useState<Record<string, CategoryAssignee[]>>({})
+
+  useEffect(() => {
+    tripsApi.getMembers(tripId).then(data => {
+      const all: TripMember[] = []
+      if (data.owner) all.push({ id: data.owner.id, username: data.owner.username, avatar: data.owner.avatar_url })
+      if (data.members) all.push(...data.members.map((m: any) => ({ id: m.id, username: m.username, avatar: m.avatar_url })))
+      setTripMembers(all)
+    }).catch(() => {})
+    packingApi.getCategoryAssignees(tripId).then(data => {
+      setCategoryAssignees(data.assignees || {})
+    }).catch(() => {})
+  }, [tripId])
+
+  const handleSetAssignees = async (category: string, userIds: number[]) => {
+    try {
+      const data = await packingApi.setCategoryAssignees(tripId, category, userIds)
+      setCategoryAssignees(prev => ({ ...prev, [category]: data.assignees || [] }))
+    } catch {
+      toast.error(t('packing.toast.saveError'))
+    }
+  }
 
   const allCategories = useMemo(() => {
     const cats = new Set(items.map(i => i.category || t('packing.defaultCategory')))
@@ -546,11 +688,18 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                 allCategories={allCategories}
                 onRename={handleRenameCategory}
                 onDeleteAll={handleDeleteCategory}
+                assignees={categoryAssignees[kat] || []}
+                tripMembers={tripMembers}
+                onSetAssignees={handleSetAssignees}
               />
             ))}
           </div>
         )}
       </div>
+      <style>{`
+        .assignee-chip:hover + .assignee-tooltip { opacity: 1 !important; }
+        .assignee-chip:hover { opacity: 0.7; }
+      `}</style>
     </div>
   )
 }

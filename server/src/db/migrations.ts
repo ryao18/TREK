@@ -220,6 +220,15 @@ function runMigrations(db: Database.Database): void {
       try { db.exec('ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0'); } catch {}
       try { db.exec('ALTER TABLE users ADD COLUMN mfa_secret TEXT'); } catch {}
     },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS packing_category_assignees (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        category_name TEXT NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(trip_id, category_name, user_id)
+      )`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

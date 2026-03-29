@@ -813,6 +813,8 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'packing.menuCheckAll': 'Check All',
   'packing.menuUncheckAll': 'Uncheck All',
   'packing.menuDeleteCat': 'Delete Category',
+  'packing.assignUser': 'Assign user',
+  'packing.noMembers': 'No trip members',
   'packing.changeCategory': 'Change Category',
   'packing.confirm.clearChecked': 'Are you sure you want to remove {count} checked items?',
   'packing.confirm.deleteCat': 'Are you sure you want to delete the category "{name}" with {count} items?',

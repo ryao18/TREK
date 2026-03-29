@@ -264,6 +264,27 @@ function runMigrations(db: Database.Database): void {
       try { db.exec('ALTER TABLE packing_items ADD COLUMN weight_grams INTEGER'); } catch {}
       try { db.exec('ALTER TABLE packing_items ADD COLUMN bag_id INTEGER REFERENCES packing_bags(id) ON DELETE SET NULL'); } catch {}
     },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS visited_countries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        country_code TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, country_code)
+      )`);
+    },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS bucket_list (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        lat REAL,
+        lng REAL,
+        country_code TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

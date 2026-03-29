@@ -128,14 +128,33 @@ router.post('/demo-login', (_req: Request, res: Response) => {
   res.json({ token, user: { ...safe, avatar_url: avatarUrl(user) } });
 });
 
+// Validate invite token (public, no auth needed, rate limited)
+router.get('/invite/:token', authLimiter, (req: Request, res: Response) => {
+  const invite = db.prepare('SELECT * FROM invite_tokens WHERE token = ?').get(req.params.token) as any;
+  if (!invite) return res.status(404).json({ error: 'Invalid invite link' });
+  if (invite.max_uses > 0 && invite.used_count >= invite.max_uses) return res.status(410).json({ error: 'Invite link has been fully used' });
+  if (invite.expires_at && new Date(invite.expires_at) < new Date()) return res.status(410).json({ error: 'Invite link has expired' });
+  res.json({ valid: true, max_uses: invite.max_uses, used_count: invite.used_count, expires_at: invite.expires_at });
+});
+
 router.post('/register', authLimiter, (req: Request, res: Response) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, invite_token } = req.body;
 
   const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
-  if (userCount > 0 && isOidcOnlyMode()) {
-    return res.status(403).json({ error: 'Password authentication is disabled. Please sign in with SSO.' });
+
+  // Check invite token first — valid token bypasses registration restrictions
+  let validInvite: any = null;
+  if (invite_token) {
+    validInvite = db.prepare('SELECT * FROM invite_tokens WHERE token = ?').get(invite_token);
+    if (!validInvite) return res.status(400).json({ error: 'Invalid invite link' });
+    if (validInvite.used_count >= validInvite.max_uses) return res.status(410).json({ error: 'Invite link has been fully used' });
+    if (validInvite.expires_at && new Date(validInvite.expires_at) < new Date()) return res.status(410).json({ error: 'Invite link has expired' });
   }
-  if (userCount > 0) {
+
+  if (userCount > 0 && !validInvite) {
+    if (isOidcOnlyMode()) {
+      return res.status(403).json({ error: 'Password authentication is disabled. Please sign in with SSO.' });
+    }
     const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'allow_registration'").get() as { value: string } | undefined;
     if (setting?.value === 'false') {
       return res.status(403).json({ error: 'Registration is disabled. Contact your administrator.' });
@@ -176,6 +195,17 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
 
     const user = { id: result.lastInsertRowid, username, email, role, avatar: null };
     const token = generateToken(user);
+
+    // Atomically increment invite token usage (prevents race condition)
+    if (validInvite) {
+      const updated = db.prepare(
+        'UPDATE invite_tokens SET used_count = used_count + 1 WHERE id = ? AND (max_uses = 0 OR used_count < max_uses) RETURNING used_count'
+      ).get(validInvite.id);
+      if (!updated) {
+        // Race condition: token was used up between check and now — user was already created, so just log it
+        console.warn(`[Auth] Invite token ${validInvite.token.slice(0, 8)}... exceeded max_uses due to race condition`);
+      }
+    }
 
     res.status(201).json({ token, user: { ...user, avatar_url: null } });
   } catch (err: unknown) {

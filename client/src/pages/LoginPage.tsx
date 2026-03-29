@@ -25,6 +25,8 @@ export default function LoginPage(): React.ReactElement {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null)
+  const [inviteToken, setInviteToken] = useState<string>('')
+  const [inviteValid, setInviteValid] = useState<boolean>(false)
 
   const { login, register, demoLogin } = useAuthStore()
   const { setLanguageLocal } = useSettingsStore()
@@ -38,8 +40,23 @@ export default function LoginPage(): React.ReactElement {
       }
     })
 
-    // Handle OIDC callback via short-lived auth code (secure exchange)
+    // Handle query params (invite token, OIDC callback)
     const params = new URLSearchParams(window.location.search)
+
+    // Check for invite token in URL (/register?invite=xxx or /login?invite=xxx)
+    const invite = params.get('invite')
+    if (invite) {
+      setInviteToken(invite)
+      setMode('register')
+      authApi.validateInvite(invite).then(() => {
+        setInviteValid(true)
+      }).catch(() => {
+        setError('Invalid or expired invite link')
+      })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    // Handle OIDC callback via short-lived auth code (secure exchange)
     const oidcCode = params.get('oidc_code')
     const oidcError = params.get('oidc_error')
     if (oidcCode) {
@@ -93,7 +110,7 @@ export default function LoginPage(): React.ReactElement {
       if (mode === 'register') {
         if (!username.trim()) { setError('Username is required'); setIsLoading(false); return }
         if (password.length < 6) { setError('Password must be at least 6 characters'); setIsLoading(false); return }
-        await register(username, email, password)
+        await register(username, email, password, inviteToken || undefined)
       } else {
         await login(email, password)
       }
@@ -105,7 +122,7 @@ export default function LoginPage(): React.ReactElement {
     }
   }
 
-  const showRegisterOption = (appConfig?.allow_registration || !appConfig?.has_users) && !appConfig?.oidc_only_mode
+  const showRegisterOption = (appConfig?.allow_registration || !appConfig?.has_users || inviteValid) && !appConfig?.oidc_only_mode
 
   // In OIDC-only mode, show a minimal page that redirects directly to the IdP
   const oidcOnly = appConfig?.oidc_only_mode && appConfig?.oidc_configured

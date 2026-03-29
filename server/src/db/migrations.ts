@@ -205,6 +205,17 @@ function runMigrations(db: Database.Database): void {
       try { db.exec('ALTER TABLE reservations ADD COLUMN accommodation_id INTEGER REFERENCES day_accommodations(id) ON DELETE SET NULL'); } catch {}
       try { db.exec('ALTER TABLE reservations ADD COLUMN metadata TEXT'); } catch {}
     },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS invite_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token TEXT UNIQUE NOT NULL,
+        max_uses INTEGER NOT NULL DEFAULT 1,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        expires_at TEXT,
+        created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

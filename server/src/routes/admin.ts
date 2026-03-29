@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -219,6 +220,50 @@ router.post('/update', async (_req: Request, res: Response) => {
     steps.push({ step: 'error', success: false, output: 'Internal error' });
     res.status(500).json({ success: false, steps });
   }
+});
+
+// ── Invite Tokens ───────────────────────────────────────────────────────────
+
+router.get('/invites', (_req: Request, res: Response) => {
+  const invites = db.prepare(`
+    SELECT i.*, u.username as created_by_name
+    FROM invite_tokens i
+    JOIN users u ON i.created_by = u.id
+    ORDER BY i.created_at DESC
+  `).all();
+  res.json({ invites });
+});
+
+router.post('/invites', (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { max_uses, expires_in_days } = req.body;
+
+  const rawUses = parseInt(max_uses);
+  const uses = rawUses === 0 ? 0 : Math.min(Math.max(rawUses || 1, 1), 5);
+  const token = crypto.randomBytes(16).toString('hex');
+  const expiresAt = expires_in_days
+    ? new Date(Date.now() + parseInt(expires_in_days) * 86400000).toISOString()
+    : null;
+
+  db.prepare(
+    'INSERT INTO invite_tokens (token, max_uses, expires_at, created_by) VALUES (?, ?, ?, ?)'
+  ).run(token, uses, expiresAt, authReq.user.id);
+
+  const invite = db.prepare(`
+    SELECT i.*, u.username as created_by_name
+    FROM invite_tokens i
+    JOIN users u ON i.created_by = u.id
+    WHERE i.id = last_insert_rowid()
+  `).get();
+
+  res.status(201).json({ invite });
+});
+
+router.delete('/invites/:id', (_req: Request, res: Response) => {
+  const invite = db.prepare('SELECT id FROM invite_tokens WHERE id = ?').get(_req.params.id);
+  if (!invite) return res.status(404).json({ error: 'Invite not found' });
+  db.prepare('DELETE FROM invite_tokens WHERE id = ?').run(_req.params.id);
+  res.json({ success: true });
 });
 
 router.get('/addons', (_req: Request, res: Response) => {

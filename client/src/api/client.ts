@@ -39,7 +39,8 @@ apiClient.interceptors.response.use(
 )
 
 export const authApi = {
-  register: (data: { username: string; email: string; password: string }) => apiClient.post('/auth/register', data).then(r => r.data),
+  register: (data: { username: string; email: string; password: string; invite_token?: string }) => apiClient.post('/auth/register', data).then(r => r.data),
+  validateInvite: (token: string) => apiClient.get(`/auth/invite/${token}`).then(r => r.data),
   login: (data: { email: string; password: string }) => apiClient.post('/auth/login', data).then(r => r.data),
   me: () => apiClient.get('/auth/me').then(r => r.data),
   updateMapsKey: (key: string | null) => apiClient.put('/auth/me/maps-key', { maps_api_key: key }).then(r => r.data),
@@ -135,6 +136,9 @@ export const adminApi = {
   updateAddon: (id: number | string, data: Record<string, unknown>) => apiClient.put(`/admin/addons/${id}`, data).then(r => r.data),
   checkVersion: () => apiClient.get('/admin/version-check').then(r => r.data),
   installUpdate: () => apiClient.post('/admin/update', {}, { timeout: 300000 }).then(r => r.data),
+  listInvites: () => apiClient.get('/admin/invites').then(r => r.data),
+  createInvite: (data: { max_uses: number; expires_in_days?: number }) => apiClient.post('/admin/invites', data).then(r => r.data),
+  deleteInvite: (id: number) => apiClient.delete(`/admin/invites/${id}`).then(r => r.data),
 }
 
 export const addonsApi = {

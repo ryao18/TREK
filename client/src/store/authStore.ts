@@ -66,10 +66,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (username: string, email: string, password: string) => {
+  register: async (username: string, email: string, password: string, invite_token?: string) => {
     set({ isLoading: true, error: null })
     try {
-      const data = await authApi.register({ username, email, password })
+      const data = await authApi.register({ username, email, password, invite_token })
       localStorage.setItem('auth_token', data.token)
       set({
         user: data.user,

@@ -37,6 +37,13 @@ export default function LoginPage(): React.ReactElement {
       if (config) {
         setAppConfig(config)
         if (!config.has_users) setMode('register')
+        // Auto-redirect to OIDC if password auth is disabled
+        if (config.oidc_only_mode && config.oidc_configured && config.has_users) {
+          const params = new URLSearchParams(window.location.search)
+          if (!params.get('oidc_code') && !params.get('oidc_error') && !params.get('invite')) {
+            window.location.href = '/api/auth/oidc/login'
+          }
+        }
       }
     })
 

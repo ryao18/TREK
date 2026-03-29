@@ -307,6 +307,20 @@ function runMigrations(db: Database.Database): void {
         db.prepare("INSERT INTO addons (id, name, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)").run('memories', 'Photos', 'trip', 'Image', 0, 7);
       } catch {}
     },
+    () => {
+      // Allow files to be linked to multiple reservations/assignments
+      db.exec(`CREATE TABLE IF NOT EXISTS file_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES trip_files(id) ON DELETE CASCADE,
+        reservation_id INTEGER REFERENCES reservations(id) ON DELETE CASCADE,
+        assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE CASCADE,
+        place_id INTEGER REFERENCES places(id) ON DELETE CASCADE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(file_id, reservation_id),
+        UNIQUE(file_id, assignment_id),
+        UNIQUE(file_id, place_id)
+      )`);
+    },
   ];
 
   if (currentVersion < migrations.length) {

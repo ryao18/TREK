@@ -743,6 +743,7 @@ const fr: Record<string, string> = {
   'reservations.pendingSave': 'sera enregistré…',
   'reservations.uploading': 'Téléversement...',
   'reservations.attachFile': 'Joindre un fichier',
+  'reservations.linkExisting': 'Lier un fichier existant',
   'reservations.toast.saveError': 'Échec de l\'enregistrement',
   'reservations.toast.updateError': 'Échec de la mise à jour',
   'reservations.toast.deleteError': 'Échec de la suppression',

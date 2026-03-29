@@ -754,6 +754,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'reservations.pendingSave': 'will be saved…',
   'reservations.uploading': 'Uploading...',
   'reservations.attachFile': 'Attach file',
+  'reservations.linkExisting': 'Link existing file',
   'reservations.toast.saveError': 'Failed to save',
   'reservations.toast.updateError': 'Failed to update',
   'reservations.toast.deleteError': 'Failed to delete',

@@ -743,6 +743,7 @@ const nl: Record<string, string> = {
   'reservations.pendingSave': 'wordt opgeslagen…',
   'reservations.uploading': 'Uploaden...',
   'reservations.attachFile': 'Bestand bijvoegen',
+  'reservations.linkExisting': 'Bestaand bestand koppelen',
   'reservations.toast.saveError': 'Opslaan mislukt',
   'reservations.toast.updateError': 'Bijwerken mislukt',
   'reservations.toast.deleteError': 'Verwijderen mislukt',

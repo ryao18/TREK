@@ -750,6 +750,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'reservations.pendingSave': 'سيتم الحفظ…',
   'reservations.uploading': 'جارٍ الرفع...',
   'reservations.attachFile': 'إرفاق ملف',
+  'reservations.linkExisting': 'ربط ملف موجود',
   'reservations.toast.saveError': 'فشل الحفظ',
   'reservations.toast.updateError': 'فشل التحديث',
   'reservations.toast.deleteError': 'فشل الحذف',

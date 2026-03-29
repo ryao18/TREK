@@ -743,6 +743,7 @@ const zh: Record<string, string> = {
   'reservations.pendingSave': '将被保存…',
   'reservations.uploading': '上传中...',
   'reservations.attachFile': '附加文件',
+  'reservations.linkExisting': '关联已有文件',
   'reservations.toast.saveError': '保存失败',
   'reservations.toast.updateError': '更新失败',
   'reservations.toast.deleteError': '删除失败',

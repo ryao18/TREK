@@ -265,7 +265,7 @@ export default function SettingsPage(): React.ReactElement {
             {/* Sprache */}
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>{t('settings.language')}</label>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { value: 'de', label: 'Deutsch' },
                   { value: 'en', label: 'English' },
@@ -282,9 +282,9 @@ export default function SettingsPage(): React.ReactElement {
                       catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Error') }
                     }}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '10px 20px', borderRadius: 10, cursor: 'pointer',
-                      fontFamily: 'inherit', fontSize: 14, fontWeight: 500,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
+                      fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
                       border: settings.language === opt.value ? '2px solid var(--text-primary)' : '2px solid var(--border-primary)',
                       background: settings.language === opt.value ? 'var(--bg-hover)' : 'var(--bg-card)',
                       color: 'var(--text-primary)',

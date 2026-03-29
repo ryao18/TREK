@@ -241,7 +241,7 @@ export default function AtlasPage(): React.ReactElement {
       interactive: true,
       bubblingMouseEvents: false,
       style: (feature) => {
-        const a3 = feature.properties?.ISO_A3 || feature.properties?.ADM0_A3 || feature.properties?.['ISO3166-1-Alpha-3'] || feature.id
+        const a3 = feature.properties?.ADM0_A3 || feature.properties?.ISO_A3 || feature.properties?.['ISO3166-1-Alpha-3'] || feature.id
         const visited = visitedA3.has(a3)
         return {
           fillColor: visited ? colorForCode(a3) : (dark ? '#1e1e2e' : '#e2e8f0'),
@@ -251,7 +251,7 @@ export default function AtlasPage(): React.ReactElement {
         }
       },
       onEachFeature: (feature, layer) => {
-        const a3 = feature.properties?.ISO_A3 || feature.properties?.ADM0_A3 || feature.properties?.['ISO3166-1-Alpha-3'] || feature.id
+        const a3 = feature.properties?.ADM0_A3 || feature.properties?.ISO_A3 || feature.properties?.['ISO3166-1-Alpha-3'] || feature.id
         const c = countryMap[a3]
         if (c) {
           const name = resolveName(c.code)

@@ -194,6 +194,8 @@ function runMigrations(db: Database.Database): void {
       try { db.exec('ALTER TABLE reservations ADD COLUMN reservation_end_time TEXT'); } catch {}
     },
     () => {
+      try { db.exec('ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0'); } catch {}
+      try { db.exec('ALTER TABLE users ADD COLUMN mfa_secret TEXT'); } catch {}
       try { db.exec('ALTER TABLE places ADD COLUMN osm_id TEXT'); } catch {}
     },
     () => {

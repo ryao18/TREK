@@ -6,10 +6,42 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuid } from 'uuid';
 import fetch from 'node-fetch';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
 import { db } from '../db/database';
 import { authenticate, demoUploadBlock } from '../middleware/auth';
 import { JWT_SECRET } from '../config';
+import { encryptMfaSecret, decryptMfaSecret } from '../services/mfaCrypto';
 import { AuthRequest, User } from '../types';
+
+authenticator.options = { window: 1 };
+
+const MFA_SETUP_TTL_MS = 15 * 60 * 1000;
+const mfaSetupPending = new Map<number, { secret: string; exp: number }>();
+
+function getPendingMfaSecret(userId: number): string | null {
+  const row = mfaSetupPending.get(userId);
+  if (!row || Date.now() > row.exp) {
+    mfaSetupPending.delete(userId);
+    return null;
+  }
+  return row.secret;
+}
+
+function stripUserForClient(user: User): Record<string, unknown> {
+  const {
+    password_hash: _p,
+    maps_api_key: _m,
+    openweather_api_key: _o,
+    unsplash_api_key: _u,
+    mfa_secret: _mf,
+    ...rest
+  } = user;
+  return {
+    ...rest,
+    mfa_enabled: !!(user.mfa_enabled === 1 || user.mfa_enabled === true),
+  };
+}
 
 const router = express.Router();
 
@@ -124,7 +156,7 @@ router.post('/demo-login', (_req: Request, res: Response) => {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get('demo@trek.app') as User | undefined;
   if (!user) return res.status(500).json({ error: 'Demo user not found' });
   const token = generateToken(user);
-  const { password_hash, maps_api_key, openweather_api_key, unsplash_api_key, ...safe } = user;
+  const safe = stripUserForClient(user) as Record<string, unknown>;
   res.json({ token, user: { ...safe, avatar_url: avatarUrl(user) } });
 });
 
@@ -193,7 +225,7 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
       'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
     ).run(username, email, password_hash, role);
 
-    const user = { id: result.lastInsertRowid, username, email, role, avatar: null };
+    const user = { id: result.lastInsertRowid, username, email, role, avatar: null, mfa_enabled: false };
     const token = generateToken(user);
 
     // Atomically increment invite token usage (prevents race condition)
@@ -234,24 +266,34 @@ router.post('/login', authLimiter, (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
+  if (user.mfa_enabled === 1 || user.mfa_enabled === true) {
+    const mfa_token = jwt.sign(
+      { id: Number(user.id), purpose: 'mfa_login' },
+      JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    return res.json({ mfa_required: true, mfa_token });
+  }
+
   db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
   const token = generateToken(user);
-  const { password_hash, maps_api_key, openweather_api_key, unsplash_api_key, ...userWithoutSensitive } = user;
+  const userSafe = stripUserForClient(user) as Record<string, unknown>;
 
-  res.json({ token, user: { ...userWithoutSensitive, avatar_url: avatarUrl(user) } });
+  res.json({ token, user: { ...userSafe, avatar_url: avatarUrl(user) } });
 });
 
 router.get('/me', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const user = db.prepare(
-    'SELECT id, username, email, role, avatar, oidc_issuer, created_at FROM users WHERE id = ?'
+    'SELECT id, username, email, role, avatar, oidc_issuer, created_at, mfa_enabled FROM users WHERE id = ?'
   ).get(authReq.user.id) as User | undefined;
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  res.json({ user: { ...user, avatar_url: avatarUrl(user) } });
+  const base = stripUserForClient(user as User) as Record<string, unknown>;
+  res.json({ user: { ...base, avatar_url: avatarUrl(user) } });
 });
 
 router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req: Request, res: Response) => {
@@ -321,10 +363,11 @@ router.put('/me/api-keys', authenticate, (req: Request, res: Response) => {
   );
 
   const updated = db.prepare(
-    'SELECT id, username, email, role, maps_api_key, openweather_api_key, avatar FROM users WHERE id = ?'
-  ).get(authReq.user.id) as Pick<User, 'id' | 'username' | 'email' | 'role' | 'maps_api_key' | 'openweather_api_key' | 'avatar'> | undefined;
+    'SELECT id, username, email, role, maps_api_key, openweather_api_key, avatar, mfa_enabled FROM users WHERE id = ?'
+  ).get(authReq.user.id) as Pick<User, 'id' | 'username' | 'email' | 'role' | 'maps_api_key' | 'openweather_api_key' | 'avatar' | 'mfa_enabled'> | undefined;
 
-  res.json({ success: true, user: { ...updated, maps_api_key: maskKey(updated?.maps_api_key), openweather_api_key: maskKey(updated?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
+  const u = updated ? { ...updated, mfa_enabled: !!(updated.mfa_enabled === 1 || updated.mfa_enabled === true) } : undefined;
+  res.json({ success: true, user: { ...u, maps_api_key: maskKey(u?.maps_api_key), openweather_api_key: maskKey(u?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
 });
 
 router.put('/me/settings', authenticate, (req: Request, res: Response) => {
@@ -368,10 +411,11 @@ router.put('/me/settings', authenticate, (req: Request, res: Response) => {
   }
 
   const updated = db.prepare(
-    'SELECT id, username, email, role, maps_api_key, openweather_api_key, avatar FROM users WHERE id = ?'
-  ).get(authReq.user.id) as Pick<User, 'id' | 'username' | 'email' | 'role' | 'maps_api_key' | 'openweather_api_key' | 'avatar'> | undefined;
+    'SELECT id, username, email, role, maps_api_key, openweather_api_key, avatar, mfa_enabled FROM users WHERE id = ?'
+  ).get(authReq.user.id) as Pick<User, 'id' | 'username' | 'email' | 'role' | 'maps_api_key' | 'openweather_api_key' | 'avatar' | 'mfa_enabled'> | undefined;
 
-  res.json({ success: true, user: { ...updated, maps_api_key: maskKey(updated?.maps_api_key), openweather_api_key: maskKey(updated?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
+  const u = updated ? { ...updated, mfa_enabled: !!(updated.mfa_enabled === 1 || updated.mfa_enabled === true) } : undefined;
+  res.json({ success: true, user: { ...u, maps_api_key: maskKey(u?.maps_api_key), openweather_api_key: maskKey(u?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
 });
 
 router.get('/me/settings', authenticate, (req: Request, res: Response) => {
@@ -551,30 +595,107 @@ router.get('/travel-stats', authenticate, (req: Request, res: Response) => {
   });
 });
 
-// GitHub releases proxy (cached, avoids client-side rate limits)
-let releasesCache: { data: unknown[]; fetchedAt: number } | null = null;
-const RELEASES_CACHE_TTL = 30 * 60 * 1000;
-
-router.get('/github-releases', authenticate, async (req: Request, res: Response) => {
-  const page = parseInt(req.query.page as string) || 1;
-  const perPage = Math.min(parseInt(req.query.per_page as string) || 10, 30);
-
-  if (page === 1 && releasesCache && Date.now() - releasesCache.fetchedAt < RELEASES_CACHE_TTL) {
-    return res.json(releasesCache.data.slice(0, perPage));
+router.post('/mfa/verify-login', authLimiter, (req: Request, res: Response) => {
+  const { mfa_token, code } = req.body as { mfa_token?: string; code?: string };
+  if (!mfa_token || !code) {
+    return res.status(400).json({ error: 'Verification token and code are required' });
   }
-
   try {
-    const resp = await fetch(
-      `https://api.github.com/repos/mauriceboe/NOMAD/releases?per_page=${perPage}&page=${page}`,
-      { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'TREK-Server' } }
-    );
-    if (!resp.ok) return res.json([]);
-    const data = await resp.json();
-    if (page === 1) releasesCache = { data, fetchedAt: Date.now() };
-    res.json(data);
+    const decoded = jwt.verify(mfa_token, JWT_SECRET) as { id: number; purpose?: string };
+    if (decoded.purpose !== 'mfa_login') {
+      return res.status(401).json({ error: 'Invalid verification token' });
+    }
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(decoded.id) as User | undefined;
+    if (!user || !(user.mfa_enabled === 1 || user.mfa_enabled === true) || !user.mfa_secret) {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+    const secret = decryptMfaSecret(user.mfa_secret);
+    const tokenStr = String(code).replace(/\s/g, '');
+    const ok = authenticator.verify({ token: tokenStr, secret });
+    if (!ok) {
+      return res.status(401).json({ error: 'Invalid verification code' });
+    }
+    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+    const sessionToken = generateToken(user);
+    const userSafe = stripUserForClient(user) as Record<string, unknown>;
+    res.json({ token: sessionToken, user: { ...userSafe, avatar_url: avatarUrl(user) } });
   } catch {
-    res.status(500).json({ error: 'Failed to fetch releases' });
+    return res.status(401).json({ error: 'Invalid or expired verification token' });
   }
+});
+
+router.post('/mfa/setup', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (process.env.DEMO_MODE === 'true' && authReq.user.email === 'demo@nomad.app') {
+    return res.status(403).json({ error: 'MFA is not available in demo mode.' });
+  }
+  const row = db.prepare('SELECT mfa_enabled FROM users WHERE id = ?').get(authReq.user.id) as { mfa_enabled: number } | undefined;
+  if (row?.mfa_enabled) {
+    return res.status(400).json({ error: 'MFA is already enabled' });
+  }
+  const secret = authenticator.generateSecret();
+  mfaSetupPending.set(authReq.user.id, { secret, exp: Date.now() + MFA_SETUP_TTL_MS });
+  const otpauth_url = authenticator.keyuri(authReq.user.email, 'NOMAD', secret);
+  QRCode.toDataURL(otpauth_url)
+    .then((qr_data_url: string) => {
+      res.json({ secret, otpauth_url, qr_data_url });
+    })
+    .catch(() => {
+      res.status(500).json({ error: 'Could not generate QR code' });
+    });
+});
+
+router.post('/mfa/enable', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { code } = req.body as { code?: string };
+  if (!code) {
+    return res.status(400).json({ error: 'Verification code is required' });
+  }
+  const pending = getPendingMfaSecret(authReq.user.id);
+  if (!pending) {
+    return res.status(400).json({ error: 'No MFA setup in progress. Start the setup again.' });
+  }
+  const tokenStr = String(code).replace(/\s/g, '');
+  const ok = authenticator.verify({ token: tokenStr, secret: pending });
+  if (!ok) {
+    return res.status(401).json({ error: 'Invalid verification code' });
+  }
+  const enc = encryptMfaSecret(pending);
+  db.prepare('UPDATE users SET mfa_enabled = 1, mfa_secret = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+    enc,
+    authReq.user.id
+  );
+  mfaSetupPending.delete(authReq.user.id);
+  res.json({ success: true, mfa_enabled: true });
+});
+
+router.post('/mfa/disable', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (process.env.DEMO_MODE === 'true' && authReq.user.email === 'demo@nomad.app') {
+    return res.status(403).json({ error: 'MFA cannot be changed in demo mode.' });
+  }
+  const { password, code } = req.body as { password?: string; code?: string };
+  if (!password || !code) {
+    return res.status(400).json({ error: 'Password and authenticator code are required' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(authReq.user.id) as User | undefined;
+  if (!user?.mfa_enabled || !user.mfa_secret) {
+    return res.status(400).json({ error: 'MFA is not enabled' });
+  }
+  if (!user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Incorrect password' });
+  }
+  const secret = decryptMfaSecret(user.mfa_secret);
+  const tokenStr = String(code).replace(/\s/g, '');
+  const ok = authenticator.verify({ token: tokenStr, secret });
+  if (!ok) {
+    return res.status(401).json({ error: 'Invalid verification code' });
+  }
+  db.prepare('UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+    authReq.user.id
+  );
+  mfaSetupPending.delete(authReq.user.id);
+  res.json({ success: true, mfa_enabled: false });
 });
 
 export default router;

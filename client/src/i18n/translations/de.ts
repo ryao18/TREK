@@ -345,7 +345,10 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'admin.fileTypesFormat': 'Kommagetrennte Endungen (z.B. jpg,png,pdf,doc). Verwende * um alle Typen zu erlauben.',
   'admin.fileTypesSaved': 'Dateityp-Einstellungen gespeichert',
 
-  // Packing Templates
+  // Packing Templates & Bag Tracking
+  'admin.bagTracking.title': 'Gepäck-Tracking',
+  'admin.bagTracking.subtitle': 'Gewicht und Gepäckstück-Zuordnung für Packlisteneinträge aktivieren',
+  'admin.tabs.config': 'Konfiguration',
   'admin.tabs.templates': 'Packvorlagen',
   'admin.packingTemplates.title': 'Packvorlagen',
   'admin.packingTemplates.subtitle': 'Wiederverwendbare Packlisten für deine Reisen erstellen',
@@ -840,8 +843,14 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'packing.addCategory': 'Kategorie hinzufügen',
   'packing.newCategoryPlaceholder': 'Kategoriename (z.B. Kleidung)',
   'packing.applyTemplate': 'Vorlage anwenden',
+  'packing.template': 'Vorlage',
   'packing.templateApplied': '{count} Einträge aus Vorlage hinzugefügt',
   'packing.templateError': 'Vorlage konnte nicht angewendet werden',
+  'packing.bags': 'Gepäck',
+  'packing.noBag': 'Nicht zugeordnet',
+  'packing.totalWeight': 'Gesamtgewicht',
+  'packing.bagName': 'Name...',
+  'packing.addBag': 'Gepäck hinzufügen',
   'packing.changeCategory': 'Kategorie ändern',
   'packing.confirm.clearChecked': 'Möchtest du {count} abgehakte Gegenstände wirklich entfernen?',
   'packing.confirm.deleteCat': 'Möchtest du die Kategorie "{name}" mit {count} Gegenständen wirklich löschen?',

@@ -57,8 +57,7 @@ export default function AdminPage(): React.ReactElement {
   const hour12 = useSettingsStore(s => s.settings.time_format) === '12h'
   const TABS = [
     { id: 'users', label: t('admin.tabs.users') },
-    { id: 'categories', label: t('admin.tabs.categories') },
-    { id: 'templates', label: t('admin.tabs.templates') },
+    { id: 'config', label: t('admin.tabs.config') },
     { id: 'addons', label: t('admin.tabs.addons') },
     { id: 'settings', label: t('admin.tabs.settings') },
     { id: 'backup', label: t('admin.tabs.backup') },
@@ -73,6 +72,10 @@ export default function AdminPage(): React.ReactElement {
   const [editForm, setEditForm] = useState<{ username: string; email: string; role: string; password: string }>({ username: '', email: '', role: 'user', password: '' })
   const [showCreateUser, setShowCreateUser] = useState<boolean>(false)
   const [createForm, setCreateForm] = useState<{ username: string; email: string; password: string; role: string }>({ username: '', email: '', password: '', role: 'user' })
+
+  // Bag tracking
+  const [bagTrackingEnabled, setBagTrackingEnabled] = useState<boolean>(false)
+  useEffect(() => { adminApi.getBagTracking().then(d => setBagTrackingEnabled(d.enabled)).catch(() => {}) }, [])
 
   // OIDC config
   const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', oidc_only: false })
@@ -645,11 +648,22 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </Modal>
 
-          {activeTab === 'categories' && <CategoryManager />}
+          {activeTab === 'config' && (
+            <div className="space-y-6">
+              <PackingTemplateManager />
+              <CategoryManager />
+            </div>
+          )}
 
-          {activeTab === 'templates' && <PackingTemplateManager />}
-
-          {activeTab === 'addons' && <AddonManager />}
+          {activeTab === 'addons' && (
+            <div className="space-y-6">
+              <AddonManager bagTrackingEnabled={bagTrackingEnabled} onToggleBagTracking={async () => {
+                const next = !bagTrackingEnabled
+                setBagTrackingEnabled(next)
+                try { await adminApi.updateBagTracking(next) } catch { setBagTrackingEnabled(!next) }
+              }} />
+            </div>
+          )}
 
           {activeTab === 'settings' && (
             <div className="space-y-6">

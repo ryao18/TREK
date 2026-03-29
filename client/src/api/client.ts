@@ -114,6 +114,10 @@ export const packingApi = {
   getCategoryAssignees: (tripId: number | string) => apiClient.get(`/trips/${tripId}/packing/category-assignees`).then(r => r.data),
   setCategoryAssignees: (tripId: number | string, categoryName: string, userIds: number[]) => apiClient.put(`/trips/${tripId}/packing/category-assignees/${encodeURIComponent(categoryName)}`, { user_ids: userIds }).then(r => r.data),
   applyTemplate: (tripId: number | string, templateId: number) => apiClient.post(`/trips/${tripId}/packing/apply-template/${templateId}`).then(r => r.data),
+  listBags: (tripId: number | string) => apiClient.get(`/trips/${tripId}/packing/bags`).then(r => r.data),
+  createBag: (tripId: number | string, data: { name: string; color?: string }) => apiClient.post(`/trips/${tripId}/packing/bags`, data).then(r => r.data),
+  updateBag: (tripId: number | string, bagId: number, data: Record<string, unknown>) => apiClient.put(`/trips/${tripId}/packing/bags/${bagId}`, data).then(r => r.data),
+  deleteBag: (tripId: number | string, bagId: number) => apiClient.delete(`/trips/${tripId}/packing/bags/${bagId}`).then(r => r.data),
 }
 
 export const tagsApi = {
@@ -143,6 +147,8 @@ export const adminApi = {
   updateAddon: (id: number | string, data: Record<string, unknown>) => apiClient.put(`/admin/addons/${id}`, data).then(r => r.data),
   checkVersion: () => apiClient.get('/admin/version-check').then(r => r.data),
   installUpdate: () => apiClient.post('/admin/update', {}, { timeout: 300000 }).then(r => r.data),
+  getBagTracking: () => apiClient.get('/admin/bag-tracking').then(r => r.data),
+  updateBagTracking: (enabled: boolean) => apiClient.put('/admin/bag-tracking', { enabled }).then(r => r.data),
   packingTemplates: () => apiClient.get('/admin/packing-templates').then(r => r.data),
   getPackingTemplate: (id: number) => apiClient.get(`/admin/packing-templates/${id}`).then(r => r.data),
   createPackingTemplate: (data: { name: string }) => apiClient.post('/admin/packing-templates', data).then(r => r.data),

@@ -159,7 +159,7 @@ export default function PackingTemplateManager() {
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors">
-          <Plus className="w-4 h-4" /> {t('admin.packingTemplates.create')}
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">{t('admin.packingTemplates.create')}</span>
         </button>
       </div>
 

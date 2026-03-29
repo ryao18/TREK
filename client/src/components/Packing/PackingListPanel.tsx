@@ -65,19 +65,27 @@ function katColor(kat, allCategories) {
   return KAT_COLORS[Math.abs(h) % KAT_COLORS.length]
 }
 
+interface PackingBag { id: number; trip_id: number; name: string; color: string; weight_limit_grams: number | null }
+
 // ── Artikel-Zeile ──────────────────────────────────────────────────────────
 interface ArtikelZeileProps {
   item: PackingItem
   tripId: number
   categories: string[]
   onCategoryChange: () => void
+  bagTrackingEnabled?: boolean
+  bags?: PackingBag[]
+  onCreateBag: (name: string) => Promise<PackingBag | undefined>
 }
 
-function ArtikelZeile({ item, tripId, categories, onCategoryChange }: ArtikelZeileProps) {
+function ArtikelZeile({ item, tripId, categories, onCategoryChange, bagTrackingEnabled, bags = [], onCreateBag }: ArtikelZeileProps) {
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(item.name)
   const [hovered, setHovered] = useState(false)
   const [showCatPicker, setShowCatPicker] = useState(false)
+  const [showBagPicker, setShowBagPicker] = useState(false)
+  const [bagInlineCreate, setBagInlineCreate] = useState(false)
+  const [bagInlineName, setBagInlineName] = useState('')
   const { togglePackingItem, updatePackingItem, deletePackingItem } = useTripStore()
   const toast = useToast()
   const { t } = useTranslation()
@@ -104,8 +112,9 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }: ArtikelZei
 
   return (
     <div
+      className="group"
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setShowCatPicker(false) }}
+      onMouseLeave={() => { setHovered(false); setShowCatPicker(false); setShowBagPicker(false) }}
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 10px', borderRadius: 10, position: 'relative',
@@ -142,7 +151,102 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange }: ArtikelZei
         </span>
       )}
 
-      <div style={{ display: 'flex', gap: 2, alignItems: 'center', opacity: hovered ? 1 : 0, transition: 'opacity 0.12s', flexShrink: 0 }}>
+      {/* Weight + Bag (when enabled) */}
+      {bagTrackingEnabled && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, border: '1px solid var(--border-primary)', borderRadius: 8, padding: '3px 6px', background: 'transparent' }}>
+            <input
+              type="text" inputMode="numeric"
+              value={item.weight_grams ?? ''}
+              onChange={async e => {
+                const raw = e.target.value.replace(/[^0-9]/g, '')
+                const v = raw === '' ? null : parseInt(raw)
+                try { await updatePackingItem(tripId, item.id, { weight_grams: v }) } catch {}
+              }}
+              placeholder="—"
+              style={{ width: 36, border: 'none', fontSize: 12, textAlign: 'right', fontFamily: 'inherit', outline: 'none', color: 'var(--text-secondary)', background: 'transparent', padding: 0 }}
+            />
+            <span style={{ fontSize: 10, color: 'var(--text-faint)', userSelect: 'none' }}>g</span>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowBagPicker(p => !p)}
+              style={{
+                width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: item.bag_id ? `2.5px solid ${bags.find(b => b.id === item.bag_id)?.color || 'var(--border-primary)'}` : '2px dashed var(--border-primary)',
+                background: item.bag_id ? `${bags.find(b => b.id === item.bag_id)?.color || 'var(--border-primary)'}30` : 'transparent',
+              }}
+            >
+              {!item.bag_id && <Package size={9} style={{ color: 'var(--text-faint)' }} />}
+            </button>
+            {showBagPicker && (
+              <div style={{
+                position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 50,
+                background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 10,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 4, minWidth: 160,
+              }}>
+                {item.bag_id && (
+                  <button onClick={async () => { setShowBagPicker(false); try { await updatePackingItem(tripId, item.id, { bag_id: null }) } catch {} }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '6px 10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--text-faint)', borderRadius: 7 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', border: '2px dashed var(--border-primary)' }} />
+                    {t('packing.noBag')}
+                  </button>
+                )}
+                {bags.map(b => (
+                  <button key={b.id} onClick={async () => { setShowBagPicker(false); try { await updatePackingItem(tripId, item.id, { bag_id: b.id }) } catch {} }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '6px 10px',
+                      background: item.bag_id === b.id ? 'var(--bg-tertiary)' : 'none',
+                      border: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--text-secondary)', borderRadius: 7,
+                    }}
+                    onMouseEnter={e => { if (item.bag_id !== b.id) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+                    onMouseLeave={e => { if (item.bag_id !== b.id) e.currentTarget.style.background = 'none' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: b.color, flexShrink: 0 }} />
+                    {b.name}
+                  </button>
+                ))}
+                {bags.length > 0 && <div style={{ height: 1, background: 'var(--bg-tertiary)', margin: '4px 0' }} />}
+                <div style={{ padding: '4px 6px' }}>
+                  {bagInlineCreate ? (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input autoFocus value={bagInlineName} onChange={e => setBagInlineName(e.target.value)}
+                        onKeyDown={async e => {
+                          if (e.key === 'Enter' && bagInlineName.trim()) {
+                            const newBag = await onCreateBag(bagInlineName.trim())
+                            if (newBag) { try { await updatePackingItem(tripId, item.id, { bag_id: newBag.id }) } catch {} }
+                            setBagInlineName(''); setBagInlineCreate(false); setShowBagPicker(false)
+                          }
+                          if (e.key === 'Escape') { setBagInlineCreate(false); setBagInlineName('') }
+                        }}
+                        placeholder={t('packing.bagName')}
+                        style={{ flex: 1, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-primary)', fontSize: 11, fontFamily: 'inherit', outline: 'none' }} />
+                      <button onClick={async () => {
+                        if (bagInlineName.trim()) {
+                          const newBag = await onCreateBag(bagInlineName.trim())
+                          if (newBag) { try { await updatePackingItem(tripId, item.id, { bag_id: newBag.id }) } catch {} }
+                          setBagInlineName(''); setBagInlineCreate(false); setShowBagPicker(false)
+                        }
+                      }}
+                        style={{ padding: '3px 6px', borderRadius: 6, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                        <Plus size={11} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setBagInlineCreate(true)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', padding: '5px 6px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit', color: 'var(--text-faint)', borderRadius: 7 }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+                      <Plus size={11} /> {t('packing.addBag')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="sm:opacity-0 sm:group-hover:opacity-100" style={{ display: 'flex', gap: 2, alignItems: 'center', transition: 'opacity 0.12s', flexShrink: 0 }}>
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setShowCatPicker(p => !p)}
@@ -211,9 +315,12 @@ interface KategorieGruppeProps {
   assignees: CategoryAssignee[]
   tripMembers: TripMember[]
   onSetAssignees: (category: string, userIds: number[]) => Promise<void>
+  bagTrackingEnabled?: boolean
+  bags?: PackingBag[]
+  onCreateBag: (name: string) => Promise<PackingBag | undefined>
 }
 
-function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, onDeleteAll, onAddItem, assignees, tripMembers, onSetAssignees }: KategorieGruppeProps) {
+function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, onDeleteAll, onAddItem, assignees, tripMembers, onSetAssignees, bagTrackingEnabled, bags, onCreateBag }: KategorieGruppeProps) {
   const [offen, setOffen] = useState(true)
   const [editingName, setEditingName] = useState(false)
   const [editKatName, setEditKatName] = useState(kategorie)
@@ -402,7 +509,7 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
       {offen && (
         <div style={{ padding: '4px 4px 6px' }}>
           {items.map(item => (
-            <ArtikelZeile key={item.id} item={item} tripId={tripId} categories={allCategories} onCategoryChange={() => {}} />
+            <ArtikelZeile key={item.id} item={item} tripId={tripId} categories={allCategories} onCategoryChange={() => {}} bagTrackingEnabled={bagTrackingEnabled} bags={bags} onCreateBag={onCreateBag} />
           ))}
           {/* Inline add item */}
           {showAddItem ? (
@@ -510,8 +617,12 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
   }
 
   const allCategories = useMemo(() => {
-    const cats = new Set(items.map(i => i.category || t('packing.defaultCategory')))
-    return Array.from(cats).sort()
+    const seen: string[] = []
+    for (const item of items) {
+      const cat = item.category || t('packing.defaultCategory')
+      if (!seen.includes(cat)) seen.push(cat)
+    }
+    return seen
   }, [items, t])
 
   const gruppiert = useMemo(() => {
@@ -566,6 +677,46 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
     for (const item of items.filter(i => i.checked)) {
       try { await deletePackingItem(tripId, item.id) } catch {}
     }
+  }
+
+  // Bag tracking
+  const [bagTrackingEnabled, setBagTrackingEnabled] = useState(false)
+  const [bags, setBags] = useState<PackingBag[]>([])
+  const [newBagName, setNewBagName] = useState('')
+  const [showAddBag, setShowAddBag] = useState(false)
+  const [showBagModal, setShowBagModal] = useState(false)
+
+  useEffect(() => {
+    adminApi.getBagTracking().then(d => {
+      setBagTrackingEnabled(d.enabled)
+      if (d.enabled) packingApi.listBags(tripId).then(r => setBags(r.bags || [])).catch(() => {})
+    }).catch(() => {})
+  }, [tripId])
+
+  const BAG_COLORS = ['#6366f1', '#ec4899', '#f97316', '#10b981', '#06b6d4', '#8b5cf6', '#ef4444', '#f59e0b']
+
+  const handleCreateBag = async () => {
+    if (!newBagName.trim()) return
+    try {
+      const data = await packingApi.createBag(tripId, { name: newBagName.trim(), color: BAG_COLORS[bags.length % BAG_COLORS.length] })
+      setBags(prev => [...prev, data.bag])
+      setNewBagName(''); setShowAddBag(false)
+    } catch { toast.error(t('packing.toast.saveError')) }
+  }
+
+  const handleCreateBagByName = async (name: string): Promise<PackingBag | undefined> => {
+    try {
+      const data = await packingApi.createBag(tripId, { name, color: BAG_COLORS[bags.length % BAG_COLORS.length] })
+      setBags(prev => [...prev, data.bag])
+      return data.bag
+    } catch { toast.error(t('packing.toast.saveError')); return undefined }
+  }
+
+  const handleDeleteBag = async (bagId: number) => {
+    try {
+      await packingApi.deleteBag(tripId, bagId)
+      setBags(prev => prev.filter(b => b.id !== bagId))
+    } catch { toast.error(t('packing.toast.deleteError')) }
   }
 
   // Templates
@@ -635,7 +786,7 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                   borderColor: showTemplateDropdown ? 'var(--text-primary)' : 'var(--border-primary)',
                   color: showTemplateDropdown ? 'var(--bg-primary)' : 'var(--text-muted)',
                 }}>
-                  <Package size={12} /> {t('packing.applyTemplate')}
+                  <Package size={12} /> <span className="hidden sm:inline">{t('packing.applyTemplate')}</span><span className="sm:hidden">{t('packing.template')}</span>
                 </button>
                 {showTemplateDropdown && (
                   <div style={{
@@ -664,6 +815,18 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                   </div>
                 )}
               </div>
+            )}
+            {bagTrackingEnabled && (
+              <button onClick={() => setShowBagModal(true)} className="xl:!hidden"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
+                  border: '1px solid', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                  background: showBagModal ? 'var(--text-primary)' : 'var(--bg-card)',
+                  borderColor: showBagModal ? 'var(--text-primary)' : 'var(--border-primary)',
+                  color: showBagModal ? 'var(--bg-primary)' : 'var(--text-muted)',
+                }}>
+                <Luggage size={12} /> {t('packing.bags')}
+              </button>
             )}
           </div>
         </div>
@@ -725,7 +888,8 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
         </div>
       )}
 
-      {/* ── Liste ── */}
+      {/* ── Liste + Bags Sidebar ── */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px 16px' }}>
         {items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
@@ -752,11 +916,184 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                 assignees={categoryAssignees[kat] || []}
                 tripMembers={tripMembers}
                 onSetAssignees={handleSetAssignees}
+                bagTrackingEnabled={bagTrackingEnabled}
+                bags={bags}
+                onCreateBag={handleCreateBagByName}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* ── Bag Weight Sidebar ── */}
+      {bagTrackingEnabled && bags.length > 0 && (
+        <div className="hidden xl:block" style={{ width: 260, borderLeft: '1px solid var(--border-secondary)', overflowY: 'auto', padding: 16, flexShrink: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-faint)', marginBottom: 12 }}>
+            {t('packing.bags')}
+          </div>
+
+          {bags.map(bag => {
+            const bagItems = items.filter(i => i.bag_id === bag.id)
+            const totalWeight = bagItems.reduce((sum, i) => sum + (i.weight_grams || 0), 0)
+            const maxWeight = bag.weight_limit_grams || Math.max(...bags.map(b => items.filter(i => i.bag_id === b.id).reduce((s, i) => s + (i.weight_grams || 0), 0)), 1)
+            const pct = Math.min(100, Math.round((totalWeight / maxWeight) * 100))
+            return (
+              <div key={bag.id} style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: bag.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{bag.name}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-faint)', fontWeight: 500 }}>
+                    {totalWeight >= 1000 ? `${(totalWeight / 1000).toFixed(1)} kg` : `${totalWeight} g`}
+                  </span>
+                  <button onClick={() => handleDeleteBag(bag.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)', display: 'flex' }}>
+                    <X size={11} />
+                  </button>
+                </div>
+                <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: 99, background: bag.color, width: `${pct}%`, transition: 'width 0.3s' }} />
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>{bagItems.length} {t('admin.packingTemplates.items')}</div>
+              </div>
+            )
+          })}
+
+          {/* Unassigned */}
+          {(() => {
+            const unassigned = items.filter(i => !i.bag_id)
+            const unassignedWeight = unassigned.reduce((s, i) => s + (i.weight_grams || 0), 0)
+            if (unassigned.length === 0) return null
+            return (
+              <div style={{ marginBottom: 14, opacity: 0.6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', border: '2px dashed var(--border-primary)', flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text-faint)' }}>{t('packing.noBag')}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                    {unassignedWeight >= 1000 ? `${(unassignedWeight / 1000).toFixed(1)} kg` : `${unassignedWeight} g`}
+                  </span>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>{unassigned.length} {t('admin.packingTemplates.items')}</div>
+              </div>
+            )
+          })()}
+
+          {/* Total */}
+          <div style={{ borderTop: '1px solid var(--border-secondary)', paddingTop: 10, marginTop: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+              <span>{t('packing.totalWeight')}</span>
+              <span>{(() => { const w = items.reduce((s, i) => s + (i.weight_grams || 0), 0); return w >= 1000 ? `${(w / 1000).toFixed(1)} kg` : `${w} g` })()}</span>
+            </div>
+          </div>
+
+          {/* Add bag */}
+          {showAddBag ? (
+            <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
+              <input autoFocus value={newBagName} onChange={e => setNewBagName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateBag(); if (e.key === 'Escape') { setShowAddBag(false); setNewBagName('') } }}
+                placeholder={t('packing.bagName')}
+                style={{ flex: 1, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border-primary)', fontSize: 11, fontFamily: 'inherit', outline: 'none' }} />
+              <button onClick={handleCreateBag} style={{ padding: '4px 8px', borderRadius: 8, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <Plus size={12} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowAddBag(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12, padding: '5px 8px', borderRadius: 8, border: '1px dashed var(--border-primary)', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-faint)', fontFamily: 'inherit', width: '100%' }}>
+              <Plus size={11} /> {t('packing.addBag')}
+            </button>
+          )}
+        </div>
+      )}
+      </div>
+
+      {/* ── Bag Modal (mobile + click) ── */}
+      {showBagModal && bagTrackingEnabled && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setShowBagModal(false)}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 360, maxHeight: '80vh', overflow: 'auto', padding: 20, boxShadow: '0 16px 48px rgba(0,0,0,0.15)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{t('packing.bags')}</h3>
+              <button onClick={() => setShowBagModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex' }}><X size={18} /></button>
+            </div>
+
+            {bags.map(bag => {
+              const bagItems = items.filter(i => i.bag_id === bag.id)
+              const totalWeight = bagItems.reduce((sum, i) => sum + (i.weight_grams || 0), 0)
+              const maxWeight = Math.max(...bags.map(b => items.filter(i => i.bag_id === b.id).reduce((s, i) => s + (i.weight_grams || 0), 0)), 1)
+              const pct = Math.min(100, Math.round((totalWeight / maxWeight) * 100))
+              return (
+                <div key={bag.id} style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: bag.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{bag.name}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500 }}>
+                      {totalWeight >= 1000 ? `${(totalWeight / 1000).toFixed(1)} kg` : `${totalWeight} g`}
+                    </span>
+                    <button onClick={() => handleDeleteBag(bag.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)', display: 'flex' }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                  <div style={{ height: 8, background: 'var(--bg-tertiary)', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: 99, background: bag.color, width: `${pct}%`, transition: 'width 0.3s' }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 3 }}>{bagItems.length} {t('admin.packingTemplates.items')}</div>
+                </div>
+              )
+            })}
+
+            {/* Unassigned */}
+            {(() => {
+              const unassigned = items.filter(i => !i.bag_id)
+              const unassignedWeight = unassigned.reduce((s, i) => s + (i.weight_grams || 0), 0)
+              if (unassigned.length === 0) return null
+              return (
+                <div style={{ marginBottom: 16, opacity: 0.6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px dashed var(--border-primary)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text-faint)' }}>{t('packing.noBag')}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-faint)' }}>
+                      {unassignedWeight >= 1000 ? `${(unassignedWeight / 1000).toFixed(1)} kg` : `${unassignedWeight} g`}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{unassigned.length} {t('admin.packingTemplates.items')}</div>
+                </div>
+              )
+            })()}
+
+            {/* Total */}
+            <div style={{ borderTop: '1px solid var(--border-secondary)', paddingTop: 12, marginTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                <span>{t('packing.totalWeight')}</span>
+                <span>{(() => { const w = items.reduce((s, i) => s + (i.weight_grams || 0), 0); return w >= 1000 ? `${(w / 1000).toFixed(1)} kg` : `${w} g` })()}</span>
+              </div>
+            </div>
+
+            {/* Add bag */}
+            {showAddBag ? (
+              <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+                <input autoFocus value={newBagName} onChange={e => setNewBagName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreateBag(); if (e.key === 'Escape') { setShowAddBag(false); setNewBagName('') } }}
+                  placeholder={t('packing.bagName')}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-primary)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
+                <button onClick={handleCreateBag} disabled={!newBagName.trim()}
+                  style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: newBagName.trim() ? 'var(--text-primary)' : 'var(--border-primary)', color: 'var(--bg-primary)', cursor: newBagName.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}>
+                  <Plus size={14} />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setShowAddBag(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, padding: '9px 14px', borderRadius: 10, border: '1px dashed var(--border-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-faint)', fontFamily: 'inherit', width: '100%', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-muted)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-faint)' }}>
+                <Plus size={14} /> {t('packing.addBag')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <style>{`
         .assignee-chip:hover + .assignee-tooltip { opacity: 1 !important; }
         .assignee-chip:hover { opacity: 0.7; }

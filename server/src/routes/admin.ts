@@ -266,6 +266,19 @@ router.delete('/invites/:id', (_req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// ── Bag Tracking Setting ────────────────────────────────────────────────────
+
+router.get('/bag-tracking', (_req: Request, res: Response) => {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'bag_tracking_enabled'").get() as { value: string } | undefined;
+  res.json({ enabled: row?.value === 'true' });
+});
+
+router.put('/bag-tracking', (req: Request, res: Response) => {
+  const { enabled } = req.body;
+  db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('bag_tracking_enabled', ?)").run(enabled ? 'true' : 'false');
+  res.json({ enabled: !!enabled });
+});
+
 // ── Packing Templates ───────────────────────────────────────────────────────
 
 router.get('/packing-templates', (_req: Request, res: Response) => {

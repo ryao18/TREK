@@ -251,6 +251,19 @@ function runMigrations(db: Database.Database): void {
         sort_order INTEGER NOT NULL DEFAULT 0
       )`);
     },
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS packing_bags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#6366f1',
+        weight_limit_grams INTEGER,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      try { db.exec('ALTER TABLE packing_items ADD COLUMN weight_grams INTEGER'); } catch {}
+      try { db.exec('ALTER TABLE packing_items ADD COLUMN bag_id INTEGER REFERENCES packing_bags(id) ON DELETE SET NULL'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

@@ -345,7 +345,10 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'admin.fileTypesFormat': 'Comma-separated extensions (e.g. jpg,png,pdf,doc). Use * to allow all types.',
   'admin.fileTypesSaved': 'File type settings saved',
 
-  // Packing Templates
+  // Packing Templates & Bag Tracking
+  'admin.bagTracking.title': 'Bag Tracking',
+  'admin.bagTracking.subtitle': 'Enable weight and bag assignment for packing items',
+  'admin.tabs.config': 'Configuration',
   'admin.tabs.templates': 'Packing Templates',
   'admin.packingTemplates.title': 'Packing Templates',
   'admin.packingTemplates.subtitle': 'Create reusable packing lists for your trips',
@@ -840,8 +843,14 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'packing.addCategory': 'Add category',
   'packing.newCategoryPlaceholder': 'Category name (e.g. Clothing)',
   'packing.applyTemplate': 'Apply template',
+  'packing.template': 'Template',
   'packing.templateApplied': '{count} items added from template',
   'packing.templateError': 'Failed to apply template',
+  'packing.bags': 'Bags',
+  'packing.noBag': 'Unassigned',
+  'packing.totalWeight': 'Total weight',
+  'packing.bagName': 'Bag name...',
+  'packing.addBag': 'Add bag',
   'packing.changeCategory': 'Change Category',
   'packing.confirm.clearChecked': 'Are you sure you want to remove {count} checked items?',
   'packing.confirm.deleteCat': 'Are you sure you want to delete the category "{name}" with {count} items?',

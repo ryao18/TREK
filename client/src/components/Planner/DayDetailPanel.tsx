@@ -50,9 +50,11 @@ interface DayDetailPanelProps {
   lng: number | null
   onClose: () => void
   onAccommodationChange: () => void
+  leftWidth?: number
+  rightWidth?: number
 }
 
-export default function DayDetailPanel({ day, days, places, categories = [], tripId, assignments, reservations = [], lat, lng, onClose, onAccommodationChange }: DayDetailPanelProps) {
+export default function DayDetailPanel({ day, days, places, categories = [], tripId, assignments, reservations = [], lat, lng, onClose, onAccommodationChange, leftWidth = 0, rightWidth = 0 }: DayDetailPanelProps) {
   const { t, language, locale } = useTranslation()
   const isFahrenheit = useSettingsStore(s => s.settings.temperature_unit) === 'fahrenheit'
   const is12h = useSettingsStore(s => s.settings.time_format) === '12h'

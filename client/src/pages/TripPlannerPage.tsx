@@ -118,7 +118,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
 
   const [mapCategoryFilter, setMapCategoryFilter] = useState<string>('')
 
-  const mapPlaces = useCallback(() => {
+  const mapPlaces = useMemo(() => {
     return places.filter(p => {
       if (!p.lat || !p.lng) return false
       if (mapCategoryFilter && String(p.category_id) !== String(mapCategoryFilter)) return false
@@ -376,7 +376,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
         {activeTab === 'plan' && (
           <div style={{ position: 'absolute', inset: 0 }}>
             <MapView
-              places={mapPlaces()}
+              places={mapPlaces}
               dayPlaces={dayPlaces}
               route={route}
               routeSegments={routeSegments}

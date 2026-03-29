@@ -51,6 +51,8 @@ const zh: Record<string, string> = {
   'dashboard.subtitle.activeMany': '{count} 个进行中的旅行',
   'dashboard.subtitle.archivedSuffix': ' · {count} 已归档',
   'dashboard.newTrip': '新建旅行',
+  'dashboard.gridView': '网格视图',
+  'dashboard.listView': '列表视图',
   'dashboard.currency': '货币',
   'dashboard.timezone': '时区',
   'dashboard.localTime': '本地',

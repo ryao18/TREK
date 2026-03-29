@@ -51,6 +51,8 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'dashboard.subtitle.activeMany': '{count} active trips',
   'dashboard.subtitle.archivedSuffix': ' · {count} archived',
   'dashboard.newTrip': 'New Trip',
+  'dashboard.gridView': 'Grid view',
+  'dashboard.listView': 'List view',
   'dashboard.currency': 'Currency',
   'dashboard.timezone': 'Timezones',
   'dashboard.localTime': 'Local',

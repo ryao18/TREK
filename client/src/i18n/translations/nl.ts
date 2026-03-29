@@ -51,6 +51,8 @@ const nl: Record<string, string> = {
   'dashboard.subtitle.activeMany': '{count} actieve reizen',
   'dashboard.subtitle.archivedSuffix': ' · {count} gearchiveerd',
   'dashboard.newTrip': 'Nieuwe reis',
+  'dashboard.gridView': 'Rasterweergave',
+  'dashboard.listView': 'Lijstweergave',
   'dashboard.currency': 'Valuta',
   'dashboard.timezone': 'Tijdzones',
   'dashboard.localTime': 'Lokaal',

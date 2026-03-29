@@ -51,6 +51,8 @@ const fr: Record<string, string> = {
   'dashboard.subtitle.activeMany': '{count} voyages actifs',
   'dashboard.subtitle.archivedSuffix': ' · {count} archivés',
   'dashboard.newTrip': 'Nouveau voyage',
+  'dashboard.gridView': 'Vue en grille',
+  'dashboard.listView': 'Vue en liste',
   'dashboard.currency': 'Devise',
   'dashboard.timezone': 'Fuseaux horaires',
   'dashboard.localTime': 'Local',

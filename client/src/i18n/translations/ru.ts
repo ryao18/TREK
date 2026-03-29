@@ -51,6 +51,8 @@ const ru: Record<string, string> = {
   'dashboard.subtitle.activeMany': '{count} активных поездок',
   'dashboard.subtitle.archivedSuffix': ' · {count} в архиве',
   'dashboard.newTrip': 'Новая поездка',
+  'dashboard.gridView': 'Плитка',
+  'dashboard.listView': 'Список',
   'dashboard.currency': 'Валюта',
   'dashboard.timezone': 'Часовые пояса',
   'dashboard.localTime': 'Местное',

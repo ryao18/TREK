@@ -29,11 +29,12 @@ interface VacayMonthCardProps {
   onCellClick: (date: string) => void
   companyMode: boolean
   blockWeekends: boolean
+  weekendDays?: number[]
 }
 
 export default function VacayMonthCard({
   year, month, holidays, companyHolidaySet, companyHolidaysEnabled = true, entryMap,
-  onCellClick, companyMode, blockWeekends
+  onCellClick, companyMode, blockWeekends, weekendDays = [0, 6]
 }: VacayMonthCardProps) {
   const { language } = useTranslation()
   const weekdays = language === 'de' ? WEEKDAYS_DE : language === 'es' ? WEEKDAYS_ES : language === 'ar' ? WEEKDAYS_AR : WEEKDAYS_EN
@@ -76,7 +77,8 @@ export default function VacayMonthCard({
               if (day === null) return <div key={di} style={{ height: 28 }} />
 
               const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`
-              const weekend = di >= 5
+              const dayOfWeek = new Date(year, month, day).getDay()
+              const weekend = weekendDays.includes(dayOfWeek)
               const holiday = holidays[dateStr]
               const isCompany = companyHolidaysEnabled && companyHolidaySet.has(dateStr)
               const dayEntries = entryMap[dateStr] || []

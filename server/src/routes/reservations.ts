@@ -101,6 +101,12 @@ router.post('/', authenticate, (req: Request, res: Response) => {
 
   res.status(201).json({ reservation });
   broadcast(tripId, 'reservation:created', { reservation }, req.headers['x-socket-id'] as string);
+
+  // Notify trip members about new booking
+  import('../services/notifications').then(({ notifyTripMembers }) => {
+    const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
+    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, booking: title, type: type || 'booking' }).catch(() => {});
+  });
 });
 
 // Batch update day_plan_position for multiple reservations (must be before /:id)

@@ -155,6 +155,14 @@ router.post('/trips/:tripId/photos', authenticate, (req: Request, res: Response)
 
   res.json({ success: true, added });
   broadcast(tripId, 'memories:updated', { userId: authReq.user.id }, req.headers['x-socket-id'] as string);
+
+  // Notify trip members about shared photos
+  if (shared && added > 0) {
+    import('../services/notifications').then(({ notifyTripMembers }) => {
+      const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
+      notifyTripMembers(Number(tripId), authReq.user.id, 'photos_shared', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, count: String(added) }).catch(() => {});
+    });
+  }
 });
 
 // Remove a photo from a trip (own photos only)

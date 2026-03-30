@@ -515,17 +515,33 @@ router.get('/validate-keys', authenticate, async (req: Request, res: Response) =
   res.json(result);
 });
 
+const ADMIN_SETTINGS_KEYS = ['allow_registration', 'allowed_file_types', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'notification_webhook_url', 'app_url'];
+
+router.get('/app-settings', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const user = db.prepare('SELECT role FROM users WHERE id = ?').get(authReq.user.id) as { role: string } | undefined;
+  if (user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+
+  const result: Record<string, string> = {};
+  for (const key of ADMIN_SETTINGS_KEYS) {
+    const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined;
+    if (row) result[key] = key === 'smtp_pass' ? '••••••••' : row.value;
+  }
+  res.json(result);
+});
+
 router.put('/app-settings', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const user = db.prepare('SELECT role FROM users WHERE id = ?').get(authReq.user.id) as { role: string } | undefined;
   if (user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
-  const { allow_registration, allowed_file_types } = req.body;
-  if (allow_registration !== undefined) {
-    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allow_registration', ?)").run(String(allow_registration));
-  }
-  if (allowed_file_types !== undefined) {
-    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allowed_file_types', ?)").run(String(allowed_file_types));
+  for (const key of ADMIN_SETTINGS_KEYS) {
+    if (req.body[key] !== undefined) {
+      const val = String(req.body[key]);
+      // Don't save masked password
+      if (key === 'smtp_pass' && val === '••••••••') continue;
+      db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val);
+    }
   }
   res.json({ success: true });
 });

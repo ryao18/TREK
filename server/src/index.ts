@@ -160,6 +160,9 @@ app.use('/api/weather', weatherRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/backup', backupRoutes);
 
+import notificationRoutes from './routes/notifications';
+app.use('/api/notifications', notificationRoutes);
+
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   const publicPath = path.join(__dirname, '../public');

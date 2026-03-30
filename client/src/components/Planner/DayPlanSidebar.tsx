@@ -714,6 +714,34 @@ export default function DayPlanSidebar({
             <FileDown size={13} strokeWidth={2} />
             {t('dayplan.pdf')}
           </button>
+          <button
+            onClick={async () => {
+              try {
+                const res = await fetch(`/api/trips/${tripId}/export.ics`, {
+                  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                })
+                if (!res.ok) throw new Error()
+                const blob = await res.blob()
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `${trip?.title || 'trip'}.ics`
+                a.click()
+                URL.revokeObjectURL(url)
+              } catch { toast.error('ICS export failed') }
+            }}
+            title={t('dayplan.icsTooltip')}
+            style={{
+              flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 10px', borderRadius: 8,
+              border: '1px solid var(--border-primary)', background: 'none',
+              color: 'var(--text-muted)', fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <FileDown size={13} strokeWidth={2} />
+            ICS
+          </button>
         </div>
       </div>
 

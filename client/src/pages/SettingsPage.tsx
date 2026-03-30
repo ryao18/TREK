@@ -7,7 +7,7 @@ import Navbar from '../components/Layout/Navbar'
 import CustomSelect from '../components/shared/CustomSelect'
 import { useToast } from '../components/shared/Toast'
 import { Save, Map, Palette, User, Moon, Sun, Monitor, Shield, Camera, Trash2, Lock, KeyRound } from 'lucide-react'
-import { authApi, adminApi } from '../api/client'
+import { authApi, adminApi, notificationsApi } from '../api/client'
 import apiClient from '../api/client'
 import type { LucideIcon } from 'lucide-react'
 import type { UserWithOidc } from '../types'
@@ -42,6 +42,60 @@ function Section({ title, icon: Icon, children }: SectionProps): React.ReactElem
       <div className="p-6 space-y-4">
         {children}
       </div>
+    </div>
+  )
+}
+
+function NotificationPreferences({ t, memoriesEnabled }: { t: any; memoriesEnabled: boolean }) {
+  const [prefs, setPrefs] = useState<Record<string, number> | null>(null)
+  const [addons, setAddons] = useState<Record<string, boolean>>({})
+  useEffect(() => { notificationsApi.getPreferences().then(d => setPrefs(d.preferences)).catch(() => {}) }, [])
+  useEffect(() => {
+    apiClient.get('/addons').then(r => {
+      const map: Record<string, boolean> = {}
+      for (const a of (r.data.addons || [])) map[a.id] = !!a.enabled
+      setAddons(map)
+    }).catch(() => {})
+  }, [])
+
+  const toggle = async (key: string) => {
+    if (!prefs) return
+    const newVal = prefs[key] ? 0 : 1
+    setPrefs(prev => prev ? { ...prev, [key]: newVal } : prev)
+    try { await notificationsApi.updatePreferences({ [key]: !!newVal }) } catch {}
+  }
+
+  if (!prefs) return <p style={{ fontSize: 12, color: 'var(--text-faint)' }}>{t('common.loading')}</p>
+
+  const options = [
+    { key: 'notify_trip_invite', label: t('settings.notifyTripInvite') },
+    { key: 'notify_booking_change', label: t('settings.notifyBookingChange') },
+    ...(addons.vacay !== false ? [{ key: 'notify_vacay_invite', label: t('settings.notifyVacayInvite') }] : []),
+    ...(memoriesEnabled ? [{ key: 'notify_photos_shared', label: t('settings.notifyPhotosShared') }] : []),
+    ...(addons.collab !== false ? [{ key: 'notify_collab_message', label: t('settings.notifyCollabMessage') }] : []),
+    ...(addons.documents !== false ? [{ key: 'notify_packing_tagged', label: t('settings.notifyPackingTagged') }] : []),
+    { key: 'notify_webhook', label: t('settings.notifyWebhook') },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {options.map(opt => (
+        <div key={opt.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{opt.label}</span>
+          <button onClick={() => toggle(opt.key)}
+            style={{
+              position: 'relative', width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+              background: prefs[opt.key] ? 'var(--accent, #111827)' : 'var(--border-primary, #d1d5db)',
+              transition: 'background 0.2s',
+            }}>
+            <span style={{
+              position: 'absolute', top: 2, left: prefs[opt.key] ? 22 : 2,
+              width: 20, height: 20, borderRadius: '50%', background: 'white',
+              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
@@ -472,6 +526,11 @@ export default function SettingsPage(): React.ReactElement {
                 ))}
               </div>
             </div>
+          </Section>
+
+          {/* Notifications */}
+          <Section title={t('settings.notifications')} icon={Lock}>
+            <NotificationPreferences t={t} memoriesEnabled={memoriesEnabled} />
           </Section>
 
           {/* Immich — only when Memories addon is enabled */}

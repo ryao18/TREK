@@ -278,6 +278,18 @@ router.put('/category-assignees/:categoryName', authenticate, (req: Request, res
 
   res.json({ assignees: rows });
   broadcast(tripId, 'packing:assignees', { category: cat, assignees: rows }, req.headers['x-socket-id'] as string);
+
+  // Notify newly assigned users
+  if (Array.isArray(user_ids) && user_ids.length > 0) {
+    import('../services/notifications').then(({ notify }) => {
+      const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
+      for (const uid of user_ids) {
+        if (uid !== authReq.user.id) {
+          notify({ userId: uid, event: 'packing_tagged', params: { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, category: cat } }).catch(() => {});
+        }
+      }
+    });
+  }
 });
 
 router.put('/reorder', authenticate, (req: Request, res: Response) => {

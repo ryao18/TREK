@@ -333,6 +333,29 @@ function runMigrations(db: Database.Database): void {
       // Add target_date to bucket_list for optional visit planning
       try { db.exec('ALTER TABLE bucket_list ADD COLUMN target_date TEXT DEFAULT NULL'); } catch {}
     },
+    () => {
+      // Notification preferences per user
+      db.exec(`CREATE TABLE IF NOT EXISTS notification_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        notify_trip_invite INTEGER DEFAULT 1,
+        notify_booking_change INTEGER DEFAULT 1,
+        notify_trip_reminder INTEGER DEFAULT 1,
+        notify_vacay_invite INTEGER DEFAULT 1,
+        notify_photos_shared INTEGER DEFAULT 1,
+        notify_collab_message INTEGER DEFAULT 1,
+        notify_packing_tagged INTEGER DEFAULT 1,
+        notify_webhook INTEGER DEFAULT 0,
+        UNIQUE(user_id)
+      )`);
+    },
+    () => {
+      // Add missing notification preference columns for existing tables
+      try { db.exec('ALTER TABLE notification_preferences ADD COLUMN notify_vacay_invite INTEGER DEFAULT 1'); } catch {}
+      try { db.exec('ALTER TABLE notification_preferences ADD COLUMN notify_photos_shared INTEGER DEFAULT 1'); } catch {}
+      try { db.exec('ALTER TABLE notification_preferences ADD COLUMN notify_collab_message INTEGER DEFAULT 1'); } catch {}
+      try { db.exec('ALTER TABLE notification_preferences ADD COLUMN notify_packing_tagged INTEGER DEFAULT 1'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

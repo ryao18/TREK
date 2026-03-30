@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { adminApi, authApi } from '../api/client'
+import apiClient, { adminApi, authApi, notificationsApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../i18n'
@@ -92,6 +92,16 @@ export default function AdminPage(): React.ReactElement {
   // File types
   const [allowedFileTypes, setAllowedFileTypes] = useState<string>('jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv')
   const [savingFileTypes, setSavingFileTypes] = useState<boolean>(false)
+
+  // SMTP settings
+  const [smtpValues, setSmtpValues] = useState<Record<string, string>>({})
+  const [smtpLoaded, setSmtpLoaded] = useState(false)
+  useEffect(() => {
+    apiClient.get('/auth/app-settings').then(r => {
+      setSmtpValues(r.data || {})
+      setSmtpLoaded(true)
+    }).catch(() => setSmtpLoaded(true))
+  }, [])
 
   // API Keys
   const [mapsKey, setMapsKey] = useState<string>('')
@@ -915,6 +925,51 @@ export default function AdminPage(): React.ReactElement {
                   >
                     {savingOidc ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                     {t('common.save')}
+                  </button>
+                </div>
+              </div>
+              {/* SMTP / Notifications */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100">
+                  <h2 className="font-semibold text-slate-900">{t('admin.smtp.title')}</h2>
+                  <p className="text-xs text-slate-400 mt-1">{t('admin.smtp.hint')}</p>
+                </div>
+                <div className="p-6 space-y-3">
+                  {smtpLoaded && [
+                    { key: 'smtp_host', label: 'SMTP Host', placeholder: 'mail.example.com' },
+                    { key: 'smtp_port', label: 'SMTP Port', placeholder: '587' },
+                    { key: 'smtp_user', label: 'SMTP User', placeholder: 'trek@example.com' },
+                    { key: 'smtp_pass', label: 'SMTP Password', placeholder: '••••••••', type: 'password' },
+                    { key: 'smtp_from', label: 'From Address', placeholder: 'trek@example.com' },
+                    { key: 'notification_webhook_url', label: 'Webhook URL (optional)', placeholder: 'https://discord.com/api/webhooks/...' },
+                    { key: 'app_url', label: 'App URL (for email links)', placeholder: 'https://trek.example.com' },
+                  ].map(field => (
+                    <div key={field.key}>
+                      <label className="block text-xs font-medium text-slate-500 mb-1">{field.label}</label>
+                      <input
+                        type={field.type || 'text'}
+                        value={smtpValues[field.key] || ''}
+                        onChange={e => setSmtpValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder}
+                        onBlur={e => { if (e.target.value !== '') authApi.updateAppSettings({ [field.key]: e.target.value }).then(() => toast.success(t('common.saved'))).catch(() => {}) }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                      />
+                    </div>
+                  ))}
+                  <button
+                    onClick={async () => {
+                      for (const k of ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from']) {
+                        if (smtpValues[k]) await authApi.updateAppSettings({ [k]: smtpValues[k] }).catch(() => {})
+                      }
+                      try {
+                        const result = await notificationsApi.testSmtp()
+                        if (result.success) toast.success(t('admin.smtp.testSuccess'))
+                        else toast.error(result.error || t('admin.smtp.testFailed'))
+                      } catch { toast.error(t('admin.smtp.testFailed')) }
+                    }}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+                  >
+                    {t('admin.smtp.testButton')}
                   </button>
                 </div>
               </div>

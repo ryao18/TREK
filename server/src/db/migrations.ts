@@ -307,8 +307,22 @@ function runMigrations(db: Database.Database): void {
         db.prepare("INSERT INTO addons (id, name, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)").run('memories', 'Photos', 'trip', 'Image', 0, 7);
       } catch {}
     },
-    // Migration 44: MCP long-lived API tokens
-    () => db.exec(`
+    () => {
+      // Allow files to be linked to multiple reservations/assignments
+      db.exec(`CREATE TABLE IF NOT EXISTS file_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES trip_files(id) ON DELETE CASCADE,
+        reservation_id INTEGER REFERENCES reservations(id) ON DELETE CASCADE,
+        assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE CASCADE,
+        place_id INTEGER REFERENCES places(id) ON DELETE CASCADE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(file_id, reservation_id),
+        UNIQUE(file_id, assignment_id),
+        UNIQUE(file_id, place_id)
+      )`);
+    },
+      // Migration 44: MCP long-lived API tokens
+      () => db.exec(`
       CREATE TABLE IF NOT EXISTS mcp_tokens (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -319,23 +333,23 @@ function runMigrations(db: Database.Database): void {
         last_used_at DATETIME
       )
     `),
-    // Migration 45: MCP addon entry
-    () => {
-      try {
-        db.prepare("INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .run('mcp', 'MCP', 'Model Context Protocol for AI assistant integration', 'global', 'Terminal', 0, 12);
-      } catch {}
-    },
-    // Migration 46: Index on mcp_tokens.token_hash for fast lookup
-    () => db.exec(`
+      // Migration 45: MCP addon entry
+      () => {
+          try {
+              db.prepare("INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                  .run('mcp', 'MCP', 'Model Context Protocol for AI assistant integration', 'global', 'Terminal', 0, 12);
+          } catch {}
+      },
+      // Migration 46: Index on mcp_tokens.token_hash for fast lookup
+      () => db.exec(`
       CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash)
     `),
-    // Migration 47: Change MCP addon type from 'global' to 'integration'
-    () => {
-      try {
-        db.prepare("UPDATE addons SET type = 'integration' WHERE id = 'mcp'").run();
-      } catch {}
-    },
+      // Migration 47: Change MCP addon type from 'global' to 'integration'
+      () => {
+          try {
+              db.prepare("UPDATE addons SET type = 'integration' WHERE id = 'mcp'").run();
+          } catch {}
+      },
   ];
 
   if (currentVersion < migrations.length) {

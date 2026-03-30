@@ -749,6 +749,7 @@ const es: Record<string, string> = {
   'reservations.pendingSave': 'se guardará…',
   'reservations.uploading': 'Subiendo...',
   'reservations.attachFile': 'Adjuntar archivo',
+  'reservations.linkExisting': 'Vincular archivo existente',
   'reservations.toast.saveError': 'No se pudo guardar',
   'reservations.toast.updateError': 'No se pudo actualizar',
   'reservations.toast.deleteError': 'No se pudo eliminar',

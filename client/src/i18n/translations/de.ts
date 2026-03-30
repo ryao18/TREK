@@ -803,6 +803,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'reservations.pendingSave': 'wird gespeichert…',
   'reservations.uploading': 'Wird hochgeladen...',
   'reservations.attachFile': 'Datei anhängen',
+  'reservations.linkExisting': 'Vorhandene verknüpfen',
   'reservations.linkAssignment': 'Mit Tagesplanung verknüpfen',
   'reservations.pickAssignment': 'Zuordnung aus dem Plan wählen...',
   'reservations.noAssignment': 'Keine Verknüpfung',

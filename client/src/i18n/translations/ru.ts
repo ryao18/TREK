@@ -788,6 +788,7 @@ const ru: Record<string, string> = {
   'reservations.pendingSave': 'будет сохранено…',
   'reservations.uploading': 'Загрузка...',
   'reservations.attachFile': 'Прикрепить файл',
+  'reservations.linkExisting': 'Привязать существующий файл',
   'reservations.toast.saveError': 'Ошибка сохранения',
   'reservations.toast.updateError': 'Ошибка обновления',
   'reservations.toast.deleteError': 'Ошибка удаления',

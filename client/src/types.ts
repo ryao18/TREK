@@ -171,6 +171,7 @@ export interface Settings {
   time_format: string
   show_place_description: boolean
   route_calculation?: boolean
+  blur_booking_codes?: boolean
 }
 
 export interface AssignmentsMap {

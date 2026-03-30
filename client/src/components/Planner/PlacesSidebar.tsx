@@ -1,15 +1,19 @@
 import ReactDOM from 'react-dom'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import DOM from 'react-dom'
-import { Search, Plus, X, CalendarDays, Pencil, Trash2, ExternalLink, Navigation } from 'lucide-react'
+import { Search, Plus, X, CalendarDays, Pencil, Trash2, ExternalLink, Navigation, Upload } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTranslation } from '../../i18n'
+import { useToast } from '../shared/Toast'
 import CustomSelect from '../shared/CustomSelect'
 import { useContextMenu, ContextMenu } from '../shared/ContextMenu'
+import { placesApi } from '../../api/client'
+import { useTripStore } from '../../store/tripStore'
 import type { Place, Category, Day, AssignmentsMap } from '../../types'
 
 interface PlacesSidebarProps {
+  tripId: number
   places: Place[]
   categories: Category[]
   assignments: AssignmentsMap
@@ -26,11 +30,27 @@ interface PlacesSidebarProps {
 }
 
 export default function PlacesSidebar({
-  places, categories, assignments, selectedDayId, selectedPlaceId,
+  tripId, places, categories, assignments, selectedDayId, selectedPlaceId,
   onPlaceClick, onAddPlace, onAssignToDay, onEditPlace, onDeletePlace, days, isMobile, onCategoryFilterChange,
 }: PlacesSidebarProps) {
   const { t } = useTranslation()
+  const toast = useToast()
   const ctxMenu = useContextMenu()
+  const gpxInputRef = useRef<HTMLInputElement>(null)
+  const tripStore = useTripStore()
+
+  const handleGpxImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    try {
+      const result = await placesApi.importGpx(tripId, file)
+      await tripStore.loadTrip(tripId)
+      toast.success(t('places.gpxImported', { count: result.count }))
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || t('places.gpxError'))
+    }
+  }
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [categoryFilter, setCategoryFilterLocal] = useState('')
@@ -71,6 +91,19 @@ export default function PlacesSidebar({
           }}
         >
           <Plus size={14} strokeWidth={2} /> {t('places.addPlace')}
+        </button>
+        <input ref={gpxInputRef} type="file" accept=".gpx" style={{ display: 'none' }} onChange={handleGpxImport} />
+        <button
+          onClick={() => gpxInputRef.current?.click()}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            width: '100%', padding: '5px 12px', borderRadius: 8, marginBottom: 10,
+            border: '1px dashed var(--border-primary)', background: 'none',
+            color: 'var(--text-faint)', fontSize: 11, fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <Upload size={11} strokeWidth={2} /> {t('places.importGpx')}
         </button>
 
         {/* Filter-Tabs */}

@@ -139,6 +139,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'settings.temperature': 'Temperature Unit',
   'settings.timeFormat': 'Time Format',
   'settings.routeCalculation': 'Route Calculation',
+  'settings.blurBookingCodes': 'Blur Booking Codes',
   'settings.on': 'On',
   'settings.off': 'Off',
   'settings.account': 'Account',
@@ -638,6 +639,9 @@ const en: Record<string, string | { name: string; category: string }[]> = {
 
   // Places Sidebar
   'places.addPlace': 'Add Place/Activity',
+  'places.importGpx': 'Import GPX',
+  'places.gpxImported': '{count} places imported from GPX',
+  'places.gpxError': 'GPX import failed',
   'places.assignToDay': 'Add to which day?',
   'places.all': 'All',
   'places.unplanned': 'Unplanned',
@@ -856,6 +860,15 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   // Packing
   'packing.title': 'Packing List',
   'packing.empty': 'Packing list is empty',
+  'packing.import': 'Import',
+  'packing.importTitle': 'Import Packing List',
+  'packing.importHint': 'One item per line. Format: Category, Name, Weight in g (optional), Bag (optional), checked/unchecked (optional)',
+  'packing.importPlaceholder': 'Hygiene, Toothbrush\nClothing, T-Shirts, 200\nDocuments, Passport, , Carry-on\nElectronics, Charger, 50, Suitcase, checked',
+  'packing.importCsv': 'Load CSV/TXT',
+  'packing.importAction': 'Import {count}',
+  'packing.importSuccess': '{count} items imported',
+  'packing.importError': 'Import failed',
+  'packing.importEmpty': 'No items to import',
   'packing.progress': '{packed} of {total} packed ({percent}%)',
   'packing.clearChecked': 'Remove {count} checked',
   'packing.clearCheckedShort': 'Remove {count}',

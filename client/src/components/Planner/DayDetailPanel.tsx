@@ -56,6 +56,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
   const { t, language, locale } = useTranslation()
   const isFahrenheit = useSettingsStore(s => s.settings.temperature_unit) === 'fahrenheit'
   const is12h = useSettingsStore(s => s.settings.time_format) === '12h'
+  const blurCodes = useSettingsStore(s => s.settings.blur_booking_codes)
   const fmtTime = (v) => formatTime12(v, is12h)
   const unit = isFahrenheit ? '°F' : '°C'
   const [weather, setWeather] = useState(null)
@@ -368,7 +369,12 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linked.title}</div>
                             <div style={{ fontSize: 9, color: 'var(--text-faint)', display: 'flex', gap: 6, marginTop: 1 }}>
                               <span>{confirmed ? t('reservations.confirmed') : t('reservations.pending')}</span>
-                              {linked.confirmation_number && <span>#{linked.confirmation_number}</span>}
+                              {linked.confirmation_number && <span
+                                onMouseEnter={e => { if (blurCodes) e.currentTarget.style.filter = 'none' }}
+                                onMouseLeave={e => { if (blurCodes) e.currentTarget.style.filter = 'blur(4px)' }}
+                                onClick={e => { if (blurCodes) { const el = e.currentTarget; el.style.filter = el.style.filter === 'none' ? 'blur(4px)' : 'none' } }}
+                                style={{ filter: blurCodes ? 'blur(4px)' : 'none', transition: 'filter 0.2s', cursor: blurCodes ? 'pointer' : 'default' }}
+                              >#{linked.confirmation_number}</span>}
                             </div>
                           </div>
                         </div>

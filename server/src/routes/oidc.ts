@@ -24,6 +24,9 @@ interface OidcUserInfo {
   email?: string;
   name?: string;
   preferred_username?: string;
+  groups?: string[];
+  roles?: string[];
+  [key: string]: unknown;
 }
 
 const router = express.Router();
@@ -83,6 +86,23 @@ function generateToken(user: { id: number; username: string; email: string; role
     JWT_SECRET,
     { expiresIn: '24h' }
   );
+}
+
+// Check if user should be admin based on OIDC claims
+// Env: OIDC_ADMIN_CLAIM (default: "groups"), OIDC_ADMIN_VALUE (required, e.g. "app-trek-admins")
+function resolveOidcRole(userInfo: OidcUserInfo, isFirstUser: boolean): 'admin' | 'user' {
+  if (isFirstUser) return 'admin';
+  const adminValue = process.env.OIDC_ADMIN_VALUE;
+  if (!adminValue) return 'user'; // No claim mapping configured
+  const claimKey = process.env.OIDC_ADMIN_CLAIM || 'groups';
+  const claimData = userInfo[claimKey];
+  if (Array.isArray(claimData)) {
+    return claimData.some(v => String(v) === adminValue) ? 'admin' : 'user';
+  }
+  if (typeof claimData === 'string') {
+    return claimData === adminValue ? 'admin' : 'user';
+  }
+  return 'user';
 }
 
 function frontendUrl(path: string): string {
@@ -190,6 +210,14 @@ router.get('/callback', async (req: Request, res: Response) => {
       if (!user.oidc_sub) {
         db.prepare('UPDATE users SET oidc_sub = ?, oidc_issuer = ? WHERE id = ?').run(sub, config.issuer, user.id);
       }
+      // Update role based on OIDC claims on every login (if claim mapping is configured)
+      if (process.env.OIDC_ADMIN_VALUE) {
+        const newRole = resolveOidcRole(userInfo, false);
+        if (user.role !== newRole) {
+          db.prepare('UPDATE users SET role = ? WHERE id = ?').run(newRole, user.id);
+          user = { ...user, role: newRole } as User;
+        }
+      }
     } else {
       const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
       const isFirstUser = userCount === 0;
@@ -201,7 +229,7 @@ router.get('/callback', async (req: Request, res: Response) => {
         }
       }
 
-      const role = isFirstUser ? 'admin' : 'user';
+      const role = resolveOidcRole(userInfo, isFirstUser);
       const randomPass = crypto.randomBytes(32).toString('hex');
       const bcrypt = require('bcryptjs');
       const hash = bcrypt.hashSync(randomPass, 10);

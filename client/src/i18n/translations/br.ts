@@ -455,6 +455,20 @@ const br: Record<string, string | { name: string; category: string }[]> = {
   'admin.weather.requestsDesc': 'Grátis, sem chave de API',
   'admin.weather.locationHint': 'O clima usa o primeiro lugar com coordenadas de cada dia. Se nenhum lugar estiver atribuído ao dia, qualquer lugar da lista serve como referência.',
 
+  'admin.tabs.audit': 'Log de auditoria',
+
+  'admin.audit.subtitle': 'Eventos sensíveis de segurança e administração (backups, usuários, 2FA, configurações).',
+  'admin.audit.empty': 'Nenhum registro de auditoria.',
+  'admin.audit.refresh': 'Atualizar',
+  'admin.audit.loadMore': 'Carregar mais',
+  'admin.audit.showing': '{count} carregados · {total} no total',
+  'admin.audit.col.time': 'Hora',
+  'admin.audit.col.user': 'Usuário',
+  'admin.audit.col.action': 'Ação',
+  'admin.audit.col.resource': 'Recurso',
+  'admin.audit.col.ip': 'IP',
+  'admin.audit.col.details': 'Detalhes',
+
   // GitHub
   'admin.tabs.github': 'GitHub',
   'admin.github.title': 'Histórico de versões',

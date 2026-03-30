@@ -454,6 +454,20 @@ const fr: Record<string, string> = {
   'admin.weather.requestsDesc': 'Gratuit, aucune clé API requise',
   'admin.weather.locationHint': 'La météo est basée sur le premier lieu avec des coordonnées de chaque jour. Si aucun lieu n\'est attribué à un jour, un lieu de la liste est utilisé comme référence.',
 
+  'admin.tabs.audit': 'Journal d\'audit',
+
+  'admin.audit.subtitle': 'Événements sensibles de sécurité et d\'administration (sauvegardes, utilisateurs, 2FA, paramètres).',
+  'admin.audit.empty': 'Aucune entrée d\'audit.',
+  'admin.audit.refresh': 'Actualiser',
+  'admin.audit.loadMore': 'Charger plus',
+  'admin.audit.showing': '{count} chargées · {total} au total',
+  'admin.audit.col.time': 'Heure',
+  'admin.audit.col.user': 'Utilisateur',
+  'admin.audit.col.action': 'Action',
+  'admin.audit.col.resource': 'Ressource',
+  'admin.audit.col.ip': 'IP',
+  'admin.audit.col.details': 'Détails',
+
   // GitHub
   'admin.tabs.github': 'GitHub',
   'admin.github.title': 'Historique des versions',

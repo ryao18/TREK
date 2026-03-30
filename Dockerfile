@@ -30,6 +30,9 @@ COPY --from=client-builder /app/client/public/fonts ./public/fonts
 RUN mkdir -p /app/data /app/uploads/files /app/uploads/covers /app/uploads/avatars /app/uploads/photos && \
     mkdir -p /app/server && ln -s /app/uploads /app/server/uploads && ln -s /app/data /app/server/data
 
+RUN chown -R node:node /app
+USER node
+
 # Umgebung setzen
 ENV NODE_ENV=production
 ENV PORT=3000

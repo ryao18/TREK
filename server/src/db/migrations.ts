@@ -394,6 +394,10 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
       `);
     },
+    () => {
+      // MFA backup/recovery codes
+      try { db.exec('ALTER TABLE users ADD COLUMN mfa_backup_codes TEXT'); } catch {}
+    },
     // MCP long-lived API tokens
     () => db.exec(`
       CREATE TABLE IF NOT EXISTS mcp_tokens (

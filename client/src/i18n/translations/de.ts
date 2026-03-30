@@ -144,7 +144,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.title': 'MCP-Konfiguration',
   'settings.mcp.endpoint': 'MCP-Endpunkt',
   'settings.mcp.clientConfig': 'Client-Konfiguration',
-  'settings.mcp.clientConfigHint': 'Ersetze <your_token> durch ein API-Token aus der Liste unten.',
+  'settings.mcp.clientConfigHint': 'Ersetze <your_token> durch ein API-Token aus der Liste unten. Der Pfad zu npx muss ggf. für dein System angepasst werden (z. B. C:\\PROGRA~1\\nodejs\\npx.cmd unter Windows).',
   'settings.mcp.copy': 'Kopieren',
   'settings.mcp.copied': 'Kopiert!',
   'settings.mcp.apiTokens': 'API-Tokens',

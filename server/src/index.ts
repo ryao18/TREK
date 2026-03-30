@@ -162,7 +162,9 @@ app.use('/api/backup', backupRoutes);
 
 // MCP endpoint (Streamable HTTP transport, per-user auth)
 import { mcpHandler, closeMcpSessions } from './mcp';
-app.all('/mcp', mcpHandler);
+app.post('/mcp', mcpHandler);
+app.get('/mcp', mcpHandler);
+app.delete('/mcp', mcpHandler);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

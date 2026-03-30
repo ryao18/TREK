@@ -149,7 +149,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.title': 'إعداد MCP',
   'settings.mcp.endpoint': 'نقطة نهاية MCP',
   'settings.mcp.clientConfig': 'إعداد العميل',
-  'settings.mcp.clientConfigHint': 'استبدل <your_token> برمز API من القائمة أدناه.',
+  'settings.mcp.clientConfigHint': 'استبدل <your_token> برمز API من القائمة أدناه. قد يحتاج مسار npx إلى ضبط وفق نظامك (مثلاً C:\\PROGRA~1\\nodejs\\npx.cmd على Windows).',
   'settings.mcp.copy': 'نسخ',
   'settings.mcp.copied': 'تم النسخ!',
   'settings.mcp.apiTokens': 'رموز API',

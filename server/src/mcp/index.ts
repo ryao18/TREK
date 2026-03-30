@@ -10,6 +10,7 @@ import { registerResources } from './resources';
 import { registerTools } from './tools';
 
 interface McpSession {
+  server: McpServer;
   transport: StreamableHTTPServerTransport;
   userId: number;
   lastActivity: number;
@@ -18,14 +19,48 @@ interface McpSession {
 const sessions = new Map<string, McpSession>();
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+const MAX_SESSIONS_PER_USER = 5;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX = 60; // requests per minute per user
+
+interface RateLimitEntry {
+  count: number;
+  windowStart: number;
+}
+const rateLimitMap = new Map<number, RateLimitEntry>();
+
+function isRateLimited(userId: number): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(userId, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RATE_LIMIT_MAX;
+}
+
+function countSessionsForUser(userId: number): number {
+  const cutoff = Date.now() - SESSION_TTL_MS;
+  let count = 0;
+  for (const session of sessions.values()) {
+    if (session.userId === userId && session.lastActivity >= cutoff) count++;
+  }
+  return count;
+}
 
 const sessionSweepInterval = setInterval(() => {
   const cutoff = Date.now() - SESSION_TTL_MS;
   for (const [sid, session] of sessions) {
     if (session.lastActivity < cutoff) {
+      try { session.server.close(); } catch { /* ignore */ }
       try { session.transport.close(); } catch { /* ignore */ }
       sessions.delete(sid);
     }
+  }
+  const rateCutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
+  for (const [uid, entry] of rateLimitMap) {
+    if (entry.windowStart < rateCutoff) rateLimitMap.delete(uid);
   }
 }, 10 * 60 * 1000); // sweep every 10 minutes
 
@@ -78,6 +113,11 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  if (isRateLimited(user.id)) {
+    res.status(429).json({ error: 'Too many requests. Please slow down.' });
+    return;
+  }
+
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
   // Resume an existing session
@@ -102,6 +142,11 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  if (countSessionsForUser(user.id) >= MAX_SESSIONS_PER_USER) {
+    res.status(429).json({ error: 'Session limit reached. Close an existing session before opening a new one.' });
+    return;
+  }
+
   // Create a new per-user MCP server and session
   const server = new McpServer({ name: 'trek', version: '1.0.0' });
   registerResources(server, user.id);
@@ -110,7 +155,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (sid) => {
-      sessions.set(sid, { transport, userId: user.id, lastActivity: Date.now() });
+      sessions.set(sid, { server, transport, userId: user.id, lastActivity: Date.now() });
     },
     onsessionclosed: (sid) => {
       sessions.delete(sid);
@@ -121,11 +166,24 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   await transport.handleRequest(req, res, req.body);
 }
 
+/** Terminate all active MCP sessions for a specific user (e.g. on token revocation). */
+export function revokeUserSessions(userId: number): void {
+  for (const [sid, session] of sessions) {
+    if (session.userId === userId) {
+      try { session.server.close(); } catch { /* ignore */ }
+      try { session.transport.close(); } catch { /* ignore */ }
+      sessions.delete(sid);
+    }
+  }
+}
+
 /** Close all active MCP sessions (call during graceful shutdown). */
 export function closeMcpSessions(): void {
   clearInterval(sessionSweepInterval);
   for (const [, session] of sessions) {
+    try { session.server.close(); } catch { /* ignore */ }
     try { session.transport.close(); } catch { /* ignore */ }
   }
   sessions.clear();
+  rateLimitMap.clear();
 }

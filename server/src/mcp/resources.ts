@@ -12,6 +12,11 @@ const TRIP_SELECT = `
   JOIN users u ON u.id = t.user_id
 `;
 
+function parseId(value: string | string[]): number | null {
+  const n = Number(Array.isArray(value) ? value[0] : value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 function accessDenied(uri: string) {
   return {
     contents: [{
@@ -55,8 +60,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}', { list: undefined }),
     { description: 'A single trip with metadata and member count' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const trip = db.prepare(`
         ${TRIP_SELECT}
         LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
@@ -72,8 +77,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/days', { list: undefined }),
     { description: 'Days of a trip with their assigned places' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
 
       const days = db.prepare(
         'SELECT * FROM days WHERE trip_id = ? ORDER BY day_number ASC'
@@ -113,8 +118,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/places', { list: undefined }),
     { description: 'All places/POIs saved in a trip' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const places = db.prepare(`
         SELECT p.*, c.name as category_name, c.color as category_color, c.icon as category_icon
         FROM places p
@@ -132,8 +137,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/budget', { list: undefined }),
     { description: 'Budget and expense items for a trip' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const items = db.prepare(
         'SELECT * FROM budget_items WHERE trip_id = ? ORDER BY category ASC, created_at ASC'
       ).all(id);
@@ -147,8 +152,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/packing', { list: undefined }),
     { description: 'Packing checklist for a trip' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const items = db.prepare(
         'SELECT * FROM packing_items WHERE trip_id = ? ORDER BY sort_order ASC, created_at ASC'
       ).all(id);
@@ -162,8 +167,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/reservations', { list: undefined }),
     { description: 'Reservations (flights, hotels, restaurants) for a trip' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const reservations = db.prepare(`
         SELECT r.*, d.day_number, p.name as place_name
         FROM reservations r
@@ -182,9 +187,9 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/days/{dayId}/notes', { list: undefined }),
     { description: 'Notes for a specific day in a trip' },
     async (uri, { tripId, dayId }) => {
-      const tId = Number(tripId);
-      const dId = Number(dayId);
-      if (!canAccessTrip(tId, userId)) return accessDenied(uri.href);
+      const tId = parseId(tripId);
+      const dId = parseId(dayId);
+      if (tId === null || dId === null || !canAccessTrip(tId, userId)) return accessDenied(uri.href);
       const notes = db.prepare(
         'SELECT * FROM day_notes WHERE day_id = ? AND trip_id = ? ORDER BY sort_order ASC, created_at ASC'
       ).all(dId, tId);
@@ -198,8 +203,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/accommodations', { list: undefined }),
     { description: 'Accommodations (hotels, rentals) for a trip with check-in/out details' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const accommodations = db.prepare(`
         SELECT da.*, p.name as place_name, p.address as place_address, p.lat, p.lng,
           ds.day_number as start_day_number, de.day_number as end_day_number
@@ -220,8 +225,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/members', { list: undefined }),
     { description: 'Owner and collaborators of a trip' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const trip = db.prepare('SELECT user_id FROM trips WHERE id = ?').get(id) as { user_id: number } | undefined;
       if (!trip) return accessDenied(uri.href);
       const owner = db.prepare('SELECT id, username, avatar FROM users WHERE id = ?').get(trip.user_id) as Record<string, unknown> | undefined;
@@ -245,8 +250,8 @@ export function registerResources(server: McpServer, userId: number): void {
     new ResourceTemplate('trek://trips/{tripId}/collab-notes', { list: undefined }),
     { description: 'Shared collaborative notes for a trip' },
     async (uri, { tripId }) => {
-      const id = Number(tripId);
-      if (!canAccessTrip(id, userId)) return accessDenied(uri.href);
+      const id = parseId(tripId);
+      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
       const notes = db.prepare(`
         SELECT cn.*, u.username
         FROM collab_notes cn

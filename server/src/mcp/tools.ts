@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { z } from 'zod';
+import path from 'path';
+import fs from 'fs';
 import { db, canAccessTrip, isOwner } from '../db/database';
 import { broadcast } from '../websocket';
 
@@ -60,14 +62,27 @@ export function registerTools(server: McpServer, userId: number): void {
     },
     async ({ title, description, start_date, end_date, currency }) => {
       if (isDemoUser(userId)) return demoDenied();
+      if (start_date) {
+        const d = new Date(start_date + 'T00:00:00Z');
+        if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== start_date)
+          return { content: [{ type: 'text' as const, text: 'start_date is not a valid calendar date.' }], isError: true };
+      }
+      if (end_date) {
+        const d = new Date(end_date + 'T00:00:00Z');
+        if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== end_date)
+          return { content: [{ type: 'text' as const, text: 'end_date is not a valid calendar date.' }], isError: true };
+      }
       if (start_date && end_date && new Date(end_date) < new Date(start_date)) {
         return { content: [{ type: 'text' as const, text: 'End date must be after start date.' }], isError: true };
       }
-      const result = db.prepare(
-        'INSERT INTO trips (user_id, title, description, start_date, end_date, currency) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(userId, title, description || null, start_date || null, end_date || null, currency || 'EUR');
-      createDaysForNewTrip(result.lastInsertRowid as number, start_date || null, end_date || null);
-      const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(result.lastInsertRowid);
+      const trip = db.transaction(() => {
+        const result = db.prepare(
+          'INSERT INTO trips (user_id, title, description, start_date, end_date, currency) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(userId, title, description || null, start_date || null, end_date || null, currency || 'EUR');
+        const tripId = result.lastInsertRowid as number;
+        createDaysForNewTrip(tripId, start_date || null, end_date || null);
+        return db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId);
+      })();
       return ok({ trip });
     }
   );
@@ -88,6 +103,16 @@ export function registerTools(server: McpServer, userId: number): void {
     async ({ tripId, title, description, start_date, end_date, currency }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
+      if (start_date) {
+        const d = new Date(start_date + 'T00:00:00Z');
+        if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== start_date)
+          return { content: [{ type: 'text' as const, text: 'start_date is not a valid calendar date.' }], isError: true };
+      }
+      if (end_date) {
+        const d = new Date(end_date + 'T00:00:00Z');
+        if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== end_date)
+          return { content: [{ type: 'text' as const, text: 'end_date is not a valid calendar date.' }], isError: true };
+      }
       const existing = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as Record<string, unknown> & { title: string; description: string; start_date: string; end_date: string; currency: string } | undefined;
       if (!existing) return noAccess();
       db.prepare(
@@ -119,6 +144,31 @@ export function registerTools(server: McpServer, userId: number): void {
       if (!isOwner(tripId, userId)) return noAccess();
       db.prepare('DELETE FROM trips WHERE id = ?').run(tripId);
       return ok({ success: true, tripId });
+    }
+  );
+
+  server.registerTool(
+    'list_trips',
+    {
+      description: 'List all trips the current user owns or is a member of. Use this for trip discovery before calling get_trip_summary.',
+      inputSchema: {
+        include_archived: z.boolean().optional().describe('Include archived trips (default false)'),
+      },
+    },
+    async ({ include_archived }) => {
+      const trips = db.prepare(`
+        SELECT t.*, u.username as owner_username,
+          (SELECT COUNT(*) FROM days d WHERE d.trip_id = t.id) as day_count,
+          (SELECT COUNT(*) FROM places p WHERE p.trip_id = t.id) as place_count,
+          CASE WHEN t.user_id = ? THEN 1 ELSE 0 END as is_owner
+        FROM trips t
+        JOIN users u ON u.id = t.user_id
+        LEFT JOIN trip_members tm ON tm.trip_id = t.id AND tm.user_id = ?
+        WHERE (t.user_id = ? OR tm.user_id IS NOT NULL)
+          AND (? = 1 OR t.is_archived = 0)
+        ORDER BY t.updated_at DESC
+      `).all(userId, userId, userId, include_archived ? 1 : 0);
+      return ok({ trips });
     }
   );
 
@@ -397,27 +447,66 @@ export function registerTools(server: McpServer, userId: number): void {
   server.registerTool(
     'create_reservation',
     {
-      description: 'Add a reservation (flight, hotel, restaurant, etc.) to a trip.',
+      description: 'Recommend a reservation for a trip. Created as pending — the user must confirm it. Linking: hotel → use place_id + start_day_id + end_day_id (all three required to create the accommodation link); restaurant/train/car/cruise/event/tour/activity/other → use assignment_id; flight → no linking.',
       inputSchema: {
         tripId: z.number().int().positive(),
         title: z.string().min(1).max(200),
-        type: z.enum(['flight', 'hotel', 'restaurant', 'activity', 'other']),
+        type: z.enum(['flight', 'hotel', 'restaurant', 'train', 'car', 'cruise', 'event', 'tour', 'activity', 'other']),
         reservation_time: z.string().optional().describe('ISO 8601 datetime or time string'),
         location: z.string().max(500).optional(),
         confirmation_number: z.string().max(100).optional(),
         notes: z.string().max(1000).optional(),
         day_id: z.number().int().positive().optional(),
-        place_id: z.number().int().positive().optional(),
+        place_id: z.number().int().positive().optional().describe('Hotel place to link (hotel type only)'),
+        start_day_id: z.number().int().positive().optional().describe('Check-in day (hotel type only; requires place_id and end_day_id)'),
+        end_day_id: z.number().int().positive().optional().describe('Check-out day (hotel type only; requires place_id and start_day_id)'),
+        assignment_id: z.number().int().positive().optional().describe('Link to a day assignment (restaurant, train, car, cruise, event, tour, activity, other)'),
       },
     },
-    async ({ tripId, title, type, reservation_time, location, confirmation_number, notes, day_id, place_id }) => {
+    async ({ tripId, title, type, reservation_time, location, confirmation_number, notes, day_id, place_id, start_day_id, end_day_id, assignment_id }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
-      const result = db.prepare(`
-        INSERT INTO reservations (trip_id, title, type, reservation_time, location, confirmation_number, notes, day_id, place_id, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(tripId, title, type, reservation_time || null, location || null, confirmation_number || null, notes || null, day_id || null, place_id || null, 'confirmed');
-      const reservation = db.prepare('SELECT * FROM reservations WHERE id = ?').get(result.lastInsertRowid);
+
+      // Validate that all referenced IDs belong to this trip
+      if (day_id) {
+        if (!db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(day_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'day_id does not belong to this trip.' }], isError: true };
+      }
+      if (place_id) {
+        if (!db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(place_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'place_id does not belong to this trip.' }], isError: true };
+      }
+      if (start_day_id) {
+        if (!db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(start_day_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'start_day_id does not belong to this trip.' }], isError: true };
+      }
+      if (end_day_id) {
+        if (!db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(end_day_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'end_day_id does not belong to this trip.' }], isError: true };
+      }
+      if (assignment_id) {
+        if (!db.prepare('SELECT da.id FROM day_assignments da JOIN days d ON da.day_id = d.id WHERE da.id = ? AND d.trip_id = ?').get(assignment_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'assignment_id does not belong to this trip.' }], isError: true };
+      }
+
+      const reservation = db.transaction(() => {
+        let accommodationId: number | null = null;
+        if (type === 'hotel' && place_id && start_day_id && end_day_id) {
+          const accResult = db.prepare(
+            'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, confirmation) VALUES (?, ?, ?, ?, ?)'
+          ).run(tripId, place_id, start_day_id, end_day_id, confirmation_number || null);
+          accommodationId = accResult.lastInsertRowid as number;
+        }
+        const result = db.prepare(`
+          INSERT INTO reservations (trip_id, title, type, reservation_time, location, confirmation_number, notes, day_id, place_id, assignment_id, accommodation_id, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(tripId, title, type, reservation_time || null, location || null, confirmation_number || null, notes || null, day_id || null, place_id || null, assignment_id || null, accommodationId, 'pending');
+        return db.prepare('SELECT * FROM reservations WHERE id = ?').get(result.lastInsertRowid);
+      })();
+
+      if (type === 'hotel' && place_id && start_day_id && end_day_id) {
+        broadcast(tripId, 'accommodation:created', {});
+      }
       broadcast(tripId, 'reservation:created', { reservation });
       return ok({ reservation });
     }
@@ -435,15 +524,110 @@ export function registerTools(server: McpServer, userId: number): void {
     async ({ tripId, reservationId }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
-      const res = db.prepare('SELECT id FROM reservations WHERE id = ? AND trip_id = ?').get(reservationId, tripId);
-      if (!res) return { content: [{ type: 'text' as const, text: 'Reservation not found.' }], isError: true };
-      db.prepare('DELETE FROM reservations WHERE id = ?').run(reservationId);
+      const reservation = db.prepare('SELECT id, accommodation_id FROM reservations WHERE id = ? AND trip_id = ?').get(reservationId, tripId) as { id: number; accommodation_id: number | null } | undefined;
+      if (!reservation) return { content: [{ type: 'text' as const, text: 'Reservation not found.' }], isError: true };
+      db.transaction(() => {
+        if (reservation.accommodation_id) {
+          db.prepare('DELETE FROM day_accommodations WHERE id = ?').run(reservation.accommodation_id);
+        }
+        db.prepare('DELETE FROM reservations WHERE id = ?').run(reservationId);
+      })();
+      if (reservation.accommodation_id) {
+        broadcast(tripId, 'accommodation:deleted', { accommodationId: reservation.accommodation_id });
+      }
       broadcast(tripId, 'reservation:deleted', { reservationId });
       return ok({ success: true });
     }
   );
 
+  server.registerTool(
+    'link_hotel_accommodation',
+    {
+      description: 'Set or update the check-in/check-out day links for a hotel reservation. Creates or updates the accommodation record that ties the reservation to a place and a date range. Use the day IDs from get_trip_summary.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        reservationId: z.number().int().positive(),
+        place_id: z.number().int().positive().describe('The hotel place to link'),
+        start_day_id: z.number().int().positive().describe('Check-in day ID'),
+        end_day_id: z.number().int().positive().describe('Check-out day ID'),
+      },
+    },
+    async ({ tripId, reservationId, place_id, start_day_id, end_day_id }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND trip_id = ?').get(reservationId, tripId) as Record<string, unknown> | undefined;
+      if (!reservation) return { content: [{ type: 'text' as const, text: 'Reservation not found.' }], isError: true };
+      if (reservation.type !== 'hotel') return { content: [{ type: 'text' as const, text: 'Reservation is not of type hotel.' }], isError: true };
+
+      if (!db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(place_id, tripId))
+        return { content: [{ type: 'text' as const, text: 'place_id does not belong to this trip.' }], isError: true };
+      if (!db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(start_day_id, tripId))
+        return { content: [{ type: 'text' as const, text: 'start_day_id does not belong to this trip.' }], isError: true };
+      if (!db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(end_day_id, tripId))
+        return { content: [{ type: 'text' as const, text: 'end_day_id does not belong to this trip.' }], isError: true };
+
+      let accommodationId = reservation.accommodation_id as number | null;
+      const isNewAccommodation = !accommodationId;
+      db.transaction(() => {
+        if (accommodationId) {
+          db.prepare('UPDATE day_accommodations SET place_id = ?, start_day_id = ?, end_day_id = ? WHERE id = ?')
+            .run(place_id, start_day_id, end_day_id, accommodationId);
+        } else {
+          const accResult = db.prepare(
+            'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, confirmation) VALUES (?, ?, ?, ?, ?)'
+          ).run(tripId, place_id, start_day_id, end_day_id, reservation.confirmation_number || null);
+          accommodationId = accResult.lastInsertRowid as number;
+        }
+        db.prepare('UPDATE reservations SET place_id = ?, accommodation_id = ? WHERE id = ?')
+          .run(place_id, accommodationId, reservationId);
+      })();
+      broadcast(tripId, isNewAccommodation ? 'accommodation:created' : 'accommodation:updated', {});
+      const updated = db.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId);
+      broadcast(tripId, 'reservation:updated', { reservation: updated });
+      return ok({ reservation: updated, accommodation_id: accommodationId });
+    }
+  );
+
   // --- DAYS ---
+
+  server.registerTool(
+    'update_assignment_time',
+    {
+      description: 'Set the start and/or end time for a place assignment on a day (e.g. "09:00", "11:30"). Pass null to clear a time.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        assignmentId: z.number().int().positive(),
+        place_time: z.string().max(50).nullable().optional().describe('Start time (e.g. "09:00"), or null to clear'),
+        end_time: z.string().max(50).nullable().optional().describe('End time (e.g. "11:00"), or null to clear'),
+      },
+    },
+    async ({ tripId, assignmentId, place_time, end_time }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      const assignment = db.prepare(`
+        SELECT da.* FROM day_assignments da
+        JOIN days d ON da.day_id = d.id
+        WHERE da.id = ? AND d.trip_id = ?
+      `).get(assignmentId, tripId) as Record<string, unknown> | undefined;
+      if (!assignment) return { content: [{ type: 'text' as const, text: 'Assignment not found.' }], isError: true };
+      db.prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?')
+        .run(
+          place_time !== undefined ? place_time : assignment.assignment_time,
+          end_time !== undefined ? end_time : assignment.assignment_end_time,
+          assignmentId
+        );
+      const updated = db.prepare(`
+        SELECT da.id, da.day_id, da.order_index, da.notes as assignment_notes,
+          da.assignment_time, da.assignment_end_time,
+          p.id as place_id, p.name, p.address
+        FROM day_assignments da
+        JOIN places p ON da.place_id = p.id
+        WHERE da.id = ?
+      `).get(assignmentId);
+      broadcast(tripId, 'assignment:updated', { assignment: updated });
+      return ok({ assignment: updated });
+    }
+  );
 
   server.registerTool(
     'update_day',
@@ -472,28 +656,41 @@ export function registerTools(server: McpServer, userId: number): void {
   server.registerTool(
     'update_reservation',
     {
-      description: 'Update an existing reservation in a trip.',
+      description: 'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. Linking: hotel → use place_id to link to an accommodation place; restaurant/train/car/cruise/event/tour/activity/other → use assignment_id to link to a day assignment; flight → no linking.',
       inputSchema: {
         tripId: z.number().int().positive(),
         reservationId: z.number().int().positive(),
         title: z.string().min(1).max(200).optional(),
-        type: z.enum(['flight', 'hotel', 'restaurant', 'activity', 'other']).optional(),
+        type: z.enum(['flight', 'hotel', 'restaurant', 'train', 'car', 'cruise', 'event', 'tour', 'activity', 'other']).optional(),
         reservation_time: z.string().optional().describe('ISO 8601 datetime or time string'),
         location: z.string().max(500).optional(),
         confirmation_number: z.string().max(100).optional(),
         notes: z.string().max(1000).optional(),
         status: z.enum(['pending', 'confirmed', 'cancelled']).optional(),
+        place_id: z.number().int().positive().nullable().optional().describe('Link to a place (use for hotel type), or null to unlink'),
+        assignment_id: z.number().int().positive().nullable().optional().describe('Link to a day assignment (use for restaurant, train, car, cruise, event, tour, activity, other), or null to unlink'),
       },
     },
-    async ({ tripId, reservationId, title, type, reservation_time, location, confirmation_number, notes, status }) => {
+    async ({ tripId, reservationId, title, type, reservation_time, location, confirmation_number, notes, status, place_id, assignment_id }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
       const existing = db.prepare('SELECT * FROM reservations WHERE id = ? AND trip_id = ?').get(reservationId, tripId) as Record<string, unknown> | undefined;
       if (!existing) return { content: [{ type: 'text' as const, text: 'Reservation not found.' }], isError: true };
+
+      if (place_id != null) {
+        if (!db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(place_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'place_id does not belong to this trip.' }], isError: true };
+      }
+      if (assignment_id != null) {
+        if (!db.prepare('SELECT da.id FROM day_assignments da JOIN days d ON da.day_id = d.id WHERE da.id = ? AND d.trip_id = ?').get(assignment_id, tripId))
+          return { content: [{ type: 'text' as const, text: 'assignment_id does not belong to this trip.' }], isError: true };
+      }
+
       db.prepare(`
         UPDATE reservations SET
           title = ?, type = ?, reservation_time = ?, location = ?,
-          confirmation_number = ?, notes = ?, status = ?
+          confirmation_number = ?, notes = ?, status = ?,
+          place_id = ?, assignment_id = ?
         WHERE id = ?
       `).run(
         title ?? existing.title,
@@ -503,6 +700,8 @@ export function registerTools(server: McpServer, userId: number): void {
         confirmation_number !== undefined ? confirmation_number : existing.confirmation_number,
         notes !== undefined ? notes : existing.notes,
         status ?? existing.status,
+        place_id !== undefined ? place_id : existing.place_id,
+        assignment_id !== undefined ? assignment_id : existing.assignment_id,
         reservationId
       );
       const updated = db.prepare('SELECT * FROM reservations WHERE id = ?').get(reservationId);
@@ -590,7 +789,7 @@ export function registerTools(server: McpServer, userId: number): void {
       inputSchema: {
         tripId: z.number().int().positive(),
         dayId: z.number().int().positive(),
-        assignmentIds: z.array(z.number().int().positive()).min(1).describe('Assignment IDs in desired display order'),
+        assignmentIds: z.array(z.number().int().positive()).min(1).max(200).describe('Assignment IDs in desired display order'),
       },
     },
     async ({ tripId, dayId, assignmentIds }) => {
@@ -613,7 +812,7 @@ export function registerTools(server: McpServer, userId: number): void {
   server.registerTool(
     'get_trip_summary',
     {
-      description: 'Get a full denormalized summary of a trip in a single call: metadata, members, days with assignments, accommodations, budget totals, packing stats, and upcoming reservations. Use this as a context loader before planning or modifying a trip.',
+      description: 'Get a full denormalized summary of a trip in a single call: metadata, members, days with assignments and notes, accommodations, budget totals, packing stats, reservations, and collab notes. Use this as a context loader before planning or modifying a trip.',
       inputSchema: {
         tripId: z.number().int().positive(),
       },
@@ -654,7 +853,24 @@ export function registerTools(server: McpServer, userId: number): void {
           assignmentsByDay[a.day_id].push(a);
         }
       }
-      const daysWithAssignments = days.map(d => ({ ...d, assignments: assignmentsByDay[d.id] || [] }));
+      // Day notes
+      const dayNotesByDay: Record<number, unknown[]> = {};
+      if (dayIds.length > 0) {
+        const placeholders = dayIds.map(() => '?').join(',');
+        const dayNotes = db.prepare(`
+          SELECT * FROM day_notes WHERE day_id IN (${placeholders}) ORDER BY sort_order ASC
+        `).all(...dayIds) as (Record<string, unknown> & { day_id: number })[];
+        for (const n of dayNotes) {
+          if (!dayNotesByDay[n.day_id]) dayNotesByDay[n.day_id] = [];
+          dayNotesByDay[n.day_id].push(n);
+        }
+      }
+
+      const daysWithAssignments = days.map(d => ({
+        ...d,
+        assignments: assignmentsByDay[d.id] || [],
+        notes: dayNotesByDay[d.id] || [],
+      }));
 
       // Accommodations
       const accommodations = db.prepare(`
@@ -688,6 +904,11 @@ export function registerTools(server: McpServer, userId: number): void {
         ORDER BY r.reservation_time ASC, r.created_at ASC
       `).all(tripId);
 
+      // Collab notes
+      const collabNotes = db.prepare(
+        'SELECT * FROM collab_notes WHERE trip_id = ? ORDER BY pinned DESC, updated_at DESC'
+      ).all(tripId);
+
       return ok({
         trip,
         members: { owner, collaborators: members },
@@ -696,6 +917,7 @@ export function registerTools(server: McpServer, userId: number): void {
         budget: { ...budgetStats, currency: trip.currency },
         packing: packingStats,
         reservations,
+        collab_notes: collabNotes,
       });
     }
   );
@@ -797,6 +1019,78 @@ export function registerTools(server: McpServer, userId: number): void {
       const note = db.prepare('SELECT * FROM collab_notes WHERE id = ?').get(result.lastInsertRowid);
       broadcast(tripId, 'collab:note:created', { note });
       return ok({ note });
+    }
+  );
+
+  server.registerTool(
+    'update_collab_note',
+    {
+      description: 'Edit an existing collaborative note on a trip.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        noteId: z.number().int().positive(),
+        title: z.string().min(1).max(200).optional(),
+        content: z.string().max(10000).optional(),
+        category: z.string().max(100).optional(),
+        color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().describe('Hex color for the note card'),
+        pinned: z.boolean().optional().describe('Pin the note to the top'),
+      },
+    },
+    async ({ tripId, noteId, title, content, category, color, pinned }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      const existing = db.prepare('SELECT * FROM collab_notes WHERE id = ? AND trip_id = ?').get(noteId, tripId);
+      if (!existing) return { content: [{ type: 'text' as const, text: 'Note not found.' }], isError: true };
+      db.prepare(`
+        UPDATE collab_notes SET
+          title = CASE WHEN ? THEN ? ELSE title END,
+          content = CASE WHEN ? THEN ? ELSE content END,
+          category = CASE WHEN ? THEN ? ELSE category END,
+          color = CASE WHEN ? THEN ? ELSE color END,
+          pinned = CASE WHEN ? THEN ? ELSE pinned END,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        title !== undefined ? 1 : 0, title !== undefined ? title : null,
+        content !== undefined ? 1 : 0, content !== undefined ? content : null,
+        category !== undefined ? 1 : 0, category !== undefined ? category : null,
+        color !== undefined ? 1 : 0, color !== undefined ? color : null,
+        pinned !== undefined ? 1 : 0, pinned !== undefined ? (pinned ? 1 : 0) : null,
+        noteId
+      );
+      const note = db.prepare('SELECT * FROM collab_notes WHERE id = ?').get(noteId);
+      broadcast(tripId, 'collab:note:updated', { note });
+      return ok({ note });
+    }
+  );
+
+  server.registerTool(
+    'delete_collab_note',
+    {
+      description: 'Delete a collaborative note from a trip.',
+      inputSchema: {
+        tripId: z.number().int().positive(),
+        noteId: z.number().int().positive(),
+      },
+    },
+    async ({ tripId, noteId }) => {
+      if (isDemoUser(userId)) return demoDenied();
+      if (!canAccessTrip(tripId, userId)) return noAccess();
+      const existing = db.prepare('SELECT id FROM collab_notes WHERE id = ? AND trip_id = ?').get(noteId, tripId);
+      if (!existing) return { content: [{ type: 'text' as const, text: 'Note not found.' }], isError: true };
+      const noteFiles = db.prepare('SELECT filename FROM trip_files WHERE note_id = ?').all(noteId) as { filename: string }[];
+      const uploadsDir = path.resolve(__dirname, '../../uploads');
+      for (const f of noteFiles) {
+        const resolved = path.resolve(path.join(uploadsDir, 'files', f.filename));
+        if (!resolved.startsWith(uploadsDir)) continue;
+        try { fs.unlinkSync(resolved); } catch {}
+      }
+      db.transaction(() => {
+        db.prepare('DELETE FROM trip_files WHERE note_id = ?').run(noteId);
+        db.prepare('DELETE FROM collab_notes WHERE id = ?').run(noteId);
+      })();
+      broadcast(tripId, 'collab:note:deleted', { noteId });
+      return ok({ success: true });
     }
   );
 

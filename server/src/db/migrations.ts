@@ -350,6 +350,11 @@ function runMigrations(db: Database.Database): void {
               db.prepare("UPDATE addons SET type = 'integration' WHERE id = 'mcp'").run();
           } catch {}
       },
+      // Migration 48: Make mcp_tokens.token_hash unique
+      () => db.exec(`
+      DROP INDEX IF EXISTS idx_mcp_tokens_hash;
+      CREATE UNIQUE INDEX idx_mcp_tokens_hash ON mcp_tokens(token_hash)
+    `),
   ];
 
   if (currentVersion < migrations.length) {

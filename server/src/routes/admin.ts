@@ -7,6 +7,7 @@ import fs from 'fs';
 import { db } from '../db/database';
 import { authenticate, adminOnly } from '../middleware/auth';
 import { AuthRequest, User, Addon } from '../types';
+import { revokeUserSessions } from '../mcp';
 
 const router = express.Router();
 
@@ -422,9 +423,10 @@ router.get('/mcp-tokens', (req: Request, res: Response) => {
 });
 
 router.delete('/mcp-tokens/:id', (req: Request, res: Response) => {
-  const token = db.prepare('SELECT id FROM mcp_tokens WHERE id = ?').get(req.params.id);
+  const token = db.prepare('SELECT id, user_id FROM mcp_tokens WHERE id = ?').get(req.params.id) as { id: number; user_id: number } | undefined;
   if (!token) return res.status(404).json({ error: 'Token not found' });
   db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(req.params.id);
+  revokeUserSessions(token.user_id);
   res.json({ success: true });
 });
 

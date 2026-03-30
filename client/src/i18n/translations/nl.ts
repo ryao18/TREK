@@ -144,7 +144,7 @@ const nl: Record<string, string> = {
   'settings.mcp.title': 'MCP-configuratie',
   'settings.mcp.endpoint': 'MCP-eindpunt',
   'settings.mcp.clientConfig': 'Clientconfiguratie',
-  'settings.mcp.clientConfigHint': 'Vervang <your_token> door een API-token uit de onderstaande lijst.',
+  'settings.mcp.clientConfigHint': 'Vervang <your_token> door een API-token uit de onderstaande lijst. Het pad naar npx moet mogelijk worden aangepast voor jouw systeem (bijv. C:\\PROGRA~1\\nodejs\\npx.cmd op Windows).',
   'settings.mcp.copy': 'Kopiëren',
   'settings.mcp.copied': 'Gekopieerd!',
   'settings.mcp.apiTokens': 'API-tokens',

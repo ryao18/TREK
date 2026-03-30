@@ -168,14 +168,19 @@ export default function SettingsPage(): React.ReactElement {
   }
 
   const mcpEndpoint = `${window.location.origin}/mcp`
-  const mcpJsonConfig = JSON.stringify({
-    mcpServers: {
-      trek: {
-        url: mcpEndpoint,
-        headers: { Authorization: 'Bearer <your_token>' }
-      }
+  const mcpJsonConfig = `{
+  "mcpServers": {
+    "trek": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "${mcpEndpoint}",
+        "--header",
+        "Authorization: Bearer <your_token>"
+      ]
     }
-  }, null, 2)
+  }
+}`
 
   // Map settings
   const [mapTileUrl, setMapTileUrl] = useState<string>(settings.map_tile_url || '')

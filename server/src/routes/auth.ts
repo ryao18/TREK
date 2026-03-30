@@ -13,6 +13,7 @@ import { authenticate, demoUploadBlock } from '../middleware/auth';
 import { JWT_SECRET } from '../config';
 import { encryptMfaSecret, decryptMfaSecret } from '../services/mfaCrypto';
 import { randomBytes, createHash } from 'crypto';
+import { revokeUserSessions } from '../mcp';
 import { AuthRequest, User } from '../types';
 
 authenticator.options = { window: 1 };
@@ -720,6 +721,7 @@ router.post('/mcp-tokens', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req
   const authReq = req as AuthRequest;
   const { name } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Token name is required' });
+  if (name.trim().length > 100) return res.status(400).json({ error: 'Token name must be 100 characters or less' });
 
   const tokenCount = (db.prepare('SELECT COUNT(*) as count FROM mcp_tokens WHERE user_id = ?').get(authReq.user.id) as { count: number }).count;
   if (tokenCount >= 10) return res.status(400).json({ error: 'Maximum of 10 tokens per user reached' });
@@ -745,6 +747,7 @@ router.delete('/mcp-tokens/:id', authenticate, (req: Request, res: Response) => 
   const token = db.prepare('SELECT id FROM mcp_tokens WHERE id = ? AND user_id = ?').get(id, authReq.user.id);
   if (!token) return res.status(404).json({ error: 'Token not found' });
   db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(id);
+  revokeUserSessions(authReq.user.id);
   res.json({ success: true });
 });
 

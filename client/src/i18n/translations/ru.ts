@@ -144,7 +144,7 @@ const ru: Record<string, string> = {
   'settings.mcp.title': 'Настройка MCP',
   'settings.mcp.endpoint': 'MCP-эндпоинт',
   'settings.mcp.clientConfig': 'Конфигурация клиента',
-  'settings.mcp.clientConfigHint': 'Замените <your_token> на API-токен из списка ниже.',
+  'settings.mcp.clientConfigHint': 'Замените <your_token> на API-токен из списка ниже. Путь к npx может потребовать настройки для вашей системы (например, C:\\PROGRA~1\\nodejs\\npx.cmd в Windows).',
   'settings.mcp.copy': 'Копировать',
   'settings.mcp.copied': 'Скопировано!',
   'settings.mcp.apiTokens': 'API-токены',

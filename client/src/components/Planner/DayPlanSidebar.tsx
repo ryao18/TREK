@@ -697,7 +697,7 @@ export default function DayPlanSidebar({
                 notes.map(n => ({ ...n, day_id: Number(dayId) }))
               )
               try {
-                await downloadTripPDF({ trip, days, places, assignments, categories, dayNotes: flatNotes, t, locale })
+                await downloadTripPDF({ trip, days, places, assignments, categories, dayNotes: flatNotes, reservations, t, locale })
               } catch (e) {
                 console.error('PDF error:', e)
                 toast.error(t('dayplan.pdfError') + ': ' + (e?.message || String(e)))

@@ -718,7 +718,7 @@ export default function DayPlanSidebar({
             onClick={async () => {
               try {
                 const res = await fetch(`/api/trips/${tripId}/export.ics`, {
-                  headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                  headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 })
                 if (!res.ok) throw new Error()
                 const blob = await res.blob()

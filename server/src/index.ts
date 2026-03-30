@@ -81,6 +81,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Avatars are public (shown on login, sharing screens)
 app.use('/uploads/avatars', express.static(path.join(__dirname, '../uploads/avatars')));
+app.use('/uploads/covers', express.static(path.join(__dirname, '../uploads/covers')));
 
 // All other uploads require authentication
 app.get('/uploads/:type/:filename', (req: Request, res: Response) => {
@@ -162,6 +163,9 @@ app.use('/api/backup', backupRoutes);
 
 import notificationRoutes from './routes/notifications';
 app.use('/api/notifications', notificationRoutes);
+
+import shareRoutes from './routes/share';
+app.use('/api', shareRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

@@ -11,6 +11,7 @@ import AdminPage from './pages/AdminPage'
 import SettingsPage from './pages/SettingsPage'
 import VacayPage from './pages/VacayPage'
 import AtlasPage from './pages/AtlasPage'
+import SharedTripPage from './pages/SharedTripPage'
 import { ToastContainer } from './components/shared/Toast'
 import { TranslationProvider, useTranslation } from './i18n'
 import DemoBanner from './components/Layout/DemoBanner'
@@ -128,6 +129,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/shared/:token" element={<SharedTripPage />} />
         <Route path="/register" element={<LoginPage />} />
         <Route
           path="/dashboard"

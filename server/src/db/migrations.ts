@@ -356,6 +356,29 @@ function runMigrations(db: Database.Database): void {
       try { db.exec('ALTER TABLE notification_preferences ADD COLUMN notify_collab_message INTEGER DEFAULT 1'); } catch {}
       try { db.exec('ALTER TABLE notification_preferences ADD COLUMN notify_packing_tagged INTEGER DEFAULT 1'); } catch {}
     },
+    () => {
+      // Public share links for read-only trip access
+      db.exec(`CREATE TABLE IF NOT EXISTS share_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        created_by INTEGER NOT NULL REFERENCES users(id),
+        share_map INTEGER DEFAULT 1,
+        share_bookings INTEGER DEFAULT 1,
+        share_packing INTEGER DEFAULT 0,
+        share_budget INTEGER DEFAULT 0,
+        share_collab INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+    },
+    () => {
+      // Add permission columns to share_tokens
+      try { db.exec('ALTER TABLE share_tokens ADD COLUMN share_map INTEGER DEFAULT 1'); } catch {}
+      try { db.exec('ALTER TABLE share_tokens ADD COLUMN share_bookings INTEGER DEFAULT 1'); } catch {}
+      try { db.exec('ALTER TABLE share_tokens ADD COLUMN share_packing INTEGER DEFAULT 0'); } catch {}
+      try { db.exec('ALTER TABLE share_tokens ADD COLUMN share_budget INTEGER DEFAULT 0'); } catch {}
+      try { db.exec('ALTER TABLE share_tokens ADD COLUMN share_collab INTEGER DEFAULT 0'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

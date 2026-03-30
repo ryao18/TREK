@@ -289,6 +289,13 @@ export const backupApi = {
   setAutoSettings: (settings: Record<string, unknown>) => apiClient.put('/backup/auto-settings', settings).then(r => r.data),
 }
 
+export const shareApi = {
+  getLink: (tripId: number | string) => apiClient.get(`/trips/${tripId}/share-link`).then(r => r.data),
+  createLink: (tripId: number | string, perms?: Record<string, boolean>) => apiClient.post(`/trips/${tripId}/share-link`, perms || {}).then(r => r.data),
+  deleteLink: (tripId: number | string) => apiClient.delete(`/trips/${tripId}/share-link`).then(r => r.data),
+  getSharedTrip: (token: string) => apiClient.get(`/shared/${token}`).then(r => r.data),
+}
+
 export const notificationsApi = {
   getPreferences: () => apiClient.get('/notifications/preferences').then(r => r.data),
   updatePreferences: (prefs: Record<string, boolean>) => apiClient.put('/notifications/preferences', prefs).then(r => r.data),

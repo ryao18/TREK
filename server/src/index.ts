@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 
 const app = express();
+const DEBUG = String(process.env.DEBUG || 'false').toLowerCase() === 'true';
 
 // Trust first proxy (nginx/Docker) for correct req.ip
 if (process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY) {
@@ -78,6 +79,34 @@ if (shouldForceHttps) {
 }
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true }));
+
+if (DEBUG) {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const startedAt = Date.now();
+    const requestId = Math.random().toString(36).slice(2, 10);
+    const redact = (value: unknown): unknown => {
+      if (!value || typeof value !== 'object') return value;
+      if (Array.isArray(value)) return value.map(redact);
+      const hidden = new Set(['password', 'token', 'jwt', 'authorization', 'cookie', 'client_secret', 'mfa_token', 'code']);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = hidden.has(k.toLowerCase()) ? '[REDACTED]' : redact(v);
+      }
+      return out;
+    };
+
+    const safeQuery = redact(req.query);
+    const safeBody = redact(req.body);
+    console.log(`[DEBUG][REQ ${requestId}] ${req.method} ${req.originalUrl} ip=${req.ip} query=${JSON.stringify(safeQuery)} body=${JSON.stringify(safeBody)}`);
+
+    res.on('finish', () => {
+      const elapsedMs = Date.now() - startedAt;
+      console.log(`[DEBUG][RES ${requestId}] ${req.method} ${req.originalUrl} status=${res.statusCode} elapsed_ms=${elapsedMs}`);
+    });
+
+    next();
+  });
+}
 
 // Avatars are public (shown on login, sharing screens)
 app.use('/uploads/avatars', express.static(path.join(__dirname, '../uploads/avatars')));
@@ -196,6 +225,7 @@ const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
   console.log(`TREK API running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Debug logs: ${DEBUG ? 'ENABLED' : 'disabled'}`);
   if (process.env.DEMO_MODE === 'true') console.log('Demo mode: ENABLED');
   if (process.env.DEMO_MODE === 'true' && process.env.NODE_ENV === 'production') {
     console.warn('[SECURITY WARNING] DEMO_MODE is enabled in production! Demo credentials are publicly exposed.');

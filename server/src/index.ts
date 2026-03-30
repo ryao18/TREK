@@ -160,6 +160,10 @@ app.use('/api/weather', weatherRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/backup', backupRoutes);
 
+// MCP endpoint (Streamable HTTP transport, per-user auth)
+import { mcpHandler, closeMcpSessions } from './mcp';
+app.all('/mcp', mcpHandler);
+
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   const publicPath = path.join(__dirname, '../public');
@@ -196,6 +200,7 @@ const server = app.listen(PORT, () => {
 function shutdown(signal: string): void {
   console.log(`\n${signal} received — shutting down gracefully...`);
   scheduler.stop();
+  closeMcpSessions();
   server.close(() => {
     console.log('HTTP server closed');
     const { closeDb } = require('./db/database');

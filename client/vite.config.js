@@ -10,7 +10,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,ttf}'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/mcp/],
         runtimeCaching: [
           {
             // Carto map tiles (default provider)
@@ -100,6 +100,10 @@ export default defineConfig({
       '/ws': {
         target: 'http://localhost:3001',
         ws: true,
+      },
+      '/mcp': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
       }
     }
   }

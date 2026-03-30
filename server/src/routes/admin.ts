@@ -411,4 +411,21 @@ router.put('/addons/:id', (req: Request, res: Response) => {
   res.json({ addon: { ...updated, enabled: !!updated.enabled, config: JSON.parse(updated.config || '{}') } });
 });
 
+router.get('/mcp-tokens', (req: Request, res: Response) => {
+  const tokens = db.prepare(`
+    SELECT t.id, t.name, t.token_prefix, t.created_at, t.last_used_at, t.user_id, u.username
+    FROM mcp_tokens t
+    JOIN users u ON u.id = t.user_id
+    ORDER BY t.created_at DESC
+  `).all();
+  res.json({ tokens });
+});
+
+router.delete('/mcp-tokens/:id', (req: Request, res: Response) => {
+  const token = db.prepare('SELECT id FROM mcp_tokens WHERE id = ?').get(req.params.id);
+  if (!token) return res.status(404).json({ error: 'Token not found' });
+  db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 export default router;

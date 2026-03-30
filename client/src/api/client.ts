@@ -61,6 +61,11 @@ export const authApi = {
   changePassword: (data: { current_password: string; new_password: string }) => apiClient.put('/auth/me/password', data).then(r => r.data),
   deleteOwnAccount: () => apiClient.delete('/auth/me').then(r => r.data),
   demoLogin: () => apiClient.post('/auth/demo-login').then(r => r.data),
+  mcpTokens: {
+    list: () => apiClient.get('/auth/mcp-tokens').then(r => r.data),
+    create: (name: string) => apiClient.post('/auth/mcp-tokens', { name }).then(r => r.data),
+    delete: (id: number) => apiClient.delete(`/auth/mcp-tokens/${id}`).then(r => r.data),
+  },
 }
 
 export const tripsApi = {
@@ -163,6 +168,8 @@ export const adminApi = {
   listInvites: () => apiClient.get('/admin/invites').then(r => r.data),
   createInvite: (data: { max_uses: number; expires_in_days?: number }) => apiClient.post('/admin/invites', data).then(r => r.data),
   deleteInvite: (id: number) => apiClient.delete(`/admin/invites/${id}`).then(r => r.data),
+  mcpTokens: () => apiClient.get('/admin/mcp-tokens').then(r => r.data),
+  deleteMcpToken: (id: number) => apiClient.delete(`/admin/mcp-tokens/${id}`).then(r => r.data),
 }
 
 export const addonsApi = {

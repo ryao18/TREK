@@ -508,6 +508,24 @@ export function MapView({
           ))}
         </>
       )}
+
+      {/* GPX imported route geometries */}
+      {places.map((place) => {
+        if (!place.route_geometry) return null
+        try {
+          const coords = JSON.parse(place.route_geometry) as [number, number][]
+          if (!coords || coords.length < 2) return null
+          return (
+            <Polyline
+              key={`gpx-${place.id}`}
+              positions={coords}
+              color={place.category_color || '#3b82f6'}
+              weight={3.5}
+              opacity={0.75}
+            />
+          )
+        } catch { return null }
+      })}
     </MapContainer>
   )
 }

@@ -811,6 +811,7 @@ const zh: Record<string, string> = {
   'inspector.addRes': '预订',
   'inspector.editRes': '编辑预订',
   'inspector.participants': '参与者',
+  'inspector.trackStats': '轨迹数据',
 
   // Reservations
   'reservations.title': '预订',

@@ -816,6 +816,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'inspector.addRes': 'Rezervace',
   'inspector.editRes': 'Upravit rezervaci',
   'inspector.participants': 'Účastníci',
+  'inspector.trackStats': 'Data trasy',
 
   // Rezervace (Reservations)
   'reservations.title': 'Rezervace',

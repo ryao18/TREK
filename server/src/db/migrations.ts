@@ -427,6 +427,10 @@ function runMigrations(db: Database.Database): void {
         db.prepare("UPDATE addons SET type = 'integration' WHERE id = 'mcp'").run();
       } catch {}
     },
+    () => {
+      // GPX full route geometry stored as JSON array of [lat,lng] pairs
+      try { db.exec('ALTER TABLE places ADD COLUMN route_geometry TEXT'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

@@ -789,6 +789,7 @@ const es: Record<string, string> = {
   'inspector.addRes': 'Reserva',
   'inspector.editRes': 'Editar reserva',
   'inspector.participants': 'Participantes',
+  'inspector.trackStats': 'Datos de la ruta',
 
   // Reservations
   'reservations.title': 'Reservas',

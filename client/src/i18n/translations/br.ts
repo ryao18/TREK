@@ -794,6 +794,7 @@ const br: Record<string, string | { name: string; category: string }[]> = {
   'inspector.addRes': 'Reserva',
   'inspector.editRes': 'Editar reserva',
   'inspector.participants': 'Participantes',
+  'inspector.trackStats': 'Dados da trilha',
 
   // Reservations
   'reservations.title': 'Reservas',

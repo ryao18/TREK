@@ -812,6 +812,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'inspector.addRes': 'Reservierung',
   'inspector.editRes': 'Reservierung bearbeiten',
   'inspector.participants': 'Teilnehmer',
+  'inspector.trackStats': 'Streckendaten',
 
   // Reservations
   'reservations.title': 'Buchungen',

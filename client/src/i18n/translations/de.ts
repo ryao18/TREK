@@ -800,6 +800,9 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'budget.paid': 'Bezahlt',
   'budget.open': 'Offen',
   'budget.noMembers': 'Keine Teilnehmer zugewiesen',
+  'budget.settlement': 'Ausgleich',
+  'budget.settlementInfo': 'Klicke auf ein Mitglied-Bild bei einem Eintrag, um es grün zu markieren — das bedeutet, diese Person hat bezahlt. Der Ausgleich zeigt dann, wer wem wie viel schuldet.',
+  'budget.netBalances': 'Netto-Salden',
 
   // Files
   'files.title': 'Dateien',

@@ -800,6 +800,9 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'budget.paid': 'Paid',
   'budget.open': 'Open',
   'budget.noMembers': 'No members assigned',
+  'budget.settlement': 'Settlement',
+  'budget.settlementInfo': 'Click a member avatar on a budget item to mark them green — this means they paid. The settlement then shows who owes whom and how much.',
+  'budget.netBalances': 'Net Balances',
 
   // Files
   'files.title': 'Files',

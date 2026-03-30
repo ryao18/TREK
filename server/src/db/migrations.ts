@@ -325,6 +325,10 @@ function runMigrations(db: Database.Database): void {
       // Add day_plan_position to reservations for persistent transport ordering in day timeline
       try { db.exec('ALTER TABLE reservations ADD COLUMN day_plan_position REAL DEFAULT NULL'); } catch {}
     },
+    () => {
+      // Add paid_by_user_id to budget_items for expense tracking / settlement
+      try { db.exec('ALTER TABLE budget_items ADD COLUMN paid_by_user_id INTEGER REFERENCES users(id)'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

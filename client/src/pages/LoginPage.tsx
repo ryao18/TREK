@@ -33,25 +33,12 @@ export default function LoginPage(): React.ReactElement {
   const navigate = useNavigate()
 
   useEffect(() => {
-    authApi.getAppConfig?.().catch(() => null).then((config: AppConfig | null) => {
-      if (config) {
-        setAppConfig(config)
-        if (!config.has_users) setMode('register')
-        // Auto-redirect to OIDC if password auth is disabled
-        if (config.oidc_only_mode && config.oidc_configured && config.has_users) {
-          const params = new URLSearchParams(window.location.search)
-          if (!params.get('oidc_code') && !params.get('oidc_error') && !params.get('invite')) {
-            window.location.href = '/api/auth/oidc/login'
-          }
-        }
-      }
-    })
-
-    // Handle query params (invite token, OIDC callback)
     const params = new URLSearchParams(window.location.search)
 
-    // Check for invite token in URL (/register?invite=xxx or /login?invite=xxx)
     const invite = params.get('invite')
+    const oidcCode = params.get('oidc_code')
+    const oidcError = params.get('oidc_error')
+
     if (invite) {
       setInviteToken(invite)
       setMode('register')
@@ -61,26 +48,27 @@ export default function LoginPage(): React.ReactElement {
         setError('Invalid or expired invite link')
       })
       window.history.replaceState({}, '', window.location.pathname)
+      return
     }
 
-    // Handle OIDC callback via short-lived auth code (secure exchange)
-    const oidcCode = params.get('oidc_code')
-    const oidcError = params.get('oidc_error')
     if (oidcCode) {
+      setIsLoading(true)
       window.history.replaceState({}, '', '/login')
       fetch('/api/auth/oidc/exchange?code=' + encodeURIComponent(oidcCode))
         .then(r => r.json())
         .then(data => {
           if (data.token) {
             localStorage.setItem('auth_token', data.token)
-            navigate('/dashboard')
-            window.location.reload()
+            navigate('/dashboard', { replace: true })
           } else {
             setError(data.error || 'OIDC login failed')
           }
         })
         .catch(() => setError('OIDC login failed'))
+        .finally(() => setIsLoading(false))
+      return
     }
+
     if (oidcError) {
       const errorMessages: Record<string, string> = {
         registration_disabled: t('login.oidc.registrationDisabled'),
@@ -90,8 +78,19 @@ export default function LoginPage(): React.ReactElement {
       }
       setError(errorMessages[oidcError] || oidcError)
       window.history.replaceState({}, '', '/login')
+      return
     }
-  }, [])
+
+    authApi.getAppConfig?.().catch(() => null).then((config: AppConfig | null) => {
+      if (config) {
+        setAppConfig(config)
+        if (!config.has_users) setMode('register')
+        if (config.oidc_only_mode && config.oidc_configured && config.has_users) {
+          window.location.href = '/api/auth/oidc/login'
+        }
+      }
+    })
+  }, [navigate, t])
 
   const handleDemoLogin = async (): Promise<void> => {
     setError('')

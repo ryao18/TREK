@@ -12,7 +12,7 @@ structured API.
 - [Limitations & Important Notes](#limitations--important-notes)
 - [Resources (read-only)](#resources-read-only)
 - [Tools (read-write)](#tools-read-write)
-- [Screenshots](#screenshots)
+- [Example](#example)
 
 ---
 

@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Timezone support + Server-Dependencies (better-sqlite3 braucht Build-Tools)
 COPY server/package*.json ./
-RUN apk add --no-cache tzdata python3 make g++ && \
+RUN apk add --no-cache tzdata su-exec python3 make g++ && \
     npm ci --production && \
     apk del python3 make g++
 
@@ -30,8 +30,8 @@ COPY --from=client-builder /app/client/public/fonts ./public/fonts
 RUN mkdir -p /app/data /app/uploads/files /app/uploads/covers /app/uploads/avatars /app/uploads/photos && \
     mkdir -p /app/server && ln -s /app/uploads /app/server/uploads && ln -s /app/data /app/server/data
 
+# Fix permissions on mounted volumes at runtime and run as node user
 RUN chown -R node:node /app
-USER node
 
 # Umgebung setzen
 ENV NODE_ENV=production
@@ -39,4 +39,5 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["node", "--import", "tsx", "src/index.ts"]
+# Entrypoint: fix volume permissions then start as node
+CMD ["sh", "-c", "chown -R node:node /app/data /app/uploads 2>/dev/null; exec su-exec node node --import tsx src/index.ts"]

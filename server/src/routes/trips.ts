@@ -321,8 +321,19 @@ router.get('/:id/export.ics', authenticate, (req: Request, res: Response) => {
 
   const esc = (s: string) => s.replace(/[\\;,\n]/g, m => m === '\n' ? '\\n' : '\\' + m);
   const fmtDate = (d: string) => d.replace(/-/g, '');
-  const fmtDateTime = (d: string) => d.replace(/[-:]/g, '').replace('T', 'T') + (d.includes('T') ? '00' : '');
+  const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const uid = (id: number, type: string) => `trek-${type}-${id}@trek`;
+
+  // Format datetime: handles full ISO "2026-03-30T09:00" and time-only "10:00"
+  const fmtDateTime = (d: string, refDate?: string) => {
+    if (d.includes('T')) return d.replace(/[-:]/g, '').split('.')[0];
+    // Time-only: combine with reference date
+    if (refDate && d.match(/^\d{2}:\d{2}/)) {
+      const datePart = refDate.split('T')[0];
+      return `${datePart}T${d.replace(/:/g, '')}00`.replace(/-/g, '');
+    }
+    return d.replace(/[-:]/g, '');
+  };
 
   let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//TREK//Travel Planner//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
   ics += `X-WR-CALNAME:${esc(trip.title || 'TREK Trip')}\r\n`;
@@ -332,7 +343,7 @@ router.get('/:id/export.ics', authenticate, (req: Request, res: Response) => {
     const endNext = new Date(trip.end_date + 'T00:00:00');
     endNext.setDate(endNext.getDate() + 1);
     const endStr = endNext.toISOString().split('T')[0].replace(/-/g, '');
-    ics += `BEGIN:VEVENT\r\nUID:${uid(trip.id, 'trip')}\r\nDTSTART;VALUE=DATE:${fmtDate(trip.start_date)}\r\nDTEND;VALUE=DATE:${endStr}\r\nSUMMARY:${esc(trip.title || 'Trip')}\r\n`;
+    ics += `BEGIN:VEVENT\r\nUID:${uid(trip.id, 'trip')}\r\nDTSTAMP:${now}\r\nDTSTART;VALUE=DATE:${fmtDate(trip.start_date)}\r\nDTEND;VALUE=DATE:${endStr}\r\nSUMMARY:${esc(trip.title || 'Trip')}\r\n`;
     if (trip.description) ics += `DESCRIPTION:${esc(trip.description)}\r\n`;
     ics += `END:VEVENT\r\n`;
   }
@@ -343,10 +354,13 @@ router.get('/:id/export.ics', authenticate, (req: Request, res: Response) => {
     const hasTime = r.reservation_time.includes('T');
     const meta = r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : {};
 
-    ics += `BEGIN:VEVENT\r\nUID:${uid(r.id, 'res')}\r\n`;
+    ics += `BEGIN:VEVENT\r\nUID:${uid(r.id, 'res')}\r\nDTSTAMP:${now}\r\n`;
     if (hasTime) {
       ics += `DTSTART:${fmtDateTime(r.reservation_time)}\r\n`;
-      if (r.reservation_end_time) ics += `DTEND:${fmtDateTime(r.reservation_end_time)}\r\n`;
+      if (r.reservation_end_time) {
+        const endDt = fmtDateTime(r.reservation_end_time, r.reservation_time);
+        if (endDt.length >= 15) ics += `DTEND:${endDt}\r\n`;
+      }
     } else {
       ics += `DTSTART;VALUE=DATE:${fmtDate(r.reservation_time)}\r\n`;
     }

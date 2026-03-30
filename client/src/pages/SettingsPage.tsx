@@ -70,10 +70,10 @@ function NotificationPreferences({ t, memoriesEnabled }: { t: any; memoriesEnabl
   const options = [
     { key: 'notify_trip_invite', label: t('settings.notifyTripInvite') },
     { key: 'notify_booking_change', label: t('settings.notifyBookingChange') },
-    ...(addons.vacay !== false ? [{ key: 'notify_vacay_invite', label: t('settings.notifyVacayInvite') }] : []),
+    ...(addons.vacay ? [{ key: 'notify_vacay_invite', label: t('settings.notifyVacayInvite') }] : []),
     ...(memoriesEnabled ? [{ key: 'notify_photos_shared', label: t('settings.notifyPhotosShared') }] : []),
-    ...(addons.collab !== false ? [{ key: 'notify_collab_message', label: t('settings.notifyCollabMessage') }] : []),
-    ...(addons.documents !== false ? [{ key: 'notify_packing_tagged', label: t('settings.notifyPackingTagged') }] : []),
+    ...(addons.collab ? [{ key: 'notify_collab_message', label: t('settings.notifyCollabMessage') }] : []),
+    ...(addons.documents ? [{ key: 'notify_packing_tagged', label: t('settings.notifyPackingTagged') }] : []),
     { key: 'notify_webhook', label: t('settings.notifyWebhook') },
   ]
 

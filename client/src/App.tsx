@@ -69,9 +69,32 @@ export default function App() {
     if (token) {
       loadUser()
     }
-    authApi.getAppConfig().then((config: { demo_mode?: boolean; has_maps_key?: boolean }) => {
+    authApi.getAppConfig().then(async (config: { demo_mode?: boolean; has_maps_key?: boolean; version?: string }) => {
       if (config?.demo_mode) setDemoMode(true)
       if (config?.has_maps_key !== undefined) setHasMapsKey(config.has_maps_key)
+
+      // Version-based cache invalidation: clear all caches on version change
+      if (config?.version) {
+        const storedVersion = localStorage.getItem('trek_app_version')
+        if (storedVersion && storedVersion !== config.version) {
+          try {
+            // Clear all Service Worker caches
+            if ('caches' in window) {
+              const names = await caches.keys()
+              await Promise.all(names.map(n => caches.delete(n)))
+            }
+            // Unregister all service workers
+            if ('serviceWorker' in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations()
+              await Promise.all(regs.map(r => r.unregister()))
+            }
+          } catch {}
+          localStorage.setItem('trek_app_version', config.version)
+          window.location.reload()
+          return
+        }
+        localStorage.setItem('trek_app_version', config.version)
+      }
     }).catch(() => {})
   }, [])
 

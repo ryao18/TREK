@@ -139,6 +139,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'settings.temperature': 'Temperature Unit',
   'settings.timeFormat': 'Time Format',
   'settings.routeCalculation': 'Route Calculation',
+  'settings.blurBookingCodes': 'Blur Booking Codes',
   'settings.on': 'On',
   'settings.off': 'Off',
   'settings.account': 'Account',

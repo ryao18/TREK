@@ -34,7 +34,7 @@ interface SectionProps {
 
 function Section({ title, icon: Icon, children }: SectionProps): React.ReactElement {
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
+    <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', breakInside: 'avoid', marginBottom: 24 }}>
       <div className="px-6 py-4 border-b flex items-center gap-2" style={{ borderColor: 'var(--border-secondary)' }}>
         <Icon className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
         <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
@@ -220,11 +220,14 @@ export default function SettingsPage(): React.ReactElement {
       <Navbar />
 
       <div style={{ paddingTop: 'var(--nav-h)' }}>
-        <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-          <div>
+        <div className="max-w-5xl mx-auto px-4 py-8">
+          <style>{`@media (max-width: 900px) { .settings-columns { column-count: 1 !important; } }`}</style>
+          <div style={{ marginBottom: 24 }}>
             <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{t('settings.title')}</h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>{t('settings.subtitle')}</p>
           </div>
+
+          <div className="settings-columns" style={{ columnCount: 2, columnGap: 24 }}>
 
           {/* Map settings */}
           <Section title={t('settings.map')} icon={Map}>
@@ -430,6 +433,36 @@ export default function SettingsPage(): React.ReactElement {
                       fontFamily: 'inherit', fontSize: 14, fontWeight: 500,
                       border: (settings.route_calculation !== false) === opt.value ? '2px solid var(--text-primary)' : '2px solid var(--border-primary)',
                       background: (settings.route_calculation !== false) === opt.value ? 'var(--bg-hover)' : 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          {/* Blur Booking Codes */}
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>{t('settings.blurBookingCodes')}</label>
+              <div className="flex gap-3">
+                {[
+                  { value: true, label: t('settings.on') || 'On' },
+                  { value: false, label: t('settings.off') || 'Off' },
+                ].map(opt => (
+                  <button
+                    key={String(opt.value)}
+                    onClick={async () => {
+                      try { await updateSetting('blur_booking_codes', opt.value) }
+                      catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Error') }
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '10px 20px', borderRadius: 10, cursor: 'pointer',
+                      fontFamily: 'inherit', fontSize: 14, fontWeight: 500,
+                      border: (!!settings.blur_booking_codes) === opt.value ? '2px solid var(--text-primary)' : '2px solid var(--border-primary)',
+                      background: (!!settings.blur_booking_codes) === opt.value ? 'var(--bg-hover)' : 'var(--bg-card)',
                       color: 'var(--text-primary)',
                       transition: 'all 0.15s',
                     }}
@@ -888,6 +921,7 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>

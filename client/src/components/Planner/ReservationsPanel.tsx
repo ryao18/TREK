@@ -63,6 +63,8 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
   const toast = useToast()
   const { t, locale } = useTranslation()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
+  const blurCodes = useSettingsStore(s => s.settings.blur_booking_codes)
+  const [codeRevealed, setCodeRevealed] = useState(false)
   const typeInfo = getType(r.type)
   const TypeIcon = typeInfo.Icon
   const confirmed = r.status === 'confirmed'
@@ -136,7 +138,19 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
               {r.confirmation_number && (
                 <div style={{ flex: 1, padding: '5px 10px', textAlign: 'center' }}>
                   <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{t('reservations.confirmationCode')}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginTop: 1 }}>{r.confirmation_number}</div>
+                  <div
+                    onMouseEnter={() => blurCodes && setCodeRevealed(true)}
+                    onMouseLeave={() => blurCodes && setCodeRevealed(false)}
+                    onClick={() => blurCodes && setCodeRevealed(v => !v)}
+                    style={{
+                      fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', marginTop: 1,
+                      filter: blurCodes && !codeRevealed ? 'blur(5px)' : 'none',
+                      cursor: blurCodes ? 'pointer' : 'default',
+                      transition: 'filter 0.2s',
+                    }}
+                  >
+                    {r.confirmation_number}
+                  </div>
                 </div>
               )}
             </div>

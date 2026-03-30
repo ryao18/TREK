@@ -1449,7 +1449,7 @@ export default function DayPlanSidebar({
                 if (meta.platform) detailFields.push({ label: t('reservations.meta.platform'), value: meta.platform })
                 if (meta.seat) detailFields.push({ label: t('reservations.meta.seat'), value: meta.seat })
               }
-              if (res.confirmation_number) detailFields.push({ label: t('reservations.confirmationCode'), value: res.confirmation_number })
+              if (res.confirmation_number) detailFields.push({ label: t('reservations.confirmationCode'), value: res.confirmation_number, sensitive: true })
               if (res.location) detailFields.push({ label: t('reservations.locationAddress'), value: res.location })
 
               return (
@@ -1486,12 +1486,25 @@ export default function DayPlanSidebar({
                   {/* Detail-Felder */}
                   {detailFields.length > 0 && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {detailFields.map((f, i) => (
-                        <div key={i} style={{ padding: '8px 10px', background: 'var(--bg-tertiary)', borderRadius: 8 }}>
-                          <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{f.label}</div>
-                          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{f.value}</div>
-                        </div>
-                      ))}
+                      {detailFields.map((f, i) => {
+                        const shouldBlur = f.sensitive && useSettingsStore.getState().settings.blur_booking_codes
+                        return (
+                          <div key={i} style={{ padding: '8px 10px', background: 'var(--bg-tertiary)', borderRadius: 8 }}>
+                            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{f.label}</div>
+                            <div
+                              onMouseEnter={e => { if (shouldBlur) e.currentTarget.style.filter = 'none' }}
+                              onMouseLeave={e => { if (shouldBlur) e.currentTarget.style.filter = 'blur(5px)' }}
+                              onClick={e => { if (shouldBlur) { const el = e.currentTarget; el.style.filter = el.style.filter === 'none' ? 'blur(5px)' : 'none' } }}
+                              style={{
+                                fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-word',
+                                filter: shouldBlur ? 'blur(5px)' : 'none', transition: 'filter 0.2s',
+                                cursor: shouldBlur ? 'pointer' : 'default',
+                                userSelect: shouldBlur ? 'none' : 'auto',
+                              }}
+                            >{f.value}</div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
 

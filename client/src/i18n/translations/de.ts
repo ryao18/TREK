@@ -139,6 +139,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'settings.temperature': 'Temperatureinheit',
   'settings.timeFormat': 'Zeitformat',
   'settings.routeCalculation': 'Routenberechnung',
+  'settings.blurBookingCodes': 'Buchungscodes verbergen',
   'settings.on': 'An',
   'settings.off': 'Aus',
   'settings.account': 'Konto',

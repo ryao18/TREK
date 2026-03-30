@@ -110,7 +110,7 @@ interface downloadTripPDFProps {
 
 export async function downloadTripPDF({ trip, days, places, assignments, categories, dayNotes, reservations = [], t: _t, locale: _locale }: downloadTripPDFProps) {
   await ensureRenderer()
-  const loc = _locale || 'de-DE'
+  const loc = _locale || undefined
   const tr = _t || (k => k)
   const sorted = [...(days || [])].sort((a, b) => a.day_number - b.day_number)
   const range = longDateRange(sorted, loc)

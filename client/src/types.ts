@@ -118,15 +118,22 @@ export interface Reservation {
   trip_id: number
   name: string
   title?: string
-  type: string | null
+  type: string
   status: 'pending' | 'confirmed'
   date: string | null
   time: string | null
+  reservation_time?: string | null
+  reservation_end_time?: string | null
+  location?: string | null
   confirmation_number: string | null
   notes: string | null
   url: string | null
+  day_id?: number | null
+  place_id?: number | null
+  assignment_id?: number | null
   accommodation_id?: number | null
-  metadata?: Record<string, string> | null
+  day_plan_position?: number | null
+  metadata?: Record<string, string> | string | null
   created_at: string
 }
 
@@ -148,6 +155,7 @@ export interface TripFile {
   deleted_at?: string | null
   created_at: string
   reservation_title?: string
+  linked_reservation_ids?: number[]
   url?: string
 }
 
@@ -361,7 +369,7 @@ export function getApiErrorMessage(err: unknown, fallback: string): string {
 
 // MergedItem used in day notes hook
 export interface MergedItem {
-  type: 'assignment' | 'note'
+  type: 'assignment' | 'note' | 'place' | 'transport'
   sortKey: number
-  data: Assignment | DayNote
+  data: Assignment | DayNote | Reservation
 }

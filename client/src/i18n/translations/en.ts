@@ -607,6 +607,12 @@ const en: Record<string, string | { name: string; category: string }[]> = {
 
   // Day Plan Sidebar
   'dayplan.emptyDay': 'No places planned for this day',
+  'dayplan.cannotReorderTransport': 'Bookings with a fixed time cannot be reordered',
+  'dayplan.confirmRemoveTimeTitle': 'Remove time?',
+  'dayplan.confirmRemoveTimeBody': 'This place has a fixed time ({time}). Moving it will remove the time and allow free sorting.',
+  'dayplan.confirmRemoveTimeAction': 'Remove time & move',
+  'dayplan.cannotDropOnTimed': 'Items cannot be placed between time-bound entries',
+  'dayplan.cannotBreakChronology': 'This would break the chronological order of timed items and bookings',
   'dayplan.addNote': 'Add Note',
   'dayplan.editNote': 'Edit Note',
   'dayplan.noteAdd': 'Add Note',
@@ -735,6 +741,8 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'reservations.type.tour': 'Tour',
   'reservations.type.other': 'Other',
   'reservations.confirm.delete': 'Are you sure you want to delete the reservation "{name}"?',
+  'reservations.confirm.deleteTitle': 'Delete booking?',
+  'reservations.confirm.deleteBody': '"{name}" will be permanently deleted.',
   'reservations.toast.updated': 'Reservation updated',
   'reservations.toast.removed': 'Reservation deleted',
   'reservations.toast.fileUploaded': 'File uploaded',

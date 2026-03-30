@@ -607,6 +607,12 @@ const de: Record<string, string | { name: string; category: string }[]> = {
 
   // Day Plan Sidebar
   'dayplan.emptyDay': 'Keine Orte für diesen Tag geplant',
+  'dayplan.cannotReorderTransport': 'Buchungen mit fester Uhrzeit können nicht verschoben werden',
+  'dayplan.confirmRemoveTimeTitle': 'Uhrzeit entfernen?',
+  'dayplan.confirmRemoveTimeBody': 'Dieser Ort hat eine feste Uhrzeit ({time}). Durch das Verschieben wird die Uhrzeit entfernt und der Ort kann frei sortiert werden.',
+  'dayplan.confirmRemoveTimeAction': 'Uhrzeit entfernen & verschieben',
+  'dayplan.cannotDropOnTimed': 'Orte können nicht zwischen zeitgebundene Einträge geschoben werden',
+  'dayplan.cannotBreakChronology': 'Die zeitliche Reihenfolge von Uhrzeiten und Buchungen darf nicht verletzt werden',
   'dayplan.addNote': 'Notiz hinzufügen',
   'dayplan.editNote': 'Notiz bearbeiten',
   'dayplan.noteAdd': 'Notiz hinzufügen',
@@ -735,6 +741,8 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'reservations.type.tour': 'Tour',
   'reservations.type.other': 'Sonstiges',
   'reservations.confirm.delete': 'Möchtest du die Reservierung "{name}" wirklich löschen?',
+  'reservations.confirm.deleteTitle': 'Buchung löschen?',
+  'reservations.confirm.deleteBody': '"{name}" wird unwiderruflich gelöscht.',
   'reservations.toast.updated': 'Reservierung aktualisiert',
   'reservations.toast.removed': 'Reservierung gelöscht',
   'reservations.toast.saveError': 'Fehler beim Speichern',

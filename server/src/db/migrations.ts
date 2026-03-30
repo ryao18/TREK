@@ -321,6 +321,10 @@ function runMigrations(db: Database.Database): void {
         UNIQUE(file_id, place_id)
       )`);
     },
+    () => {
+      // Add day_plan_position to reservations for persistent transport ordering in day timeline
+      try { db.exec('ALTER TABLE reservations ADD COLUMN day_plan_position REAL DEFAULT NULL'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

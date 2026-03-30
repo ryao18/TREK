@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import DOM from 'react-dom'
-import { MapContainer, TileLayer, Marker, Tooltip, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Tooltip, Polyline, CircleMarker, Circle, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
@@ -240,6 +240,96 @@ function RouteLabel({ midpoint, walkingText, drivingText }: RouteLabelProps) {
 const mapPhotoCache = new Map()
 const mapPhotoInFlight = new Set()
 
+// Live location tracker — blue dot with pulse animation (like Apple/Google Maps)
+function LocationTracker() {
+  const map = useMap()
+  const [position, setPosition] = useState<[number, number] | null>(null)
+  const [accuracy, setAccuracy] = useState(0)
+  const [tracking, setTracking] = useState(false)
+  const watchId = useRef<number | null>(null)
+
+  const startTracking = useCallback(() => {
+    if (!('geolocation' in navigator)) return
+    setTracking(true)
+    watchId.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const latlng: [number, number] = [pos.coords.latitude, pos.coords.longitude]
+        setPosition(latlng)
+        setAccuracy(pos.coords.accuracy)
+      },
+      () => setTracking(false),
+      { enableHighAccuracy: true, maximumAge: 5000 }
+    )
+  }, [])
+
+  const stopTracking = useCallback(() => {
+    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current)
+    watchId.current = null
+    setTracking(false)
+    setPosition(null)
+  }, [])
+
+  const toggleTracking = useCallback(() => {
+    if (tracking) { stopTracking() } else { startTracking() }
+  }, [tracking, startTracking, stopTracking])
+
+  // Center map on position when first acquired
+  const centered = useRef(false)
+  useEffect(() => {
+    if (position && !centered.current) {
+      map.setView(position, 15)
+      centered.current = true
+    }
+  }, [position, map])
+
+  // Cleanup on unmount
+  useEffect(() => () => { if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current) }, [])
+
+  return (
+    <>
+      {/* Location button */}
+      <div style={{
+        position: 'absolute', bottom: 20, right: 10, zIndex: 1000,
+      }}>
+        <button onClick={toggleTracking} style={{
+          width: 36, height: 36, borderRadius: '50%',
+          border: 'none', cursor: 'pointer',
+          background: tracking ? '#3b82f6' : 'var(--bg-card, white)',
+          color: tracking ? 'white' : 'var(--text-muted, #6b7280)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.2s, color 0.2s',
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Blue dot + accuracy circle */}
+      {position && (
+        <>
+          {accuracy < 500 && (
+            <Circle center={position} radius={accuracy} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.06, weight: 0.5, opacity: 0.3 }} />
+          )}
+          <CircleMarker center={position} radius={7} pathOptions={{ color: 'white', fillColor: '#3b82f6', fillOpacity: 1, weight: 2.5 }} />
+        </>
+      )}
+
+      {/* Pulse animation CSS */}
+      {position && (
+        <style>{`
+          @keyframes location-pulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            100% { transform: scale(2.5); opacity: 0; }
+          }
+        `}</style>
+      )}
+    </>
+  )
+}
+
 export function MapView({
   places = [],
   dayPlaces = [],
@@ -318,6 +408,7 @@ export function MapView({
       <SelectionController places={places} selectedPlaceId={selectedPlaceId} dayPlaces={dayPlaces} paddingOpts={paddingOpts} />
       <MapClickHandler onClick={onMapClick} />
       <MapContextMenuHandler onContextMenu={onMapContextMenu} />
+      <LocationTracker />
 
       <MarkerClusterGroup
         chunkedLoading

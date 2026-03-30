@@ -266,19 +266,61 @@ export default function DayPlanSidebar({
       initTransportPositions(dayId)
     }
 
-    // All items use the same sortKey space:
-    // - Places: order_index (0, 1, 2, ...)
-    // - Notes: sort_order (floats between place indices)
-    // - Transports: day_plan_position (persisted float)
-    return [
-      ...da.map(a => ({ type: 'place' as const, sortKey: a.order_index, data: a })),
+    // Build base list: untimed places + notes sorted by order_index/sort_order
+    const timedPlaces = da.filter(a => parseTimeToMinutes(a.place?.place_time) !== null)
+    const freePlaces = da.filter(a => parseTimeToMinutes(a.place?.place_time) === null)
+
+    const baseItems = [
+      ...freePlaces.map(a => ({ type: 'place' as const, sortKey: a.order_index, data: a })),
       ...dn.map(n => ({ type: 'note' as const, sortKey: n.sort_order, data: n })),
-      ...transport.map(r => ({
-        type: 'transport' as const,
-        sortKey: r.day_plan_position ?? computeTransportPosition(r, da),
-        data: r,
-      })),
     ].sort((a, b) => a.sortKey - b.sortKey)
+
+    // Timed places + transports: compute sortKeys based on time, inserted among base items
+    const allTimed = [
+      ...timedPlaces.map(a => ({ type: 'place' as const, data: a, minutes: parseTimeToMinutes(a.place?.place_time)! })),
+      ...transport.map(r => ({ type: 'transport' as const, data: r, minutes: parseTimeToMinutes(r.reservation_time) ?? 0 })),
+    ].sort((a, b) => a.minutes - b.minutes)
+
+    if (allTimed.length === 0) return baseItems
+    if (baseItems.length === 0) {
+      return allTimed.map((item, i) => ({ ...item, sortKey: i }))
+    }
+
+    // Insert timed items among base items using time-to-position mapping.
+    // Each timed item finds the last base place whose order_index corresponds
+    // to a reasonable position, then gets a fractional sortKey after it.
+    const result = [...baseItems]
+    for (let ti = 0; ti < allTimed.length; ti++) {
+      const timed = allTimed[ti]
+      const minutes = timed.minutes
+
+      // For transports, use persisted position if available
+      if (timed.type === 'transport' && timed.data.day_plan_position != null) {
+        result.push({ type: timed.type, sortKey: timed.data.day_plan_position, data: timed.data })
+        continue
+      }
+
+      // Find insertion position: after the last base item with time <= this item's time
+      let insertAfterKey = -Infinity
+      for (const item of result) {
+        if (item.type === 'place') {
+          const pm = parseTimeToMinutes(item.data?.place?.place_time)
+          if (pm !== null && pm <= minutes) insertAfterKey = item.sortKey
+        } else if (item.type === 'transport') {
+          const tm = parseTimeToMinutes(item.data?.reservation_time)
+          if (tm !== null && tm <= minutes) insertAfterKey = item.sortKey
+        }
+      }
+
+      const lastKey = result.length > 0 ? Math.max(...result.map(i => i.sortKey)) : 0
+      const sortKey = insertAfterKey === -Infinity
+        ? lastKey + 0.5 + ti * 0.01
+        : insertAfterKey + 0.01 + ti * 0.001
+
+      result.push({ type: timed.type, sortKey, data: timed.data })
+    }
+
+    return result.sort((a, b) => a.sortKey - b.sortKey)
   }
 
   const openAddNote = (dayId, e) => {

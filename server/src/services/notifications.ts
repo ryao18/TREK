@@ -220,11 +220,13 @@ async function sendEmail(to: string, subject: string, body: string, userId?: num
   const lang = userId ? getUserLanguage(userId) : 'en';
 
   try {
+    const skipTls = process.env.SMTP_SKIP_TLS_VERIFY === 'true' || getAppSetting('smtp_skip_tls_verify') === 'true';
     const transporter = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,
       auth: config.user ? { user: config.user, pass: config.pass } : undefined,
+      ...(skipTls ? { tls: { rejectUnauthorized: false } } : {}),
     });
 
     await transporter.sendMail({

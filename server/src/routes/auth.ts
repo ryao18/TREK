@@ -518,7 +518,7 @@ router.get('/validate-keys', authenticate, async (req: Request, res: Response) =
   res.json(result);
 });
 
-const ADMIN_SETTINGS_KEYS = ['allow_registration', 'allowed_file_types', 'require_mfa', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'notification_webhook_url', 'app_url'];
+const ADMIN_SETTINGS_KEYS = ['allow_registration', 'allowed_file_types', 'require_mfa', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify', 'notification_webhook_url', 'app_url'];
 
 router.get('/app-settings', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;

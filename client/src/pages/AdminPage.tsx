@@ -1000,6 +1000,21 @@ export default function AdminPage(): React.ReactElement {
                       />
                     </div>
                   ))}
+                  {/* Skip TLS toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                    <div>
+                      <span className="text-xs font-medium text-slate-500">Skip TLS certificate check</span>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Enable for self-signed certificates on local mail servers</p>
+                    </div>
+                    <button onClick={async () => {
+                      const newVal = smtpValues.smtp_skip_tls_verify === 'true' ? 'false' : 'true'
+                      setSmtpValues(prev => ({ ...prev, smtp_skip_tls_verify: newVal }))
+                      await authApi.updateAppSettings({ smtp_skip_tls_verify: newVal }).catch(() => {})
+                    }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${smtpValues.smtp_skip_tls_verify === 'true' ? 'bg-slate-900' : 'bg-slate-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${smtpValues.smtp_skip_tls_verify === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
                   <button
                     onClick={async () => {
                       for (const k of ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from']) {

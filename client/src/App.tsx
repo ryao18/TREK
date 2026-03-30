@@ -116,7 +116,18 @@ export default function App() {
     }
   }, [isAuthenticated])
 
+  const location = useLocation()
+  const isSharedPage = location.pathname.startsWith('/shared/')
+
   useEffect(() => {
+    // Shared page always forces light mode
+    if (isSharedPage) {
+      document.documentElement.classList.remove('dark')
+      const meta = document.querySelector('meta[name="theme-color"]')
+      if (meta) meta.setAttribute('content', '#ffffff')
+      return
+    }
+
     const mode = settings.dark_mode
     const applyDark = (isDark: boolean) => {
       document.documentElement.classList.toggle('dark', isDark)
@@ -132,7 +143,7 @@ export default function App() {
       return () => mq.removeEventListener('change', handler)
     }
     applyDark(mode === true || mode === 'dark')
-  }, [settings.dark_mode])
+  }, [settings.dark_mode, isSharedPage])
 
   return (
     <TranslationProvider>

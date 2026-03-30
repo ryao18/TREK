@@ -55,8 +55,8 @@ export default function SharedTripPage() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f3f4f6' }}>
       <div style={{ textAlign: 'center', padding: 40 }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>Link expired or invalid</h1>
-        <p style={{ color: '#6b7280', marginTop: 8 }}>This shared trip link is no longer active.</p>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>{t('shared.expired')}</h1>
+        <p style={{ color: '#6b7280', marginTop: 8 }}>{t('shared.expiredHint')}</p>
       </div>
     </div>
   )
@@ -109,11 +109,11 @@ export default function SharedTripPage() {
               {[trip.start_date, trip.end_date].filter(Boolean).map((d: string) => new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })).join(' — ')}
             </span>
             {days?.length > 0 && <span style={{ fontSize: 11, opacity: 0.4 }}>·</span>}
-            {days?.length > 0 && <span style={{ fontSize: 11, opacity: 0.5 }}>{days.length} days</span>}
+            {days?.length > 0 && <span style={{ fontSize: 11, opacity: 0.5 }}>{days.length} {t('shared.days')}</span>}
           </div>
         )}
 
-        <div style={{ marginTop: 12, fontSize: 9, fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase', opacity: 0.25 }}>Read-only shared view</div>
+        <div style={{ marginTop: 12, fontSize: 9, fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase', opacity: 0.25 }}>{t('shared.readOnly')}</div>
 
         {/* Language picker - top right */}
         <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
@@ -142,11 +142,11 @@ export default function SharedTripPage() {
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 20, overflowX: 'auto', padding: '2px 0' }}>
           {[
-            { id: 'plan', label: 'Plan', Icon: Map },
-            ...(permissions?.share_bookings ? [{ id: 'bookings', label: 'Bookings', Icon: Ticket }] : []),
-            ...(permissions?.share_packing ? [{ id: 'packing', label: 'Packing', Icon: Luggage }] : []),
-            ...(permissions?.share_budget ? [{ id: 'budget', label: 'Budget', Icon: Wallet }] : []),
-            ...(permissions?.share_collab ? [{ id: 'collab', label: 'Chat', Icon: MessageCircle }] : []),
+            { id: 'plan', label: t('shared.tabPlan'), Icon: Map },
+            ...(permissions?.share_bookings ? [{ id: 'bookings', label: t('shared.tabBookings'), Icon: Ticket }] : []),
+            ...(permissions?.share_packing ? [{ id: 'packing', label: t('shared.tabPacking'), Icon: Luggage }] : []),
+            ...(permissions?.share_budget ? [{ id: 'budget', label: t('shared.tabBudget'), Icon: Wallet }] : []),
+            ...(permissions?.share_collab ? [{ id: 'collab', label: t('shared.tabChat'), Icon: MessageCircle }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
               padding: '8px 18px', borderRadius: 12, border: '1.5px solid', cursor: 'pointer',
@@ -202,7 +202,7 @@ export default function SharedTripPage() {
                       <Hotel size={8} /> {acc.place_name}
                     </span>
                   ))}
-                  <span style={{ fontSize: 11, color: '#9ca3af' }}>{da.length} {da.length === 1 ? 'place' : 'places'}</span>
+                  <span style={{ fontSize: 11, color: '#9ca3af' }}>{da.length} {t('shared.places')}</span>
                 </div>
 
                 {selectedDay === day.id && merged.length > 0 && (
@@ -287,7 +287,7 @@ export default function SharedTripPage() {
                     </div>
                   </div>
                   <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: r.status === 'confirmed' ? 'rgba(22,163,74,0.1)' : 'rgba(217,119,6,0.1)', color: r.status === 'confirmed' ? '#16a34a' : '#d97706' }}>
-                    {r.status}
+                    {r.status === 'confirmed' ? t('shared.confirmed') : t('shared.pending')}
                   </span>
                 </div>
               )
@@ -298,7 +298,7 @@ export default function SharedTripPage() {
         {/* Packing */}
         {activeTab === 'packing' && (packing || []).length > 0 && (
           <div style={{ background: 'var(--bg-card, white)', borderRadius: 14, border: '1px solid var(--border-faint, #e5e7eb)', overflow: 'hidden' }}>
-            {Object.entries((packing || []).reduce((g: any, i: any) => { const c = i.category || 'Other'; (g[c] = g[c] || []).push(i); return g }, {})).map(([cat, items]: [string, any]) => (
+            {Object.entries((packing || []).reduce((g: any, i: any) => { const c = i.category || t('shared.other'); (g[c] = g[c] || []).push(i); return g }, {})).map(([cat, items]: [string, any]) => (
               <div key={cat}>
                 <div style={{ padding: '8px 16px', background: '#f9fafb', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6' }}>{cat}</div>
                 {items.map((item: any) => (
@@ -313,13 +313,13 @@ export default function SharedTripPage() {
 
         {/* Budget */}
         {activeTab === 'budget' && (budget || []).length > 0 && (() => {
-          const grouped = (budget || []).reduce((g: any, i: any) => { const c = i.category || 'Other'; (g[c] = g[c] || []).push(i); return g }, {})
+          const grouped = (budget || []).reduce((g: any, i: any) => { const c = i.category || t('shared.other'); (g[c] = g[c] || []).push(i); return g }, {})
           const total = (budget || []).reduce((s: number, i: any) => s + (parseFloat(i.total_price) || 0), 0)
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Total card */}
               <div style={{ background: 'linear-gradient(135deg, #000 0%, #1a1a2e 100%)', borderRadius: 14, padding: '20px 24px', color: 'white' }}>
-                <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', opacity: 0.5 }}>Total Budget</div>
+                <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', opacity: 0.5 }}>{t('shared.totalBudget')}</div>
                 <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{total.toLocaleString(locale, { minimumFractionDigits: 2 })} {trip.currency || 'EUR'}</div>
               </div>
               {/* By category */}
@@ -346,7 +346,7 @@ export default function SharedTripPage() {
           <div style={{ background: 'var(--bg-card, white)', borderRadius: 14, border: '1px solid var(--border-faint, #e5e7eb)', overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
               <MessageCircle size={14} color="#6b7280" />
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Chat · {(collab || []).length} messages</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{t('shared.tabChat')} · {(collab || []).length} {t('shared.messages')}</span>
             </div>
             <div style={{ maxHeight: 500, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {(collab || []).map((msg: any, i: number) => {
@@ -382,7 +382,7 @@ export default function SharedTripPage() {
         <div style={{ textAlign: 'center', padding: '40px 0 20px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 20, background: 'var(--bg-card, white)', border: '1px solid var(--border-faint, #e5e7eb)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <img src="/icons/icon.svg" alt="TREK" width="18" height="18" style={{ borderRadius: 4 }} />
-            <span style={{ fontSize: 11, color: '#9ca3af' }}>Shared via <strong style={{ color: '#6b7280' }}>TREK</strong></span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>{t('shared.sharedVia')} <strong style={{ color: '#6b7280' }}>TREK</strong></span>
           </div>
           <div style={{ marginTop: 8, fontSize: 10, color: '#d1d5db' }}>Made with <span style={{ color: '#ef4444' }}>&hearts;</span> by Maurice · <a href="https://github.com/mauriceboe/TREK" style={{ color: '#9ca3af', textDecoration: 'none' }}>GitHub</a></div>
         </div>

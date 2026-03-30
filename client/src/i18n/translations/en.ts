@@ -638,6 +638,9 @@ const en: Record<string, string | { name: string; category: string }[]> = {
 
   // Places Sidebar
   'places.addPlace': 'Add Place/Activity',
+  'places.importGpx': 'Import GPX',
+  'places.gpxImported': '{count} places imported from GPX',
+  'places.gpxError': 'GPX import failed',
   'places.assignToDay': 'Add to which day?',
   'places.all': 'All',
   'places.unplanned': 'Unplanned',

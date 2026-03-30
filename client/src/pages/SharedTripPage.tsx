@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { useTranslation, SUPPORTED_LANGUAGES } from '../i18n'
 import { useSettingsStore } from '../store/settingsStore'
+import { getLocaleForLanguage } from '../i18n'
 import { shareApi } from '../api/client'
 import { getCategoryIcon } from '../components/shared/categoryIcons'
 import { createElement } from 'react'
@@ -43,7 +44,6 @@ export default function SharedTripPage() {
   const [error, setError] = useState(false)
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState('plan')
-  const { updateSetting } = useSettingsStore()
   const [showLangPicker, setShowLangPicker] = useState(false)
 
   useEffect(() => {
@@ -127,7 +127,11 @@ export default function SharedTripPage() {
           {showLangPicker && (
             <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: 'white', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', padding: 4, zIndex: 50, minWidth: 150 }}>
               {SUPPORTED_LANGUAGES.map(lang => (
-                <button key={lang.value} onClick={() => { updateSetting('language', lang.value); setShowLangPicker(false) }}
+                <button key={lang.value} onClick={() => {
+                  // Set language locally without API call (shared page has no auth)
+                  useSettingsStore.setState(s => ({ settings: { ...s.settings, language: lang.value } }))
+                  setShowLangPicker(false)
+                }}
                   style={{ display: 'block', width: '100%', padding: '6px 12px', border: 'none', background: 'none', textAlign: 'left', cursor: 'pointer', fontSize: 12, color: '#374151', borderRadius: 6, fontFamily: 'inherit' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
                   onMouseLeave={e => e.currentTarget.style.background = 'none'}

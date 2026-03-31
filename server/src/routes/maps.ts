@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import { db } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
+import { decrypt_api_key } from '../services/apiKeyCrypto';
 
 interface NominatimResult {
   osm_type: string;
@@ -197,9 +198,10 @@ const router = express.Router();
 
 function getMapsKey(userId: number): string | null {
   const user = db.prepare('SELECT maps_api_key FROM users WHERE id = ?').get(userId) as { maps_api_key: string | null } | undefined;
-  if (user?.maps_api_key) return user.maps_api_key;
+  const user_key = decrypt_api_key(user?.maps_api_key);
+  if (user_key) return user_key;
   const admin = db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get() as { maps_api_key: string } | undefined;
-  return admin?.maps_api_key || null;
+  return decrypt_api_key(admin?.maps_api_key) || null;
 }
 
 const photoCache = new Map<string, { photoUrl: string; attribution: string | null; fetchedAt: number }>();

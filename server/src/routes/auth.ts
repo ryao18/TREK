@@ -17,6 +17,7 @@ import { randomBytes, createHash } from 'crypto';
 import { revokeUserSessions } from '../mcp';
 import { AuthRequest, User } from '../types';
 import { writeAudit, getClientIp } from '../services/auditLog';
+import { decrypt_api_key, maybe_encrypt_api_key } from '../services/apiKeyCrypto';
 
 authenticator.options = { window: 1 };
 
@@ -148,6 +149,11 @@ function maskKey(key: string | null | undefined): string | null {
   if (!key) return null;
   if (key.length <= 8) return '--------';
   return '----' + key.slice(-4);
+}
+
+function mask_stored_api_key(key: string | null | undefined): string | null {
+  const plain = decrypt_api_key(key);
+  return maskKey(plain);
 }
 
 function avatarUrl(user: { avatar?: string | null }): string | null {
@@ -389,9 +395,9 @@ router.put('/me/maps-key', authenticate, (req: Request, res: Response) => {
 
   db.prepare(
     'UPDATE users SET maps_api_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-  ).run(maps_api_key || null, authReq.user.id);
+  ).run(maybe_encrypt_api_key(maps_api_key), authReq.user.id);
 
-  res.json({ success: true, maps_api_key: maps_api_key || null });
+  res.json({ success: true, maps_api_key: mask_stored_api_key(maps_api_key) });
 });
 
 router.put('/me/api-keys', authenticate, (req: Request, res: Response) => {
@@ -402,8 +408,8 @@ router.put('/me/api-keys', authenticate, (req: Request, res: Response) => {
   db.prepare(
     'UPDATE users SET maps_api_key = ?, openweather_api_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
   ).run(
-    maps_api_key !== undefined ? (maps_api_key || null) : current.maps_api_key,
-    openweather_api_key !== undefined ? (openweather_api_key || null) : current.openweather_api_key,
+    maps_api_key !== undefined ? maybe_encrypt_api_key(maps_api_key) : current.maps_api_key,
+    openweather_api_key !== undefined ? maybe_encrypt_api_key(openweather_api_key) : current.openweather_api_key,
     authReq.user.id
   );
 
@@ -412,7 +418,7 @@ router.put('/me/api-keys', authenticate, (req: Request, res: Response) => {
   ).get(authReq.user.id) as Pick<User, 'id' | 'username' | 'email' | 'role' | 'maps_api_key' | 'openweather_api_key' | 'avatar' | 'mfa_enabled'> | undefined;
 
   const u = updated ? { ...updated, mfa_enabled: !!(updated.mfa_enabled === 1 || updated.mfa_enabled === true) } : undefined;
-  res.json({ success: true, user: { ...u, maps_api_key: maskKey(u?.maps_api_key), openweather_api_key: maskKey(u?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
+  res.json({ success: true, user: { ...u, maps_api_key: mask_stored_api_key(u?.maps_api_key), openweather_api_key: mask_stored_api_key(u?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
 });
 
 router.put('/me/settings', authenticate, (req: Request, res: Response) => {
@@ -444,8 +450,8 @@ router.put('/me/settings', authenticate, (req: Request, res: Response) => {
   const updates: string[] = [];
   const params: (string | number | null)[] = [];
 
-  if (maps_api_key !== undefined) { updates.push('maps_api_key = ?'); params.push(maps_api_key || null); }
-  if (openweather_api_key !== undefined) { updates.push('openweather_api_key = ?'); params.push(openweather_api_key || null); }
+  if (maps_api_key !== undefined) { updates.push('maps_api_key = ?'); params.push(maybe_encrypt_api_key(maps_api_key)); }
+  if (openweather_api_key !== undefined) { updates.push('openweather_api_key = ?'); params.push(maybe_encrypt_api_key(openweather_api_key)); }
   if (username !== undefined) { updates.push('username = ?'); params.push(username.trim()); }
   if (email !== undefined) { updates.push('email = ?'); params.push(email.trim()); }
 
@@ -460,7 +466,7 @@ router.put('/me/settings', authenticate, (req: Request, res: Response) => {
   ).get(authReq.user.id) as Pick<User, 'id' | 'username' | 'email' | 'role' | 'maps_api_key' | 'openweather_api_key' | 'avatar' | 'mfa_enabled'> | undefined;
 
   const u = updated ? { ...updated, mfa_enabled: !!(updated.mfa_enabled === 1 || updated.mfa_enabled === true) } : undefined;
-  res.json({ success: true, user: { ...u, maps_api_key: maskKey(u?.maps_api_key), openweather_api_key: maskKey(u?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
+  res.json({ success: true, user: { ...u, maps_api_key: mask_stored_api_key(u?.maps_api_key), openweather_api_key: mask_stored_api_key(u?.openweather_api_key), avatar_url: avatarUrl(updated || {}) } });
 });
 
 router.get('/me/settings', authenticate, (req: Request, res: Response) => {
@@ -470,7 +476,12 @@ router.get('/me/settings', authenticate, (req: Request, res: Response) => {
   ).get(authReq.user.id) as Pick<User, 'role' | 'maps_api_key' | 'openweather_api_key'> | undefined;
   if (user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
-  res.json({ settings: { maps_api_key: user.maps_api_key, openweather_api_key: user.openweather_api_key } });
+  res.json({
+    settings: {
+      maps_api_key: decrypt_api_key(user.maps_api_key),
+      openweather_api_key: decrypt_api_key(user.openweather_api_key),
+    }
+  });
 });
 
 router.post('/avatar', authenticate, demoUploadBlock, avatarUpload.single('avatar'), (req: Request, res: Response) => {
@@ -515,9 +526,21 @@ router.get('/validate-keys', authenticate, async (req: Request, res: Response) =
   const user = db.prepare('SELECT role, maps_api_key, openweather_api_key FROM users WHERE id = ?').get(authReq.user.id) as Pick<User, 'role' | 'maps_api_key' | 'openweather_api_key'> | undefined;
   if (user?.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
-  const result = { maps: false, weather: false };
+  const result: {
+    maps: boolean;
+    weather: boolean;
+    maps_details: null | {
+      ok: boolean;
+      status: number | null;
+      status_text: string | null;
+      error_message: string | null;
+      error_status: string | null;
+      error_raw: string | null;
+    };
+  } = { maps: false, weather: false, maps_details: null };
 
-  if (user.maps_api_key) {
+  const maps_api_key = decrypt_api_key(user.maps_api_key);
+  if (maps_api_key) {
     try {
       const mapsRes = await fetch(
         `https://places.googleapis.com/v1/places:searchText`,
@@ -525,22 +548,54 @@ router.get('/validate-keys', authenticate, async (req: Request, res: Response) =
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Goog-Api-Key': user.maps_api_key,
+            'X-Goog-Api-Key': maps_api_key,
             'X-Goog-FieldMask': 'places.displayName',
           },
           body: JSON.stringify({ textQuery: 'test' }),
         }
       );
       result.maps = mapsRes.status === 200;
+      let error_text: string | null = null;
+      let error_json: any = null;
+      if (!result.maps) {
+        try {
+          error_text = await mapsRes.text();
+          try {
+            error_json = JSON.parse(error_text);
+          } catch {
+            error_json = null;
+          }
+        } catch {
+          error_text = null;
+          error_json = null;
+        }
+      }
+      result.maps_details = {
+        ok: result.maps,
+        status: mapsRes.status,
+        status_text: mapsRes.statusText || null,
+        error_message: error_json?.error?.message || null,
+        error_status: error_json?.error?.status || null,
+        error_raw: error_text,
+      };
     } catch (err: unknown) {
       result.maps = false;
+      result.maps_details = {
+        ok: false,
+        status: null,
+        status_text: null,
+        error_message: err instanceof Error ? err.message : 'Request failed',
+        error_status: 'FETCH_ERROR',
+        error_raw: null,
+      };
     }
   }
 
-  if (user.openweather_api_key) {
+  const openweather_api_key = decrypt_api_key(user.openweather_api_key);
+  if (openweather_api_key) {
     try {
       const weatherRes = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=London&appid=${user.openweather_api_key}`
+        `https://api.openweathermap.org/data/2.5/weather?q=London&appid=${openweather_api_key}`
       );
       result.weather = weatherRes.status === 200;
     } catch (err: unknown) {

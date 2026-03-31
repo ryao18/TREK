@@ -1,12 +1,20 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback, createElement } from 'react'
 import DOM from 'react-dom'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { MapContainer, TileLayer, Marker, Tooltip, Polyline, CircleMarker, Circle, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { mapsApi } from '../../api/client'
-import { getCategoryIcon } from '../shared/categoryIcons'
+import { getCategoryIcon, CATEGORY_ICON_MAP } from '../shared/categoryIcons'
+
+function categoryIconSvg(iconName: string | null | undefined, size: number): string {
+  const IconComponent = (iconName && CATEGORY_ICON_MAP[iconName]) || CATEGORY_ICON_MAP['MapPin']
+  try {
+    return renderToStaticMarkup(createElement(IconComponent, { size, color: 'white', strokeWidth: 2.5 }))
+  } catch { return '' }
+}
 import type { Place } from '../../types'
 
 // Fix default marker icons for vite
@@ -85,7 +93,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
       display:flex;align-items:center;justify-content:center;
       cursor:pointer;position:relative;
     ">
-      <span style="font-size:${isSelected ? 18 : 15}px;line-height:1;">${icon}</span>
+      ${categoryIconSvg(place.category_icon, isSelected ? 18 : 15)}
       ${badgeHtml}
     </div>`,
     iconSize: [size, size],

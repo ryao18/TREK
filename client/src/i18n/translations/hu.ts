@@ -810,6 +810,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'inspector.addRes': 'Foglalás',
   'inspector.editRes': 'Foglalás szerkesztése',
   'inspector.participants': 'Résztvevők',
+  'inspector.trackStats': 'Útvonal adatok',
 
   // Foglalások
   'reservations.title': 'Foglalások',

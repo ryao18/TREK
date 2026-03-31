@@ -811,6 +811,7 @@ const nl: Record<string, string> = {
   'inspector.addRes': 'Reservering',
   'inspector.editRes': 'Reservering bewerken',
   'inspector.participants': 'Deelnemers',
+  'inspector.trackStats': 'Routegegevens',
 
   // Reservations
   'reservations.title': 'Boekingen',

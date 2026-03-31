@@ -809,6 +809,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'inspector.addRes': 'Reservation',
   'inspector.editRes': 'Edit Reservation',
   'inspector.participants': 'Participants',
+  'inspector.trackStats': 'Track Stats',
 
   // Reservations
   'reservations.title': 'Bookings',

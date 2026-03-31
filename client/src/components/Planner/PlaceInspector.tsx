@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users } from 'lucide-react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -460,6 +460,98 @@ export default function PlaceInspector({
             </div>
           )}
 
+
+          {/* GPX Track stats */}
+          {place.route_geometry && (() => {
+            try {
+              const pts: number[][] = JSON.parse(place.route_geometry)
+              if (!pts || pts.length < 2) return null
+              const hasEle = pts[0].length >= 3
+
+              // Haversine distance
+              const toRad = (d: number) => d * Math.PI / 180
+              let totalDist = 0
+              for (let i = 1; i < pts.length; i++) {
+                const [lat1, lng1] = pts[i - 1], [lat2, lng2] = pts[i]
+                const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1)
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+                totalDist += 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+              }
+              const distKm = totalDist / 1000
+
+              // Elevation stats
+              let minEle = Infinity, maxEle = -Infinity, totalUp = 0, totalDown = 0
+              if (hasEle) {
+                for (let i = 0; i < pts.length; i++) {
+                  const e = pts[i][2]
+                  if (e < minEle) minEle = e
+                  if (e > maxEle) maxEle = e
+                  if (i > 0) {
+                    const diff = e - pts[i - 1][2]
+                    if (diff > 0) totalUp += diff; else totalDown += Math.abs(diff)
+                  }
+                }
+              }
+
+              // Elevation profile SVG
+              const chartW = 280, chartH = 60
+              const elevations = hasEle ? pts.map(p => p[2]) : []
+              let pathD = ''
+              if (elevations.length > 1) {
+                const step = Math.max(1, Math.floor(elevations.length / chartW))
+                const sampled = elevations.filter((_, i) => i % step === 0)
+                const eMin = Math.min(...sampled), eMax = Math.max(...sampled)
+                const range = eMax - eMin || 1
+                pathD = sampled.map((e, i) => {
+                  const x = (i / (sampled.length - 1)) * chartW
+                  const y = chartH - ((e - eMin) / range) * (chartH - 4) - 2
+                  return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+                }).join(' ')
+              }
+
+              return (
+                <div style={{ background: 'var(--bg-hover)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <TrendingUp size={13} color="#9ca3af" />
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>{t('inspector.trackStats')}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+                      <MapPin size={12} color="#3b82f6" />
+                      {distKm < 1 ? `${Math.round(totalDist)} m` : `${distKm.toFixed(1)} km`}
+                    </div>
+                    {hasEle && (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+                          <Mountain size={12} color="#22c55e" />
+                          {Math.round(maxEle)} m
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+                          <Mountain size={12} color="#ef4444" />
+                          {Math.round(minEle)} m
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          ↑{Math.round(totalUp)} m &nbsp;↓{Math.round(totalDown)} m
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {pathD && (
+                    <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} preserveAspectRatio="none" style={{ display: 'block', borderRadius: 6, background: 'var(--bg-tertiary)' }}>
+                      <defs>
+                        <linearGradient id={`ele-grad-${place.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+                        </linearGradient>
+                      </defs>
+                      <path d={`${pathD} L${chartW},${chartH} L0,${chartH} Z`} fill={`url(#ele-grad-${place.id})`} />
+                      <path d={pathD} fill="none" stroke="#3b82f6" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                    </svg>
+                  )}
+                </div>
+              )
+            } catch { return null }
+          })()}
 
           {/* Files section */}
           {(placeFiles.length > 0 || onFileUpload) && (

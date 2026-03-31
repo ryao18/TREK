@@ -815,6 +815,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'inspector.addRes': 'حجز',
   'inspector.editRes': 'تعديل الحجز',
   'inspector.participants': 'المشاركون',
+  'inspector.trackStats': 'بيانات المسار',
 
   // Reservations
   'reservations.title': 'الحجوزات',

@@ -811,6 +811,7 @@ const ru: Record<string, string> = {
   'inspector.addRes': 'Бронирование',
   'inspector.editRes': 'Редактировать бронирование',
   'inspector.participants': 'Участники',
+  'inspector.trackStats': 'Данные маршрута',
 
   // Reservations
   'reservations.title': 'Бронирования',

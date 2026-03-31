@@ -811,6 +811,7 @@ const fr: Record<string, string> = {
   'inspector.addRes': 'Réservation',
   'inspector.editRes': 'Modifier la réservation',
   'inspector.participants': 'Participants',
+  'inspector.trackStats': 'Données du parcours',
 
   // Reservations
   'reservations.title': 'Réservations',

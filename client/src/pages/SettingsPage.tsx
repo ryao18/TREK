@@ -425,7 +425,7 @@ export default function SettingsPage(): React.ReactElement {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('settings.mapTemplate')}</label>
               <CustomSelect
-                value=""
+                value={mapTileUrl}
                 onChange={(value: string) => { if (value) setMapTileUrl(value) }}
                 placeholder={t('settings.mapTemplatePlaceholder.select')}
                 options={MAP_PRESETS.map(p => ({

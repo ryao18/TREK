@@ -2,7 +2,7 @@
 interface DragDataPayload { placeId?: string; assignmentId?: string; noteId?: string; fromDayId?: string }
 declare global { interface Window { __dragData: DragDataPayload | null } }
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import ReactDOM from 'react-dom'
 import { ChevronDown, ChevronRight, ChevronUp, Navigation, RotateCcw, ExternalLink, Clock, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown, Lock, Hotel, Utensils, Users } from 'lucide-react'
 
@@ -78,7 +78,7 @@ interface DayPlanSidebarProps {
   onNavigateToFiles?: () => void
 }
 
-export default function DayPlanSidebar({
+const DayPlanSidebar = React.memo(function DayPlanSidebar({
   tripId,
   trip, days, places, categories, assignments,
   selectedDayId, selectedPlaceId, selectedAssignmentId,
@@ -322,6 +322,16 @@ export default function DayPlanSidebar({
 
     return result.sort((a, b) => a.sortKey - b.sortKey)
   }
+
+  // Pre-compute merged items for all days so the render loop doesn't recompute on unrelated state changes (e.g. hover)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mergedItemsMap = useMemo(() => {
+    const map: Record<number, ReturnType<typeof getMergedItems>> = {}
+    days.forEach(day => { map[day.id] = getMergedItems(day.id) })
+    return map
+  // getMergedItems is redefined each render but captures assignments/dayNotes/reservations/days via closure
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, assignments, dayNotes, reservations])
 
   const openAddNote = (dayId, e) => {
     e?.stopPropagation()
@@ -669,10 +679,10 @@ export default function DayPlanSidebar({
     setDraggingId(null)
   }
 
-  const totalCost = days.reduce((s, d) => {
+  const totalCost = useMemo(() => days.reduce((s, d) => {
     const da = assignments[String(d.id)] || []
     return s + da.reduce((s2, a) => s2 + (parseFloat(a.place?.price) || 0), 0)
-  }, 0)
+  }, 0), [days, assignments])
 
   // Bester verfügbarer Standort für Wetter: zugewiesene Orte zuerst, dann beliebiger Reiseort
   const anyGeoAssignment = Object.values(assignments).flatMap(da => da).find(a => a.place?.lat && a.place?.lng)
@@ -756,12 +766,12 @@ export default function DayPlanSidebar({
           const formattedDate = formatDate(day.date, locale)
           const loc = da.find(a => a.place?.lat && a.place?.lng)
           const isDragTarget = dragOverDayId === day.id
-          const merged = getMergedItems(day.id)
+          const merged = mergedItemsMap[day.id] || []
           const dayNoteUi = noteUi[day.id]
           const placeItems = merged.filter(i => i.type === 'place')
 
           return (
-            <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)' }}>
+            <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)', contentVisibility: 'auto', containIntrinsicSize: '0 64px' }}>
               {/* Tages-Header — akzeptiert Drops aus der PlacesSidebar */}
               <div
                 onClick={() => { onSelectDay(day.id); if (onDayDetail) onDayDetail(day) }}
@@ -1663,4 +1673,6 @@ export default function DayPlanSidebar({
       <ContextMenu menu={ctxMenu.menu} onClose={ctxMenu.close} />
     </div>
   )
-}
+})
+
+export default DayPlanSidebar

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react'
 import DOM from 'react-dom'
 import { MapContainer, TileLayer, Marker, Tooltip, Polyline, CircleMarker, Circle, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
@@ -65,7 +65,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
         cursor:pointer;flex-shrink:0;position:relative;
       ">
         <div style="width:100%;height:100%;border-radius:50%;overflow:hidden;">
-          <img src="${escAttr(place.image_url)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;" />
+          <img src="${escAttr(place.image_url)}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;" />
         </div>
         ${badgeHtml}
       </div>`,
@@ -330,7 +330,7 @@ function LocationTracker() {
   )
 }
 
-export function MapView({
+export const MapView = memo(function MapView({
   places = [],
   dayPlaces = [],
   route = null,
@@ -404,6 +404,63 @@ export function MapView({
     fetchNext()
   }, [places])
 
+  const clusterIconCreateFunction = useCallback((cluster) => {
+    const count = cluster.getChildCount()
+    const size = count < 10 ? 36 : count < 50 ? 42 : 48
+    return L.divIcon({
+      html: `<div class="marker-cluster-custom" style="width:${size}px;height:${size}px;"><span>${count}</span></div>`,
+      className: 'marker-cluster-wrapper',
+      iconSize: L.point(size, size),
+    })
+  }, [])
+
+  const markers = useMemo(() => places.map((place) => {
+    const isSelected = place.id === selectedPlaceId
+    const cacheKey = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
+    const resolvedPhotoUrl = place.image_url || (cacheKey && photoUrls[cacheKey]) || null
+    const orderNumbers = dayOrderMap[place.id] ?? null
+    const icon = createPlaceIcon({ ...place, image_url: resolvedPhotoUrl }, orderNumbers, isSelected)
+
+    return (
+      <Marker
+        key={place.id}
+        position={[place.lat, place.lng]}
+        icon={icon}
+        eventHandlers={{
+          click: () => onMarkerClick && onMarkerClick(place.id),
+        }}
+        zIndexOffset={isSelected ? 1000 : 0}
+      >
+        <Tooltip
+          direction="right"
+          offset={[0, 0]}
+          opacity={1}
+          className="map-tooltip"
+        >
+          <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
+            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              {place.name}
+            </div>
+            {place.category_name && (() => {
+              const CatIcon = getCategoryIcon(place.category_icon)
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
+                  <CatIcon size={10} style={{ color: place.category_color || 'var(--text-muted)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{place.category_name}</span>
+                </div>
+              )
+            })()}
+            {place.address && (
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2, maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {place.address}
+              </div>
+            )}
+          </div>
+        </Tooltip>
+      </Marker>
+    )
+  }), [places, selectedPlaceId, dayOrderMap, photoUrls, onMarkerClick])
+
   return (
     <MapContainer
       center={center}
@@ -416,6 +473,7 @@ export function MapView({
         url={tileUrl}
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         maxZoom={19}
+        keepBuffer={4}
       />
 
       <MapController center={center} zoom={zoom} />
@@ -433,65 +491,9 @@ export function MapView({
         showCoverageOnHover={false}
         zoomToBoundsOnClick
         singleMarkerMode
-        iconCreateFunction={(cluster) => {
-          const count = cluster.getChildCount()
-          const size = count < 10 ? 36 : count < 50 ? 42 : 48
-          return L.divIcon({
-            html: `<div class="marker-cluster-custom"
-              style="width:${size}px;height:${size}px;">
-              <span>${count}</span>
-            </div>`,
-            className: 'marker-cluster-wrapper',
-            iconSize: L.point(size, size),
-          })
-        }}
+        iconCreateFunction={clusterIconCreateFunction}
       >
-        {places.map((place) => {
-          const isSelected = place.id === selectedPlaceId
-          const cacheKey = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
-          const resolvedPhotoUrl = place.image_url || (cacheKey && photoUrls[cacheKey]) || null
-          const orderNumbers = dayOrderMap[place.id] ?? null
-          const icon = createPlaceIcon({ ...place, image_url: resolvedPhotoUrl }, orderNumbers, isSelected)
-
-          return (
-            <Marker
-              key={place.id}
-              position={[place.lat, place.lng]}
-              icon={icon}
-              eventHandlers={{
-                click: () => onMarkerClick && onMarkerClick(place.id),
-              }}
-              zIndexOffset={isSelected ? 1000 : 0}
-            >
-              <Tooltip
-                direction="right"
-                offset={[0, 0]}
-                opacity={1}
-                className="map-tooltip"
-              >
-                <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
-                  <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                    {place.name}
-                  </div>
-                  {place.category_name && (() => {
-                    const CatIcon = getCategoryIcon(place.category_icon)
-                    return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 1 }}>
-                        <CatIcon size={10} style={{ color: place.category_color || 'var(--text-muted)', flexShrink: 0 }} />
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{place.category_name}</span>
-                      </div>
-                    )
-                  })()}
-                  {place.address && (
-                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2, maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {place.address}
-                    </div>
-                  )}
-                </div>
-              </Tooltip>
-            </Marker>
-          )
-        })}
+        {markers}
       </MarkerClusterGroup>
 
       {route && route.length > 1 && (
@@ -510,4 +512,4 @@ export function MapView({
       )}
     </MapContainer>
   )
-}
+})

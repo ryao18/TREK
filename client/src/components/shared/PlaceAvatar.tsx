@@ -86,6 +86,7 @@ export default React.memo(function PlaceAvatar({ place, size = 32, category }: P
           src={photoSrc}
           alt={place.name}
           loading="lazy"
+          decoding="async"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           onError={() => setPhotoSrc(null)}
         />

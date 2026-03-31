@@ -1,31 +1,30 @@
 services:
-  init-permissions:
-    image: alpine:3.20
-    container_name: trek-init-permissions
-    user: "0:0"
-    command: >
-      sh -c "mkdir -p /app/data /app/uploads &&
-             chown -R 1000:1000 /app/data /app/uploads &&
-             chmod -R u+rwX /app/data /app/uploads"
-    volumes:
-      - ./data:/app/data
-      - ./uploads:/app/uploads
-    restart: "no"
-
   app:
     image: mauriceboe/trek:latest
     container_name: trek
-    depends_on:
-      init-permissions:
-        condition: service_completed_successfully
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
       - JWT_SECRET=${JWT_SECRET:-}
-      # - ALLOWED_ORIGINS=https://yourdomain.com  # Optional: restrict CORS to specific origins
+      # ALLOWED_ORIGINS: restrict CORS + used as the app URL in email notification links
+      # If not set, same-origin CORS is used and email links default to http://localhost:PORT
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - PORT=3000
       - TZ=${TZ:-UTC}
+      # LOG_LEVEL: info (default) or debug (verbose details in docker logs)
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

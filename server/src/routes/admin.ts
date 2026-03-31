@@ -189,7 +189,8 @@ router.get('/audit-log', (req: Request, res: Response) => {
           details = { _parse_error: true };
         }
       }
-      return { ...r, details };
+      const created_at = r.created_at && !r.created_at.endsWith('Z') ? r.created_at.replace(' ', 'T') + 'Z' : r.created_at;
+      return { ...r, created_at, details };
     }),
     total,
     limit,

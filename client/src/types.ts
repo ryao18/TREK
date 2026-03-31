@@ -10,6 +10,8 @@ export interface User {
   created_at: string
   /** Present after load; true when TOTP MFA is enabled for password login */
   mfa_enabled?: boolean
+  /** True when a password change is required before the user can continue */
+  must_change_password?: boolean
 }
 
 export interface Trip {

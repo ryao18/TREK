@@ -126,6 +126,11 @@ router.post('/notes', authenticate, (req: Request, res: Response) => {
   const formatted = formatNote(note);
   res.status(201).json({ note: formatted });
   broadcast(tripId, 'collab:note:created', { note: formatted }, req.headers['x-socket-id'] as string);
+
+  import('../services/notifications').then(({ notifyTripMembers }) => {
+    const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
+    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username }).catch(() => {});
+  });
 });
 
 router.put('/notes/:id', authenticate, (req: Request, res: Response) => {

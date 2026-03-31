@@ -7,6 +7,7 @@ import { db, canAccessTrip, isOwner } from '../db/database';
 import { authenticate, demoUploadBlock } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { AuthRequest, Trip, User } from '../types';
+import { writeAudit, getClientIp } from '../services/auditLog';
 
 const router = express.Router();
 
@@ -147,6 +148,7 @@ router.post('/', authenticate, (req: Request, res: Response) => {
 
   const tripId = result.lastInsertRowid;
   generateDays(tripId, start_date, end_date);
+  writeAudit({ userId: authReq.user.id, action: 'trip.create', ip: getClientIp(req), details: { tripId: Number(tripId), title } });
   const trip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId: authReq.user.id, tripId });
   res.status(201).json({ trip });
 });
@@ -229,6 +231,7 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
   if (!isOwner(req.params.id, authReq.user.id))
     return res.status(403).json({ error: 'Only the owner can delete the trip' });
   const deletedTripId = Number(req.params.id);
+  writeAudit({ userId: authReq.user.id, action: 'trip.delete', ip: getClientIp(req), details: { tripId: deletedTripId } });
   db.prepare('DELETE FROM trips WHERE id = ?').run(req.params.id);
   res.json({ success: true });
   broadcast(deletedTripId, 'trip:deleted', { id: deletedTripId }, req.headers['x-socket-id'] as string);
@@ -287,7 +290,7 @@ router.post('/:id/members', authenticate, (req: Request, res: Response) => {
   // Notify invited user
   const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(req.params.id) as { title: string } | undefined;
   import('../services/notifications').then(({ notify }) => {
-    notify({ userId: target.id, event: 'trip_invite', params: { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username } }).catch(() => {});
+    notify({ userId: target.id, event: 'trip_invite', params: { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, invitee: target.username } }).catch(() => {});
   });
 
   res.status(201).json({ member: { ...target, role: 'member', avatar_url: target.avatar ? `/uploads/avatars/${target.avatar}` : null } });

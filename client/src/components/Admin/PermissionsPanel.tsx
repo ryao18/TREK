@@ -85,6 +85,8 @@ export default function PermissionsPanel(): React.ReactElement {
     setDirty(true)
   }
 
+  const entryMap = useMemo(() => new Map(entries.map(e => [e.key, e])), [entries])
+
   if (loading) {
     return (
       <div className="p-8 text-center">
@@ -92,8 +94,6 @@ export default function PermissionsPanel(): React.ReactElement {
       </div>
     )
   }
-
-  const entryMap = useMemo(() => new Map(entries.map(e => [e.key, e])), [entries])
 
   return (
     <div className="space-y-6">

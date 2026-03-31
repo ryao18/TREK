@@ -1373,6 +1373,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'collab.chat.today': 'اليوم',
   'collab.chat.yesterday': 'أمس',
   'collab.chat.deletedMessage': 'حذف رسالة',
+  'collab.chat.reply': 'رد',
   'collab.chat.loadMore': 'تحميل الرسائل الأقدم',
   'collab.chat.justNow': 'الآن',
   'collab.chat.minutesAgo': 'منذ {n} د',

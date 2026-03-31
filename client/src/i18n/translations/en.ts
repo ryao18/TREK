@@ -1366,6 +1366,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'collab.chat.today': 'Today',
   'collab.chat.yesterday': 'Yesterday',
   'collab.chat.deletedMessage': 'deleted a message',
+  'collab.chat.reply': 'Reply',
   'collab.chat.loadMore': 'Load older messages',
   'collab.chat.justNow': 'just now',
   'collab.chat.minutesAgo': '{n}m ago',

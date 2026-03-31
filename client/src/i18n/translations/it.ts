@@ -1368,6 +1368,7 @@ const it: Record<string, string | { name: string; category: string }[]> = {
   'collab.chat.today': 'Oggi',
   'collab.chat.yesterday': 'Ieri',
   'collab.chat.deletedMessage': 'ha eliminato un messaggio',
+  'collab.chat.reply': 'Rispondi',
   'collab.chat.loadMore': 'Carica messaggi precedenti',
   'collab.chat.justNow': 'ora',
   'collab.chat.minutesAgo': '{n}m fa',

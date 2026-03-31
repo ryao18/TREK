@@ -1329,6 +1329,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'collab.chat.today': 'Ma',
   'collab.chat.yesterday': 'Tegnap',
   'collab.chat.deletedMessage': 'törölt egy üzenetet',
+  'collab.chat.reply': 'Válasz',
   'collab.chat.loadMore': 'Korábbi üzenetek betöltése',
   'collab.chat.justNow': 'éppen most',
   'collab.chat.minutesAgo': '{n} perce',

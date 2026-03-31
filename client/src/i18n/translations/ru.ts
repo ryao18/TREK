@@ -1369,6 +1369,7 @@ const ru: Record<string, string> = {
   'collab.chat.today': 'Сегодня',
   'collab.chat.yesterday': 'Вчера',
   'collab.chat.deletedMessage': 'удалил(а) сообщение',
+  'collab.chat.reply': 'Ответить',
   'collab.chat.loadMore': 'Загрузить старые сообщения',
   'collab.chat.justNow': 'только что',
   'collab.chat.minutesAgo': '{n} мин. назад',

@@ -1369,6 +1369,7 @@ const fr: Record<string, string> = {
   'collab.chat.today': 'Aujourd\'hui',
   'collab.chat.yesterday': 'Hier',
   'collab.chat.deletedMessage': 'a supprimé un message',
+  'collab.chat.reply': 'Répondre',
   'collab.chat.loadMore': 'Charger les messages précédents',
   'collab.chat.justNow': 'à l\'instant',
   'collab.chat.minutesAgo': 'il y a {n} min',

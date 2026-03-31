@@ -1369,6 +1369,7 @@ const zh: Record<string, string> = {
   'collab.chat.today': '今天',
   'collab.chat.yesterday': '昨天',
   'collab.chat.deletedMessage': '删除了一条消息',
+  'collab.chat.reply': '回复',
   'collab.chat.loadMore': '加载更早的消息',
   'collab.chat.justNow': '刚刚',
   'collab.chat.minutesAgo': '{n} 分钟前',

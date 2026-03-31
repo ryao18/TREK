@@ -1313,6 +1313,7 @@ const br: Record<string, string | { name: string; category: string }[]> = {
   'collab.chat.today': 'Hoje',
   'collab.chat.yesterday': 'Ontem',
   'collab.chat.deletedMessage': 'apagou uma mensagem',
+  'collab.chat.reply': 'Responder',
   'collab.chat.loadMore': 'Carregar mensagens antigas',
   'collab.chat.justNow': 'agora mesmo',
   'collab.chat.minutesAgo': 'há {n} min',

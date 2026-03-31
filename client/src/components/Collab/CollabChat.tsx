@@ -697,7 +697,7 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
                         transition: 'opacity .1s',
                         ...(own ? { left: -6 } : { right: -6 }),
                       }}>
-                        <button onClick={() => setReplyTo(msg)} title="Reply" style={{
+                        <button onClick={() => setReplyTo(msg)} title={t('collab.chat.reply')} style={{
                           width: 24, height: 24, borderRadius: '50%', border: 'none',
                           background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           cursor: 'pointer', color: 'var(--accent-text)', padding: 0,
@@ -709,7 +709,7 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
                           <Reply size={11} />
                         </button>
                         {own && canEdit && (
-                          <button onClick={() => handleDelete(msg.id)} title="Delete" style={{
+                          <button onClick={() => handleDelete(msg.id)} title={t('common.delete')} style={{
                             width: 24, height: 24, borderRadius: '50%', border: 'none',
                             background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                             cursor: 'pointer', color: 'var(--accent-text)', padding: 0,

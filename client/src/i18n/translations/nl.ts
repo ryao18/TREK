@@ -1369,6 +1369,7 @@ const nl: Record<string, string> = {
   'collab.chat.today': 'Vandaag',
   'collab.chat.yesterday': 'Gisteren',
   'collab.chat.deletedMessage': 'heeft een bericht verwijderd',
+  'collab.chat.reply': 'Beantwoorden',
   'collab.chat.loadMore': 'Oudere berichten laden',
   'collab.chat.justNow': 'zojuist',
   'collab.chat.minutesAgo': '{n} min. geleden',

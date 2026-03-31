@@ -1373,6 +1373,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'collab.chat.today': 'Dnes',
   'collab.chat.yesterday': 'Včera',
   'collab.chat.deletedMessage': 'smazal zprávu',
+  'collab.chat.reply': 'Odpovědět',
   'collab.chat.loadMore': 'Načíst starší zprávy',
   'collab.chat.justNow': 'právě teď',
   'collab.chat.minutesAgo': 'před {n} min',

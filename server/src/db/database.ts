@@ -128,9 +128,4 @@ function isOwner(tripId: number | string, userId: number): boolean {
   return !!_db!.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId);
 }
 
-function getTripOwnerId(tripId: number | string): number | undefined {
-  const row = _db!.prepare('SELECT user_id FROM trips WHERE id = ?').get(tripId) as { user_id: number } | undefined;
-  return row?.user_id;
-}
-
-export { db, closeDb, reinitialize, getPlaceWithTags, canAccessTrip, isOwner, getTripOwnerId };
+export { db, closeDb, reinitialize, getPlaceWithTags, canAccessTrip, isOwner };

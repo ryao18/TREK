@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import crypto from 'crypto';
-import { db, canAccessTrip, getTripOwnerId } from '../db/database';
+import { db, canAccessTrip } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { checkPermission } from '../services/permissions';
 import { AuthRequest } from '../types';
@@ -12,10 +12,9 @@ const router = express.Router();
 router.post('/trips/:tripId/share-link', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;
-  if (!canAccessTrip(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('share_manage', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  const access = canAccessTrip(tripId, authReq.user.id);
+  if (!access) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('share_manage', authReq.user.role, access.user_id, authReq.user.id, access.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   const { share_map = true, share_bookings = true, share_packing = false, share_budget = false, share_collab = false } = req.body || {};
@@ -49,10 +48,9 @@ router.get('/trips/:tripId/share-link', authenticate, (req: Request, res: Respon
 router.delete('/trips/:tripId/share-link', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;
-  if (!canAccessTrip(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('share_manage', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  const access = canAccessTrip(tripId, authReq.user.id);
+  if (!access) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('share_manage', authReq.user.role, access.user_id, authReq.user.id, access.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   db.prepare('DELETE FROM share_tokens WHERE trip_id = ?').run(tripId);

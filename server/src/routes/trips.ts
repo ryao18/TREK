@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { db, canAccessTrip, getTripOwnerId } from '../db/database';
+import { db, canAccessTrip } from '../db/database';
 import { authenticate, demoUploadBlock } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { AuthRequest, Trip, User } from '../types';
@@ -264,9 +264,10 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
 
 router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cover'), (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const tripOwnerId = getTripOwnerId(req.params.id);
+  const access = canAccessTrip(req.params.id, authReq.user.id);
+  const tripOwnerId = access?.user_id;
   if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  const isMember = tripOwnerId !== authReq.user.id && !!canAccessTrip(req.params.id, authReq.user.id);
+  const isMember = tripOwnerId !== authReq.user.id;
   if (!checkPermission('trip_cover_upload', authReq.user.role, tripOwnerId, authReq.user.id, isMember))
     return res.status(403).json({ error: 'No permission to change the cover image' });
 
@@ -290,8 +291,9 @@ router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cov
 
 router.delete('/:id', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const tripOwnerId = getTripOwnerId(req.params.id);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  const trip = db.prepare('SELECT user_id FROM trips WHERE id = ?').get(req.params.id) as { user_id: number } | undefined;
+  if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = trip.user_id;
   if (!checkPermission('trip_delete', authReq.user.role, tripOwnerId, authReq.user.id, false))
     return res.status(403).json({ error: 'No permission to delete this trip' });
   const deletedTripId = Number(req.params.id);
@@ -309,10 +311,11 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
 
 router.get('/:id/members', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  if (!canAccessTrip(req.params.id, authReq.user.id))
+  const access = canAccessTrip(req.params.id, authReq.user.id);
+  if (!access)
     return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(req.params.id)!;
+  const tripOwnerId = access.user_id;
   const members = db.prepare(`
     SELECT u.id, u.username, u.email, u.avatar,
       CASE WHEN u.id = ? THEN 'owner' ELSE 'member' END as role,
@@ -336,10 +339,11 @@ router.get('/:id/members', authenticate, (req: Request, res: Response) => {
 
 router.post('/:id/members', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  if (!canAccessTrip(req.params.id, authReq.user.id))
+  const access = canAccessTrip(req.params.id, authReq.user.id);
+  if (!access)
     return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(req.params.id)!;
+  const tripOwnerId = access.user_id;
   const isMember = tripOwnerId !== authReq.user.id;
   if (!checkPermission('member_manage', authReq.user.role, tripOwnerId, authReq.user.id, isMember))
     return res.status(403).json({ error: 'No permission to manage members' });
@@ -378,9 +382,10 @@ router.delete('/:id/members/:userId', authenticate, (req: Request, res: Response
   const targetId = parseInt(req.params.userId);
   const isSelf = targetId === authReq.user.id;
   if (!isSelf) {
-    const tripOwnerId = getTripOwnerId(req.params.id)!;
-    const memberCheck = tripOwnerId !== authReq.user.id;
-    if (!checkPermission('member_manage', authReq.user.role, tripOwnerId, authReq.user.id, memberCheck))
+    const access = canAccessTrip(req.params.id, authReq.user.id);
+    if (!access) return res.status(404).json({ error: 'Trip not found' });
+    const memberCheck = access.user_id !== authReq.user.id;
+    if (!checkPermission('member_manage', authReq.user.role, access.user_id, authReq.user.id, memberCheck))
       return res.status(403).json({ error: 'No permission to remove members' });
   }
 

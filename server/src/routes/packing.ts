@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { db, canAccessTrip, getTripOwnerId } from '../db/database';
+import { db, canAccessTrip } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { checkPermission } from '../services/permissions';
@@ -34,9 +34,7 @@ router.post('/import', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items must be a non-empty array' });
@@ -85,9 +83,7 @@ router.post('/', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   if (!name) return res.status(400).json({ error: 'Item name is required' });
@@ -112,9 +108,7 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   const item = db.prepare('SELECT * FROM packing_items WHERE id = ? AND trip_id = ?').get(id, tripId);
@@ -152,9 +146,7 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   const item = db.prepare('SELECT id FROM packing_items WHERE id = ? AND trip_id = ?').get(id, tripId);
@@ -182,9 +174,7 @@ router.post('/bags', authenticate, (req: Request, res: Response) => {
   const { name, color } = req.body;
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
   if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM packing_bags WHERE trip_id = ?').get(tripId) as { max: number | null };
@@ -200,9 +190,7 @@ router.put('/bags/:bagId', authenticate, (req: Request, res: Response) => {
   const { name, color, weight_limit_grams } = req.body;
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
   const bag = db.prepare('SELECT * FROM packing_bags WHERE id = ? AND trip_id = ?').get(bagId, tripId);
   if (!bag) return res.status(404).json({ error: 'Bag not found' });
@@ -217,9 +205,7 @@ router.delete('/bags/:bagId', authenticate, (req: Request, res: Response) => {
   const { tripId, bagId } = req.params;
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
   const bag = db.prepare('SELECT * FROM packing_bags WHERE id = ? AND trip_id = ?').get(bagId, tripId);
   if (!bag) return res.status(404).json({ error: 'Bag not found' });
@@ -237,9 +223,7 @@ router.post('/apply-template/:templateId', authenticate, (req: Request, res: Res
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   const templateItems = db.prepare(`
@@ -299,9 +283,7 @@ router.put('/category-assignees/:categoryName', authenticate, (req: Request, res
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   const cat = decodeURIComponent(categoryName);
@@ -343,9 +325,7 @@ router.put('/reorder', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
-  const tripOwnerId = getTripOwnerId(tripId);
-  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('packing_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+  if (!checkPermission('packing_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
   const update = db.prepare('UPDATE packing_items SET sort_order = ? WHERE id = ? AND trip_id = ?');

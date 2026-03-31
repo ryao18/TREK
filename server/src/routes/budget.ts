@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { db, canAccessTrip } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
+import { checkPermission } from '../services/permissions';
 import { AuthRequest, BudgetItem, BudgetItemMember } from '../types';
 
 const router = express.Router({ mergeParams: true });
@@ -83,6 +84,9 @@ router.post('/', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
+  if (!checkPermission('budget_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
   if (!name) return res.status(400).json({ error: 'Name is required' });
 
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM budget_items WHERE trip_id = ?').get(tripId) as { max: number | null };
@@ -114,6 +118,9 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('budget_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const item = db.prepare('SELECT * FROM budget_items WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!item) return res.status(404).json({ error: 'Budget item not found' });
@@ -148,7 +155,11 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
 router.put('/:id/members', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
-  if (!canAccessTrip(Number(tripId), authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const access = canAccessTrip(Number(tripId), authReq.user.id);
+  if (!access) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('budget_edit', authReq.user.role, access.user_id, authReq.user.id, access.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const item = db.prepare('SELECT * FROM budget_items WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!item) return res.status(404).json({ error: 'Budget item not found' });
@@ -178,7 +189,11 @@ router.put('/:id/members', authenticate, (req: Request, res: Response) => {
 router.put('/:id/members/:userId/paid', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id, userId } = req.params;
-  if (!canAccessTrip(Number(tripId), authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const access = canAccessTrip(Number(tripId), authReq.user.id);
+  if (!access) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('budget_edit', authReq.user.role, access.user_id, authReq.user.id, access.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const { paid } = req.body;
   db.prepare('UPDATE budget_item_members SET paid = ? WHERE budget_item_id = ? AND user_id = ?')
@@ -272,6 +287,9 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('budget_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const item = db.prepare('SELECT id FROM budget_items WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!item) return res.status(404).json({ error: 'Budget item not found' });

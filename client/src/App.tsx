@@ -14,6 +14,7 @@ import SharedTripPage from './pages/SharedTripPage'
 import { ToastContainer } from './components/shared/Toast'
 import { TranslationProvider, useTranslation } from './i18n'
 import { authApi } from './api/client'
+import { usePermissionsStore, PermissionLevel } from './store/permissionsStore'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -21,7 +22,10 @@ interface ProtectedRouteProps {
 }
 
 function ProtectedRoute({ children, adminRequired = false }: ProtectedRouteProps) {
-  const { isAuthenticated, user, isLoading, appRequireMfa } = useAuthStore()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const user = useAuthStore((s) => s.user)
+  const isLoading = useAuthStore((s) => s.isLoading)
+  const appRequireMfa = useAuthStore((s) => s.appRequireMfa)
   const { t } = useTranslation()
   const location = useLocation()
 
@@ -78,12 +82,13 @@ export default function App() {
     if (token) {
       loadUser()
     }
-    authApi.getAppConfig().then(async (config: { demo_mode?: boolean; has_maps_key?: boolean; version?: string; timezone?: string; require_mfa?: boolean; trip_reminders_enabled?: boolean }) => {
+    authApi.getAppConfig().then(async (config: { demo_mode?: boolean; has_maps_key?: boolean; version?: string; timezone?: string; require_mfa?: boolean; trip_reminders_enabled?: boolean; permissions?: Record<string, PermissionLevel> }) => {
       if (config?.demo_mode) setDemoMode(true)
       if (config?.has_maps_key !== undefined) setHasMapsKey(config.has_maps_key)
       if (config?.timezone) setServerTimezone(config.timezone)
       if (config?.require_mfa !== undefined) setAppRequireMfa(!!config.require_mfa)
       if (config?.trip_reminders_enabled !== undefined) setTripRemindersEnabled(config.trip_reminders_enabled)
+      if (config?.permissions) usePermissionsStore.getState().setPermissions(config.permissions)
 
       if (config?.version) {
         const storedVersion = localStorage.getItem('trek_app_version')

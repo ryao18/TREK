@@ -7,6 +7,7 @@ import { requireTripAccess } from '../middleware/tripAccess';
 import { broadcast } from '../websocket';
 import { loadTagsByPlaceIds } from '../services/queryHelpers';
 import { validateStringLengths } from '../middleware/validate';
+import { checkPermission } from '../services/permissions';
 import { AuthRequest, Place } from '../types';
 
 const gpxUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -76,7 +77,11 @@ router.get('/', authenticate, requireTripAccess, (req: Request, res: Response) =
 });
 
 router.post('/', authenticate, requireTripAccess, validateStringLengths({ name: 200, description: 2000, address: 500, notes: 2000 }), (req: Request, res: Response) => {
-  const { tripId } = req.params 
+  const authReq = req as AuthRequest;
+  if (!checkPermission('place_edit', authReq.user.role, authReq.trip!.user_id, authReq.user.id, authReq.trip!.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
+  const { tripId } = req.params
 
   const {
     name, description, lat, lng, address, category_id, price, currency,
@@ -117,6 +122,10 @@ router.post('/', authenticate, requireTripAccess, validateStringLengths({ name: 
 
 // Import places from GPX file with full track geometry (must be before /:id)
 router.post('/import/gpx', authenticate, requireTripAccess, gpxUpload.single('file'), (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (!checkPermission('place_edit', authReq.user.role, authReq.trip!.user_id, authReq.user.id, authReq.trip!.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
   const { tripId } = req.params;
   const file = (req as any).file;
   if (!file) return res.status(400).json({ error: 'No file uploaded' });
@@ -259,7 +268,11 @@ router.get('/:id/image', authenticate, requireTripAccess, async (req: Request, r
 });
 
 router.put('/:id', authenticate, requireTripAccess, validateStringLengths({ name: 200, description: 2000, address: 500, notes: 2000 }), (req: Request, res: Response) => {
-  const { tripId, id } = req.params 
+  const authReq = req as AuthRequest;
+  if (!checkPermission('place_edit', authReq.user.role, authReq.trip!.user_id, authReq.user.id, authReq.trip!.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
+  const { tripId, id } = req.params
 
   const existingPlace = db.prepare('SELECT * FROM places WHERE id = ? AND trip_id = ?').get(id, tripId) as Place | undefined;
   if (!existingPlace) {
@@ -331,7 +344,11 @@ router.put('/:id', authenticate, requireTripAccess, validateStringLengths({ name
 });
 
 router.delete('/:id', authenticate, requireTripAccess, (req: Request, res: Response) => {
-  const { tripId, id } = req.params 
+  const authReq = req as AuthRequest;
+  if (!checkPermission('place_edit', authReq.user.role, authReq.trip!.user_id, authReq.user.id, authReq.trip!.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
+  const { tripId, id } = req.params
 
   const place = db.prepare('SELECT id FROM places WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!place) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTripStore } from '../store/tripStore'
+import { useCanDo } from '../store/permissionsStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { MapView } from '../components/Map/MapView'
 import DayPlanSidebar from '../components/Planner/DayPlanSidebar'
@@ -38,6 +39,8 @@ export default function TripPlannerPage(): React.ReactElement | null {
   const { settings } = useSettingsStore()
   const tripStore = useTripStore()
   const { trip, days, places, assignments, packingItems, categories, reservations, budgetItems, files, selectedDayId, isLoading } = tripStore
+  const can = useCanDo()
+  const canUploadFiles = can('file_upload', trip)
 
   const [enabledAddons, setEnabledAddons] = useState<Record<string, boolean>>({ packing: true, budget: true, documents: true })
   const [tripAccommodations, setTripAccommodations] = useState<Accommodation[]>([])
@@ -166,6 +169,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
   }, [])
 
   const handleMapContextMenu = useCallback(async (e) => {
+    if (!can('place_edit', trip)) return
     e.originalEvent?.preventDefault()
     const { lat, lng } = e.latlng
     setPrefillCoords({ lat, lng })
@@ -584,7 +588,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 onAssignToDay={handleAssignToDay}
                 onRemoveAssignment={handleRemoveAssignment}
                 files={files}
-                onFileUpload={(fd) => tripStore.addFile(tripId, fd)}
+                onFileUpload={canUploadFiles ? (fd) => tripStore.addFile(tripId, fd) : undefined}
                 tripMembers={tripMembers}
                 onSetParticipants={async (assignmentId, dayId, userIds) => {
                   try {
@@ -688,7 +692,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
       <PlaceFormModal isOpen={showPlaceForm} onClose={() => { setShowPlaceForm(false); setEditingPlace(null); setEditingAssignmentId(null); setPrefillCoords(null) }} onSave={handleSavePlace} place={editingPlace} prefillCoords={prefillCoords} assignmentId={editingAssignmentId} dayAssignments={editingAssignmentId ? Object.values(assignments).flat() : []} tripId={tripId} categories={categories} onCategoryCreated={cat => tripStore.addCategory?.(cat)} />
       <TripFormModal isOpen={showTripForm} onClose={() => setShowTripForm(false)} onSave={async (data) => { await tripStore.updateTrip(tripId, data); toast.success(t('trip.toast.tripUpdated')) }} trip={trip} />
       <TripMembersModal isOpen={showMembersModal} onClose={() => setShowMembersModal(false)} tripId={tripId} tripTitle={trip?.title} />
-      <ReservationModal isOpen={showReservationModal} onClose={() => { setShowReservationModal(false); setEditingReservation(null) }} onSave={handleSaveReservation} reservation={editingReservation} days={days} places={places} assignments={assignments} selectedDayId={selectedDayId} files={files} onFileUpload={(fd) => tripStore.addFile(tripId, fd)} onFileDelete={(id) => tripStore.deleteFile(tripId, id)} accommodations={tripAccommodations} />
+      <ReservationModal isOpen={showReservationModal} onClose={() => { setShowReservationModal(false); setEditingReservation(null) }} onSave={handleSaveReservation} reservation={editingReservation} days={days} places={places} assignments={assignments} selectedDayId={selectedDayId} files={files} onFileUpload={canUploadFiles ? (fd) => tripStore.addFile(tripId, fd) : undefined} onFileDelete={(id) => tripStore.deleteFile(tripId, id)} accommodations={tripAccommodations} />
       <ConfirmDialog
         isOpen={!!deletePlaceId}
         onClose={() => setDeletePlaceId(null)}

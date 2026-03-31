@@ -8,6 +8,7 @@ import { db } from '../db/database';
 import { authenticate, adminOnly } from '../middleware/auth';
 import { AuthRequest, User, Addon } from '../types';
 import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
+import { getAllPermissions, savePermissions, PERMISSION_ACTIONS } from '../services/permissions';
 import { revokeUserSessions } from '../mcp';
 
 const router = express.Router();
@@ -156,6 +157,35 @@ router.get('/stats', (_req: Request, res: Response) => {
   const totalFiles = (db.prepare('SELECT COUNT(*) as count FROM trip_files').get() as { count: number }).count;
 
   res.json({ totalUsers, totalTrips, totalPlaces, totalFiles });
+});
+
+// Permissions management
+router.get('/permissions', (_req: Request, res: Response) => {
+  const current = getAllPermissions();
+  const actions = PERMISSION_ACTIONS.map(a => ({
+    key: a.key,
+    level: current[a.key],
+    defaultLevel: a.defaultLevel,
+    allowedLevels: a.allowedLevels,
+  }));
+  res.json({ permissions: actions });
+});
+
+router.put('/permissions', (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { permissions } = req.body;
+  if (!permissions || typeof permissions !== 'object') {
+    return res.status(400).json({ error: 'permissions object required' });
+  }
+  const { skipped } = savePermissions(permissions);
+  writeAudit({
+    userId: authReq.user.id,
+    action: 'admin.permissions_update',
+    resource: 'permissions',
+    ip: getClientIp(req),
+    details: permissions,
+  });
+  res.json({ success: true, permissions: getAllPermissions(), ...(skipped.length ? { skipped } : {}) });
 });
 
 router.get('/audit-log', (req: Request, res: Response) => {

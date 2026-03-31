@@ -6,6 +6,8 @@ import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 import { filesApi } from '../../api/client'
 import type { Place, Reservation, TripFile, Day, AssignmentsMap } from '../../types'
+import { useCanDo } from '../../store/permissionsStore'
+import { useTripStore } from '../../store/tripStore'
 
 function authUrl(url: string): string {
   const token = localStorage.getItem('auth_token')
@@ -159,6 +161,8 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
   const [trashFiles, setTrashFiles] = useState<TripFile[]>([])
   const [loadingTrash, setLoadingTrash] = useState(false)
   const toast = useToast()
+  const can = useCanDo()
+  const trip = useTripStore((s) => s.trip)
   const { t, locale } = useTranslation()
 
   const loadTrash = useCallback(async () => {
@@ -253,6 +257,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
   })
 
   const handlePaste = useCallback((e) => {
+    if (!can('file_upload', trip)) return
     const items = e.clipboardData?.items
     if (!items) return
     const pastedFiles = []
@@ -392,14 +397,14 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
         <div className="file-actions" style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
           {isTrash ? (
             <>
-              <button onClick={() => handleRestore(file.id)} title={t('files.restore') || 'Restore'} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
+              {can('file_delete', trip) && <button onClick={() => handleRestore(file.id)} title={t('files.restore') || 'Restore'} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#22c55e'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
                 <RotateCcw size={14} />
-              </button>
-              <button onClick={() => handlePermanentDelete(file.id)} title={t('common.delete')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
+              </button>}
+              {can('file_delete', trip) && <button onClick={() => handlePermanentDelete(file.id)} title={t('common.delete')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
                 <Trash2 size={14} />
-              </button>
+              </button>}
             </>
           ) : (
             <>
@@ -407,18 +412,18 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
                 onMouseEnter={e => { if (!file.starred) e.currentTarget.style.color = '#facc15' }} onMouseLeave={e => { if (!file.starred) e.currentTarget.style.color = 'var(--text-faint)' }}>
                 <Star size={14} fill={file.starred ? '#facc15' : 'none'} />
               </button>
-              <button onClick={() => setAssignFileId(file.id)} title={t('files.assign') || 'Assign'} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
+              {can('file_edit', trip) && <button onClick={() => setAssignFileId(file.id)} title={t('files.assign') || 'Assign'} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
                 <Pencil size={14} />
-              </button>
+              </button>}
               <button onClick={() => openFile({ ...file, url: fileUrl })} title={t('common.open')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
                 <ExternalLink size={14} />
               </button>
-              <button onClick={() => handleDelete(file.id)} title={t('common.delete')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
+              {can('file_delete', trip) && <button onClick={() => handleDelete(file.id)} title={t('common.delete')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
                 <Trash2 size={14} />
-              </button>
+              </button>}
             </>
           )}
         </div>
@@ -681,7 +686,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
       {showTrash ? (
         /* Trash view */
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px' }}>
-          {trashFiles.length > 0 && (
+          {trashFiles.length > 0 && can('file_delete', trip) && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
               <button onClick={handleEmptyTrash} style={{
                 padding: '5px 12px', borderRadius: 8, border: '1px solid #fecaca',
@@ -710,7 +715,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
       ) : (
         <>
           {/* Upload zone */}
-          <div
+          {can('file_upload', trip) && <div
             {...getRootProps()}
             style={{
               margin: '16px 16px 0', border: '2px dashed', borderRadius: 14, padding: '20px 16px',
@@ -735,7 +740,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
                 </p>
               </>
             )}
-          </div>
+          </div>}
 
           {/* Filter tabs */}
           <div style={{ display: 'flex', gap: 4, padding: '12px 16px 0', flexShrink: 0, flexWrap: 'wrap' }}>

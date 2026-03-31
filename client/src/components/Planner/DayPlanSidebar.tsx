@@ -16,6 +16,7 @@ import WeatherWidget from '../Weather/WeatherWidget'
 import { useToast } from '../shared/Toast'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTripStore } from '../../store/tripStore'
+import { useCanDo } from '../../store/permissionsStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useTranslation } from '../../i18n'
 import { formatDate, formatTime, dayTotalCost, currencyDecimals } from '../../utils/formatters'
@@ -94,6 +95,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
   const ctxMenu = useContextMenu()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
   const tripStore = useTripStore()
+  const can = useCanDo()
+  const canEditDays = can('day_edit', trip)
 
   const { noteUi, setNoteUi, noteInputRef, dayNotes, openAddNote: _openAddNote, openEditNote: _openEditNote, cancelNote, saveNote, deleteNote: _deleteNote, moveNote: _moveNote } = useDayNotes(tripId)
 
@@ -824,12 +827,12 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                       <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
                         {day.title || t('dayplan.dayN', { n: index + 1 })}
                       </span>
-                      <button
+                      {canEditDays && <button
                         onClick={e => startEditTitle(day, e)}
                         style={{ flexShrink: 0, background: 'none', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.35, display: 'flex', alignItems: 'center' }}
                       >
                         <Pencil size={15} strokeWidth={1.8} color="var(--text-secondary)" />
-                      </button>
+                      </button>}
                       {(() => {
                         const dayAccs = accommodations.filter(a => day.id >= a.start_day_id && day.id <= a.end_day_id)
                           // Sort: check-out first, then ongoing stays, then check-in last
@@ -873,7 +876,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                   </div>
                 </div>
 
-                <button
+                {canEditDays && <button
                   onClick={e => openAddNote(day.id, e)}
                   title={t('dayplan.addNote')}
                   style={{ flexShrink: 0, background: 'none', border: 'none', padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-faint)' }}
@@ -881,7 +884,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                   onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}
                 >
                   <FileText size={16} strokeWidth={2} />
-                </button>
+                </button>}
                 <button
                   onClick={e => toggleDay(day.id, e)}
                   style={{ flexShrink: 0, background: 'none', border: 'none', padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-faint)' }}
@@ -1004,8 +1007,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                           <React.Fragment key={`place-${assignment.id}`}>
                             {showDropLine && <div style={{ height: 2, background: 'var(--text-primary)', borderRadius: 1, margin: '2px 8px' }} />}
                           <div
-                            draggable
+                            draggable={canEditDays}
                             onDragStart={e => {
+                              if (!canEditDays) { e.preventDefault(); return }
                               e.dataTransfer.setData('assignmentId', String(assignment.id))
                               e.dataTransfer.setData('fromDayId', String(day.id))
                               e.dataTransfer.effectAllowed = 'move'
@@ -1039,12 +1043,12 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                             onDragEnd={() => { setDraggingId(null); setDragOverDayId(null); setDropTargetKey(null); dragDataRef.current = null }}
                             onClick={() => { onPlaceClick(isPlaceSelected ? null : place.id, isPlaceSelected ? null : assignment.id); if (!isPlaceSelected) onSelectDay(day.id, true) }}
                             onContextMenu={e => ctxMenu.open(e, [
-                              onEditPlace && { label: t('common.edit'), icon: Pencil, onClick: () => onEditPlace(place, assignment.id) },
-                              onRemoveAssignment && { label: t('planner.removeFromDay'), icon: Trash2, onClick: () => onRemoveAssignment(day.id, assignment.id) },
+                              canEditDays && onEditPlace && { label: t('common.edit'), icon: Pencil, onClick: () => onEditPlace(place, assignment.id) },
+                              canEditDays && onRemoveAssignment && { label: t('planner.removeFromDay'), icon: Trash2, onClick: () => onRemoveAssignment(day.id, assignment.id) },
                               place.website && { label: t('inspector.website'), icon: ExternalLink, onClick: () => window.open(place.website, '_blank') },
                               (place.lat && place.lng) && { label: 'Google Maps', icon: Navigation, onClick: () => window.open(`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`, '_blank') },
                               { divider: true },
-                              onDeletePlace && { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => onDeletePlace(place.id) },
+                              canEditDays && onDeletePlace && { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => onDeletePlace(place.id) },
                             ])}
                             onMouseEnter={() => setHoveredId(assignment.id)}
                             onMouseLeave={() => setHoveredId(null)}
@@ -1062,9 +1066,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                               opacity: isDraggingThis ? 0.4 : 1,
                             }}
                           >
-                            <div style={{ flexShrink: 0, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', opacity: isHovered ? 1 : 0.3, transition: 'opacity 0.15s', cursor: 'grab' }}>
+                            {canEditDays && <div style={{ flexShrink: 0, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', opacity: isHovered ? 1 : 0.3, transition: 'opacity 0.15s', cursor: 'grab' }}>
                               <GripVertical size={13} strokeWidth={1.8} />
-                            </div>
+                            </div>}
                             <div
                               onClick={e => { e.stopPropagation(); toggleLock(assignment.id) }}
                               onMouseEnter={e => { e.stopPropagation(); setLockHoverId(assignment.id) }}
@@ -1167,14 +1171,14 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                                 </div>
                               )}
                             </div>
-                            <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
+                            {canEditDays && <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
                               <button onClick={moveUp} disabled={idx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
                                 <ChevronUp size={12} strokeWidth={2} />
                               </button>
                               <button onClick={moveDown} disabled={idx === merged.length - 1} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === merged.length - 1 ? 'default' : 'pointer', color: idx === merged.length - 1 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
                                 <ChevronDown size={12} strokeWidth={2} />
                               </button>
-                            </div>
+                            </div>}
                           </div>
                           </React.Fragment>
                         )
@@ -1273,8 +1277,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                         <React.Fragment key={`note-${note.id}`}>
                           {showDropLine && <div style={{ height: 2, background: 'var(--text-primary)', borderRadius: 1, margin: '2px 8px' }} />}
                         <div
-                          draggable
-                          onDragStart={e => { e.dataTransfer.setData('noteId', String(note.id)); e.dataTransfer.setData('fromDayId', String(day.id)); e.dataTransfer.effectAllowed = 'move'; dragDataRef.current = { noteId: String(note.id), fromDayId: String(day.id) }; setDraggingId(`note-${note.id}`) }}
+                          draggable={canEditDays}
+                          onDragStart={e => { if (!canEditDays) { e.preventDefault(); return } e.dataTransfer.setData('noteId', String(note.id)); e.dataTransfer.setData('fromDayId', String(day.id)); e.dataTransfer.effectAllowed = 'move'; dragDataRef.current = { noteId: String(note.id), fromDayId: String(day.id) }; setDraggingId(`note-${note.id}`) }}
                           onDragEnd={() => { setDraggingId(null); setDropTargetKey(null); dragDataRef.current = null }}
                           onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dropTargetKey !== `note-${note.id}`) setDropTargetKey(`note-${note.id}`) }}
                           onDrop={e => {
@@ -1298,11 +1302,11 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                               handleMergedDrop(day.id, 'place', Number(fromAssignmentId), 'note', note.id)
                             }
                           }}
-                          onContextMenu={e => ctxMenu.open(e, [
+                          onContextMenu={canEditDays ? e => ctxMenu.open(e, [
                             { label: t('common.edit'), icon: Pencil, onClick: () => openEditNote(day.id, note) },
                             { divider: true },
                             { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => deleteNote(day.id, note.id) },
-                          ])}
+                          ]) : undefined}
                           onMouseEnter={() => setHoveredId(`note-${note.id}`)}
                           onMouseLeave={() => setHoveredId(null)}
                           style={{
@@ -1316,9 +1320,9 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                             transition: 'background 0.1s', cursor: 'grab', userSelect: 'none',
                           }}
                         >
-                          <div style={{ flexShrink: 0, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', opacity: isNoteHovered ? 1 : 0.3, transition: 'opacity 0.15s', cursor: 'grab' }}>
+                          {canEditDays && <div style={{ flexShrink: 0, color: 'var(--text-faint)', display: 'flex', alignItems: 'center', opacity: isNoteHovered ? 1 : 0.3, transition: 'opacity 0.15s', cursor: 'grab' }}>
                             <GripVertical size={13} strokeWidth={1.8} />
-                          </div>
+                          </div>}
                           <div style={{ width: 28, height: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'var(--bg-hover)', overflow: 'hidden' }}>
                             <NoteIcon size={13} strokeWidth={1.8} color="var(--text-muted)" />
                           </div>
@@ -1330,14 +1334,14 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                               <div style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-faint)', lineHeight: '1.3', marginTop: 2, wordBreak: 'break-word' }}>{note.time}</div>
                             )}
                           </div>
-                          <div className="note-edit-buttons" style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: isNoteHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
+                          {canEditDays && <div className="note-edit-buttons" style={{ display: 'flex', gap: 1, flexShrink: 0, opacity: isNoteHovered ? 1 : 0, transition: 'opacity 0.15s' }}>
                             <button onClick={e => openEditNote(day.id, note, e)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-faint)', display: 'flex' }}><Pencil size={10} /></button>
                             <button onClick={e => deleteNote(day.id, note.id, e)} style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: 'var(--text-faint)', display: 'flex' }}><Trash2 size={10} /></button>
-                          </div>
-                          <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isNoteHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
+                          </div>}
+                          {canEditDays && <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, opacity: isNoteHovered ? 1 : undefined, transition: 'opacity 0.15s' }}>
                             <button onClick={e => { e.stopPropagation(); moveNote(day.id, note.id, 'up') }} disabled={noteIdx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: noteIdx === 0 ? 'default' : 'pointer', color: noteIdx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}><ChevronUp size={12} strokeWidth={2} /></button>
                             <button onClick={e => { e.stopPropagation(); moveNote(day.id, note.id, 'down') }} disabled={noteIdx === merged.length - 1} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: noteIdx === merged.length - 1 ? 'default' : 'pointer', color: noteIdx === merged.length - 1 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}><ChevronDown size={12} strokeWidth={2} /></button>
-                          </div>
+                          </div>}
                         </div>
                         </React.Fragment>
                       )

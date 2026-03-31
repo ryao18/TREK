@@ -11,6 +11,7 @@ import CustomSelect from '../shared/CustomSelect'
 import { useContextMenu, ContextMenu } from '../shared/ContextMenu'
 import { placesApi } from '../../api/client'
 import { useTripStore } from '../../store/tripStore'
+import { useCanDo } from '../../store/permissionsStore'
 import type { Place, Category, Day, AssignmentsMap } from '../../types'
 
 interface PlacesSidebarProps {
@@ -38,7 +39,10 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
   const toast = useToast()
   const ctxMenu = useContextMenu()
   const gpxInputRef = useRef<HTMLInputElement>(null)
-  const tripStore = useTripStore()
+  const trip = useTripStore((s) => s.trip)
+  const loadTrip = useTripStore((s) => s.loadTrip)
+  const can = useCanDo()
+  const canEditPlaces = can('place_edit', trip)
 
   const handleGpxImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -46,7 +50,7 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
     e.target.value = ''
     try {
       const result = await placesApi.importGpx(tripId, file)
-      await tripStore.loadTrip(tripId)
+      await loadTrip(tripId)
       toast.success(t('places.gpxImported', { count: result.count }))
     } catch (err: any) {
       toast.error(err?.response?.data?.error || t('places.gpxError'))
@@ -88,7 +92,7 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }}>
       {/* Kopfbereich */}
       <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border-faint)', flexShrink: 0 }}>
-        <button
+        {canEditPlaces && <button
           onClick={onAddPlace}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -98,7 +102,8 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
           }}
         >
           <Plus size={14} strokeWidth={2} /> {t('places.addPlace')}
-        </button>
+        </button>}
+        {canEditPlaces && <>
         <input ref={gpxInputRef} type="file" accept=".gpx" style={{ display: 'none' }} onChange={handleGpxImport} />
         <button
           onClick={() => gpxInputRef.current?.click()}
@@ -112,6 +117,7 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
         >
           <Upload size={11} strokeWidth={2} /> {t('places.importGpx')}
         </button>
+        </>}
 
         {/* Filter-Tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
@@ -223,9 +229,9 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
             <span style={{ fontSize: 13, color: 'var(--text-faint)' }}>
               {filter === 'unplanned' ? t('places.allPlanned') : t('places.noneFound')}
             </span>
-            <button onClick={onAddPlace} style={{ fontSize: 12, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+            {canEditPlaces && <button onClick={onAddPlace} style={{ fontSize: 12, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
               {t('places.addPlace')}
-            </button>
+            </button>}
           </div>
         ) : (
           filtered.map(place => {
@@ -252,12 +258,12 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
                   }
                 }}
                 onContextMenu={e => ctxMenu.open(e, [
-                  onEditPlace && { label: t('common.edit'), icon: Pencil, onClick: () => onEditPlace(place) },
+                  canEditPlaces && { label: t('common.edit'), icon: Pencil, onClick: () => onEditPlace(place) },
                   selectedDayId && { label: t('planner.addToDay'), icon: CalendarDays, onClick: () => onAssignToDay(place.id, selectedDayId) },
                   place.website && { label: t('inspector.website'), icon: ExternalLink, onClick: () => window.open(place.website, '_blank') },
                   (place.lat && place.lng) && { label: 'Google Maps', icon: Navigation, onClick: () => window.open(`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`, '_blank') },
                   { divider: true },
-                  onDeletePlace && { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => onDeletePlace(place.id) },
+                  canEditPlaces && { label: t('common.delete'), icon: Trash2, danger: true, onClick: () => onDeletePlace(place.id) },
                 ])}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,

@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { db, canAccessTrip } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
+import { checkPermission } from '../services/permissions';
 import { AuthRequest, Reservation } from '../types';
 
 const router = express.Router({ mergeParams: true });
@@ -39,6 +40,9 @@ router.post('/', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('reservation_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   if (!title) return res.status(400).json({ error: 'Title is required' });
 
@@ -118,6 +122,9 @@ router.put('/positions', authenticate, (req: Request, res: Response) => {
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
 
+  if (!checkPermission('reservation_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
   if (!Array.isArray(positions)) return res.status(400).json({ error: 'positions must be an array' });
 
   const stmt = db.prepare('UPDATE reservations SET day_plan_position = ? WHERE id = ? AND trip_id = ?');
@@ -139,6 +146,9 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('reservation_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId) as Reservation | undefined;
   if (!reservation) return res.status(404).json({ error: 'Reservation not found' });
@@ -235,6 +245,9 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+
+  if (!checkPermission('reservation_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const reservation = db.prepare('SELECT id, title, type, accommodation_id FROM reservations WHERE id = ? AND trip_id = ?').get(id, tripId) as { id: number; title: string; type: string; accommodation_id: number | null } | undefined;
   if (!reservation) return res.status(404).json({ error: 'Reservation not found' });

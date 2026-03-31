@@ -17,6 +17,7 @@ import {
   Archive, ArchiveRestore, Clock, MapPin, Settings, X, ArrowRightLeft,
   LayoutGrid, List,
 } from 'lucide-react'
+import { useCanDo } from '../store/permissionsStore'
 
 interface DashboardTrip {
   id: number
@@ -139,17 +140,16 @@ function LiquidGlass({ children, dark, style, className = '', onClick }: LiquidG
 // ── Spotlight Card (next upcoming trip) ─────────────────────────────────────
 interface TripCardProps {
   trip: DashboardTrip
-  onEdit: (trip: DashboardTrip) => void
-  onDelete: (trip: DashboardTrip) => void
-  onArchive: (id: number) => void
+  onEdit?: (trip: DashboardTrip) => void
+  onDelete?: (trip: DashboardTrip) => void
+  onArchive?: (id: number) => void
   onClick: (trip: DashboardTrip) => void
   t: (key: string, params?: Record<string, string | number | null>) => string
   locale: string
   dark?: boolean
-  isAdmin?: boolean
 }
 
-function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, dark, isAdmin }: TripCardProps): React.ReactElement {
+function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, dark }: TripCardProps): React.ReactElement {
   const status = getTripStatus(trip)
 
   const coverBg = trip.cover_image
@@ -188,12 +188,12 @@ function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, 
         </div>
 
         {/* Top-right actions */}
-        {(!!trip.is_owner || isAdmin) && (
+        {(onEdit || onArchive || onDelete) && (
         <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 6 }}
           onClick={e => e.stopPropagation()}>
-          <IconBtn onClick={() => onEdit(trip)} title={t('common.edit')}><Edit2 size={14} /></IconBtn>
-          <IconBtn onClick={() => onArchive(trip.id)} title={t('dashboard.archive')}><Archive size={14} /></IconBtn>
-          <IconBtn onClick={() => onDelete(trip)} title={t('common.delete')} danger><Trash2 size={14} /></IconBtn>
+          {onEdit && <IconBtn onClick={() => onEdit(trip)} title={t('common.edit')}><Edit2 size={14} /></IconBtn>}
+          {onArchive && <IconBtn onClick={() => onArchive(trip.id)} title={t('dashboard.archive')}><Archive size={14} /></IconBtn>}
+          {onDelete && <IconBtn onClick={() => onDelete(trip)} title={t('common.delete')} danger><Trash2 size={14} /></IconBtn>}
         </div>
         )}
 
@@ -232,7 +232,7 @@ function SpotlightCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, 
 }
 
 // ── Regular Trip Card ────────────────────────────────────────────────────────
-function TripCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, isAdmin }: Omit<TripCardProps, 'dark'>): React.ReactElement {
+function TripCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale }: Omit<TripCardProps, 'dark'>): React.ReactElement {
   const status = getTripStatus(trip)
   const [hovered, setHovered] = useState(false)
 
@@ -309,12 +309,12 @@ function TripCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, isAdm
           <Stat label={t('dashboard.places')} value={trip.place_count || 0} />
         </div>
 
-        {(!!trip.is_owner || isAdmin) && (
+        {(onEdit || onArchive || onDelete) && (
         <div style={{ display: 'flex', gap: 6, borderTop: '1px solid #f3f4f6', paddingTop: 10 }}
           onClick={e => e.stopPropagation()}>
-          <CardAction onClick={() => onEdit(trip)} icon={<Edit2 size={12} />} label={t('common.edit')} />
-          <CardAction onClick={() => onArchive(trip.id)} icon={<Archive size={12} />} label={t('dashboard.archive')} />
-          <CardAction onClick={() => onDelete(trip)} icon={<Trash2 size={12} />} label={t('common.delete')} danger />
+          {onEdit && <CardAction onClick={() => onEdit(trip)} icon={<Edit2 size={12} />} label={t('common.edit')} />}
+          {onArchive && <CardAction onClick={() => onArchive(trip.id)} icon={<Archive size={12} />} label={t('dashboard.archive')} />}
+          {onDelete && <CardAction onClick={() => onDelete(trip)} icon={<Trash2 size={12} />} label={t('common.delete')} danger />}
         </div>
         )}
       </div>
@@ -323,7 +323,7 @@ function TripCard({ trip, onEdit, onDelete, onArchive, onClick, t, locale, isAdm
 }
 
 // ── List View Item ──────────────────────────────────────────────────────────
-function TripListItem({ trip, onEdit, onDelete, onArchive, onClick, t, locale, isAdmin }: Omit<TripCardProps, 'dark'>): React.ReactElement {
+function TripListItem({ trip, onEdit, onDelete, onArchive, onClick, t, locale }: Omit<TripCardProps, 'dark'>): React.ReactElement {
   const status = getTripStatus(trip)
   const [hovered, setHovered] = useState(false)
 
@@ -409,11 +409,11 @@ function TripListItem({ trip, onEdit, onDelete, onArchive, onClick, t, locale, i
       </div>
 
       {/* Actions */}
-      {(!!trip.is_owner || isAdmin) && (
+      {(onEdit || onArchive || onDelete) && (
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-        <CardAction onClick={() => onEdit(trip)} icon={<Edit2 size={12} />} label="" />
-        <CardAction onClick={() => onArchive(trip.id)} icon={<Archive size={12} />} label="" />
-        <CardAction onClick={() => onDelete(trip)} icon={<Trash2 size={12} />} label="" danger />
+        {onEdit && <CardAction onClick={() => onEdit(trip)} icon={<Edit2 size={12} />} label="" />}
+        {onArchive && <CardAction onClick={() => onArchive(trip.id)} icon={<Archive size={12} />} label="" />}
+        {onDelete && <CardAction onClick={() => onDelete(trip)} icon={<Trash2 size={12} />} label="" danger />}
       </div>
       )}
     </div>
@@ -423,16 +423,15 @@ function TripListItem({ trip, onEdit, onDelete, onArchive, onClick, t, locale, i
 // ── Archived Trip Row ────────────────────────────────────────────────────────
 interface ArchivedRowProps {
   trip: DashboardTrip
-  onEdit: (trip: DashboardTrip) => void
-  onUnarchive: (id: number) => void
-  onDelete: (trip: DashboardTrip) => void
+  onEdit?: (trip: DashboardTrip) => void
+  onUnarchive?: (id: number) => void
+  onDelete?: (trip: DashboardTrip) => void
   onClick: (trip: DashboardTrip) => void
   t: (key: string, params?: Record<string, string | number | null>) => string
   locale: string
-  isAdmin?: boolean
 }
 
-function ArchivedRow({ trip, onEdit, onUnarchive, onDelete, onClick, t, locale, isAdmin }: ArchivedRowProps): React.ReactElement {
+function ArchivedRow({ trip, onEdit, onUnarchive, onDelete, onClick, t, locale }: ArchivedRowProps): React.ReactElement {
   return (
     <div onClick={() => onClick(trip)} style={{
       display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
@@ -458,18 +457,18 @@ function ArchivedRow({ trip, onEdit, onUnarchive, onDelete, onClick, t, locale, 
           </div>
         )}
       </div>
-      {(!!trip.is_owner || isAdmin) && (
+      {(onEdit || onUnarchive || onDelete) && (
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-        <button onClick={() => onUnarchive(trip.id)} title={t('dashboard.restore')} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-muted)' }}
+        {onUnarchive && <button onClick={() => onUnarchive(trip.id)} title={t('dashboard.restore')} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-muted)' }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-faint)'; e.currentTarget.style.color = 'var(--text-primary)' }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
           <ArchiveRestore size={12} /> {t('dashboard.restore')}
-        </button>
-        <button onClick={() => onDelete(trip)} title={t('common.delete')} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-faint)' }}
+        </button>}
+        {onDelete && <button onClick={() => onDelete(trip)} title={t('common.delete')} style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'var(--bg-card)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-faint)' }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = '#fecaca'; e.currentTarget.style.color = '#ef4444' }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.color = 'var(--text-faint)' }}>
           <Trash2 size={12} />
-        </button>
+        </button>}
       </div>
       )}
     </div>
@@ -551,9 +550,9 @@ export default function DashboardPage(): React.ReactElement {
   const navigate = useNavigate()
   const toast = useToast()
   const { t, locale } = useTranslation()
-  const { demoMode, user } = useAuthStore()
-  const isAdmin = user?.role === 'admin'
+  const { demoMode } = useAuthStore()
   const { settings, updateSetting } = useSettingsStore()
+  const can = useCanDo()
   const dm = settings.dark_mode
   const dark = dm === true || dm === 'dark' || (dm === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const showCurrency = settings.dashboard_currency !== 'off'
@@ -681,7 +680,7 @@ export default function DashboardPage(): React.ReactElement {
                 title={viewMode === 'grid' ? t('dashboard.listView') : t('dashboard.gridView')}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 14px',
+                  padding: '0 14px', height: 37,
                   background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12,
                   cursor: 'pointer', color: 'var(--text-faint)', fontFamily: 'inherit',
                   transition: 'background 0.15s, border-color 0.15s',
@@ -696,7 +695,7 @@ export default function DashboardPage(): React.ReactElement {
                 onClick={() => setShowWidgetSettings(s => s ? false : true)}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 14px',
+                  padding: '0 14px', height: 37,
                   background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 12,
                   cursor: 'pointer', color: 'var(--text-faint)', fontFamily: 'inherit',
                   transition: 'background 0.15s, border-color 0.15s',
@@ -706,7 +705,7 @@ export default function DashboardPage(): React.ReactElement {
               >
                 <Settings size={15} />
               </button>
-              <button
+              {can('trip_create') && <button
                 onClick={() => { setEditingTrip(null); setShowForm(true) }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px',
@@ -718,7 +717,7 @@ export default function DashboardPage(): React.ReactElement {
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
               <Plus size={15} /> {t('dashboard.newTrip')}
-              </button>
+              </button>}
             </div>
           </div>
 
@@ -783,12 +782,12 @@ export default function DashboardPage(): React.ReactElement {
               <p style={{ margin: '0 0 24px', fontSize: 14, color: '#9ca3af', maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' }}>
                 {t('dashboard.emptyText')}
               </p>
-              <button
+              {can('trip_create') && <button
                 onClick={() => { setEditingTrip(null); setShowForm(true) }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 22px', background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 <Plus size={16} /> {t('dashboard.emptyButton')}
-              </button>
+              </button>}
             </div>
           )}
 
@@ -796,10 +795,10 @@ export default function DashboardPage(): React.ReactElement {
           {!isLoading && spotlight && viewMode === 'grid' && (
             <SpotlightCard
               trip={spotlight}
-              t={t} locale={locale} dark={dark} isAdmin={isAdmin}
-              onEdit={tr => { setEditingTrip(tr); setShowForm(true) }}
-              onDelete={handleDelete}
-              onArchive={handleArchive}
+              t={t} locale={locale} dark={dark}
+              onEdit={(can('trip_edit', spotlight) || can('trip_cover_upload', spotlight)) ? tr => { setEditingTrip(tr); setShowForm(true) } : undefined}
+              onDelete={can('trip_delete', spotlight) ? handleDelete : undefined}
+              onArchive={can('trip_archive', spotlight) ? handleArchive : undefined}
               onClick={tr => navigate(`/trips/${tr.id}`)}
             />
           )}
@@ -812,10 +811,10 @@ export default function DashboardPage(): React.ReactElement {
                   <TripCard
                     key={trip.id}
                     trip={trip}
-                    t={t} locale={locale} isAdmin={isAdmin}
-                    onEdit={tr => { setEditingTrip(tr); setShowForm(true) }}
-                    onDelete={handleDelete}
-                    onArchive={handleArchive}
+                    t={t} locale={locale}
+                    onEdit={(can('trip_edit', trip) || can('trip_cover_upload', trip)) ? tr => { setEditingTrip(tr); setShowForm(true) } : undefined}
+                    onDelete={can('trip_delete', trip) ? handleDelete : undefined}
+                    onArchive={can('trip_archive', trip) ? handleArchive : undefined}
                     onClick={tr => navigate(`/trips/${tr.id}`)}
                   />
                 ))}
@@ -826,10 +825,10 @@ export default function DashboardPage(): React.ReactElement {
                   <TripListItem
                     key={trip.id}
                     trip={trip}
-                    t={t} locale={locale} isAdmin={isAdmin}
-                    onEdit={tr => { setEditingTrip(tr); setShowForm(true) }}
-                    onDelete={handleDelete}
-                    onArchive={handleArchive}
+                    t={t} locale={locale}
+                    onEdit={(can('trip_edit', trip) || can('trip_cover_upload', trip)) ? tr => { setEditingTrip(tr); setShowForm(true) } : undefined}
+                    onDelete={can('trip_delete', trip) ? handleDelete : undefined}
+                    onArchive={can('trip_archive', trip) ? handleArchive : undefined}
                     onClick={tr => navigate(`/trips/${tr.id}`)}
                   />
                 ))}
@@ -856,10 +855,10 @@ export default function DashboardPage(): React.ReactElement {
                     <ArchivedRow
                       key={trip.id}
                       trip={trip}
-                      t={t} locale={locale} isAdmin={isAdmin}
-                      onEdit={tr => { setEditingTrip(tr); setShowForm(true) }}
-                      onUnarchive={handleUnarchive}
-                      onDelete={handleDelete}
+                      t={t} locale={locale}
+                      onEdit={(can('trip_edit', trip) || can('trip_cover_upload', trip)) ? tr => { setEditingTrip(tr); setShowForm(true) } : undefined}
+                      onUnarchive={can('trip_archive', trip) ? handleUnarchive : undefined}
+                      onDelete={can('trip_delete', trip) ? handleDelete : undefined}
                       onClick={tr => navigate(`/trips/${tr.id}`)}
                     />
                   ))}

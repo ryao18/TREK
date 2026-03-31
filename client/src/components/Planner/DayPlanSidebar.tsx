@@ -1406,7 +1406,7 @@ export default function DayPlanSidebar({
       {/* Notiz-Popup-Modal — über Portal gerendert, um den backdropFilter-Stapelkontext zu umgehen */}
       {Object.entries(noteUi).map(([dayId, ui]) => ui && ReactDOM.createPortal(
         <div key={dayId} style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
+          position: 'fixed', inset: 0, zIndex: 10000,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(3px)',
         }} onClick={() => cancelNote(Number(dayId))}>

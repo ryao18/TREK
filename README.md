@@ -137,16 +137,9 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - JWT_SECRET=${JWT_SECRET:-} # Auto-generated if not set; persist across restarts for stable sessions
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-} # Comma-separated origins for CORS and email notification links
       - TZ=${TZ:-UTC} # Timezone for logs, reminders and scheduled tasks (e.g. Europe/Berlin)
       - LOG_LEVEL=${LOG_LEVEL:-info} # info = concise user actions; debug = verbose admin-level details
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-} # Comma-separated origins for CORS and email notification links
-      - FORCE_HTTPS=true # Redirect HTTP to HTTPS when behind a TLS-terminating proxy
-      - TRUST_PROXY=1 # Number of trusted proxies (for X-Forwarded-For / real client IP)
-      - OIDC_ISSUER=https://auth.example.com # OpenID Connect provider URL
-      - OIDC_CLIENT_ID=trek # OpenID Connect client ID
-      - OIDC_CLIENT_SECRET=supersecret # OpenID Connect client secret
-      - OIDC_DISPLAY_NAME=SSO # Label shown on the SSO login button
-      - OIDC_ONLY=false # Set true to disable local password auth entirely (SSO only)
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -157,7 +150,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
 ```
 
 ```bash

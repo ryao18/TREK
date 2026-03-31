@@ -253,7 +253,7 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('members.shareTrip')} size="3xl">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }} className="share-modal-grid">
+      <div style={{ display: 'grid', gridTemplateColumns: canManageShare ? '1fr 1fr' : '1fr', gap: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }} className="share-modal-grid">
         <style>{`@media (max-width: 640px) { .share-modal-grid { grid-template-columns: 1fr !important; } }`}</style>
 
         {/* Left column: Members */}
@@ -323,7 +323,7 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {allMembers.map(member => {
                 const isSelf = member.id === user?.id
-                const canRemove = isSelf || (canManageMembers && (isCurrentOwner ? member.role !== 'owner' : false))
+                const canRemove = isSelf || (canManageMembers && member.role !== 'owner')
                 return (
                   <div key={member.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10,

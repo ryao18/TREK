@@ -229,9 +229,9 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
             <span style={{ fontSize: 13, color: 'var(--text-faint)' }}>
               {filter === 'unplanned' ? t('places.allPlanned') : t('places.noneFound')}
             </span>
-            <button onClick={onAddPlace} style={{ fontSize: 12, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+            {canEditPlaces && <button onClick={onAddPlace} style={{ fontSize: 12, color: 'var(--text-primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
               {t('places.addPlace')}
-            </button>
+            </button>}
           </div>
         ) : (
           filtered.map(place => {

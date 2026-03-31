@@ -4,6 +4,7 @@ import { Calendar, Camera, X, Clipboard, UserPlus, Bell } from 'lucide-react'
 import { tripsApi, authApi } from '../../api/client'
 import CustomSelect from '../shared/CustomSelect'
 import { useAuthStore } from '../../store/authStore'
+import { useCanDo } from '../../store/permissionsStore'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 import { CustomDatePicker } from '../shared/CustomDateTimePicker'
@@ -25,6 +26,9 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
   const currentUser = useAuthStore(s => s.user)
   const tripRemindersEnabled = useAuthStore(s => s.tripRemindersEnabled)
   const setTripRemindersEnabled = useAuthStore(s => s.setTripRemindersEnabled)
+  const can = useCanDo()
+  const canUploadCover = !isEditing || can('trip_cover_upload', trip)
+  const canEditTrip = !isEditing || can('trip_edit', trip)
 
   const [formData, setFormData] = useState({
     title: '',
@@ -174,6 +178,7 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
 
   // Paste support for cover image
   const handlePaste = (e) => {
+    if (!canUploadCover) return
     const items = e.clipboardData?.items
     if (!items) return
     for (const item of Array.from(items)) {
@@ -231,8 +236,8 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{error}</div>
         )}
 
-        {/* Cover image — available for both create and edit */}
-        <div>
+        {/* Cover image — gated by trip_cover_upload permission */}
+        {canUploadCover && <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.coverImage')}</label>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverChange} />
           {coverPreview ? (
@@ -260,20 +265,20 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
               <Camera size={15} /> {uploadingCover ? t('common.uploading') : t('dashboard.addCoverImage')}
             </button>
           )}
-        </div>
+        </div>}
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">
             {t('dashboard.tripTitle')} <span className="text-red-500">*</span>
           </label>
-          <input type="text" value={formData.title} onChange={e => update('title', e.target.value)}
-            required placeholder={t('dashboard.tripTitlePlaceholder')} className={inputCls} />
+          <input type="text" value={formData.title} onChange={e => canEditTrip && update('title', e.target.value)}
+            required readOnly={!canEditTrip} placeholder={t('dashboard.tripTitlePlaceholder')} className={inputCls} />
         </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.tripDescription')}</label>
-          <textarea value={formData.description} onChange={e => update('description', e.target.value)}
-            placeholder={t('dashboard.tripDescriptionPlaceholder')} rows={3}
+          <textarea value={formData.description} onChange={e => canEditTrip && update('description', e.target.value)}
+            readOnly={!canEditTrip} placeholder={t('dashboard.tripDescriptionPlaceholder')} rows={3}
             className={`${inputCls} resize-none`} />
         </div>
 

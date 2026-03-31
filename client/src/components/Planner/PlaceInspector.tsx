@@ -122,7 +122,7 @@ interface PlaceInspectorProps {
   onAssignToDay: (placeId: number, dayId: number) => void
   onRemoveAssignment: (assignmentId: number, dayId: number) => void
   files: TripFile[]
-  onFileUpload: (fd: FormData) => Promise<void>
+  onFileUpload?: (fd: FormData) => Promise<void>
   tripMembers?: TripMember[]
   onSetParticipants: (assignmentId: number, dayId: number, participantIds: number[]) => void
   onUpdatePlace: (placeId: number, data: Partial<Place>) => void

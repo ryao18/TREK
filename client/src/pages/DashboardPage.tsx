@@ -410,7 +410,7 @@ function TripListItem({ trip, onEdit, onDelete, onArchive, onClick, t, locale, i
       </div>
 
       {/* Actions */}
-      {(!!trip.is_owner || isAdmin) && (
+      {(onEdit || onArchive || onDelete) && (
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
         {onEdit && <CardAction onClick={() => onEdit(trip)} icon={<Edit2 size={12} />} label="" />}
         {onArchive && <CardAction onClick={() => onArchive(trip.id)} icon={<Archive size={12} />} label="" />}

@@ -1134,12 +1134,12 @@ export default function CollabNotes({ tripId, currentUser }: CollabNotesProps) {
           {t('collab.notes.title')}
         </h3>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button onClick={() => setShowSettings(true)} title={t('collab.notes.categorySettings') || 'Categories'}
+          {canEdit && <button onClick={() => setShowSettings(true)} title={t('collab.notes.categorySettings') || 'Categories'}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-faint)', transition: 'color 0.12s' }}
             onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
             onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
             <Settings size={14} />
-          </button>
+          </button>}
           {canEdit && <button onClick={() => setShowNewModal(true)}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 99, padding: '6px 12px', background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 11, fontWeight: 600, fontFamily: FONT, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <Plus size={12} />

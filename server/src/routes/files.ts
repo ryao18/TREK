@@ -226,6 +226,8 @@ router.patch('/:id/star', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('file_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ?').get(id, tripId) as TripFile | undefined;
   if (!file) return res.status(404).json({ error: 'File not found' });
@@ -263,6 +265,8 @@ router.post('/:id/restore', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('file_delete', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ? AND deleted_at IS NOT NULL').get(id, tripId) as TripFile | undefined;
   if (!file) return res.status(404).json({ error: 'File not found in trash' });
@@ -281,6 +285,8 @@ router.delete('/:id/permanent', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('file_delete', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ? AND deleted_at IS NOT NULL').get(id, tripId) as TripFile | undefined;
   if (!file) return res.status(404).json({ error: 'File not found in trash' });
@@ -302,6 +308,8 @@ router.delete('/trash/empty', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('file_delete', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const trashed = db.prepare('SELECT * FROM trip_files WHERE trip_id = ? AND deleted_at IS NOT NULL').all(tripId) as TripFile[];
   for (const file of trashed) {
@@ -323,6 +331,8 @@ router.post('/:id/link', authenticate, (req: Request, res: Response) => {
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('file_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!file) return res.status(404).json({ error: 'File not found' });
@@ -346,6 +356,8 @@ router.delete('/:id/link/:linkId', authenticate, (req: Request, res: Response) =
 
   const trip = verifyTripOwnership(tripId, authReq.user.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('file_edit', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   db.prepare('DELETE FROM file_links WHERE id = ? AND file_id = ?').run(linkId, id);
   res.json({ success: true });

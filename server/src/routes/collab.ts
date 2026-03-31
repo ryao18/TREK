@@ -206,8 +206,8 @@ router.post('/notes/:id/files', authenticate, noteUpload.single('file'), (req: R
   const { tripId, id } = req.params;
   const access = verifyTripAccess(Number(tripId), authReq.user.id);
   if (!access) return res.status(404).json({ error: 'Trip not found' });
-  if (!checkPermission('collab_edit', authReq.user.role, access.user_id, authReq.user.id, access.user_id !== authReq.user.id))
-    return res.status(403).json({ error: 'No permission' });
+  if (!checkPermission('file_upload', authReq.user.role, access.user_id, authReq.user.id, access.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission to upload files' });
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const note = db.prepare('SELECT id FROM collab_notes WHERE id = ? AND trip_id = ?').get(id, tripId);

@@ -169,6 +169,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
   }, [])
 
   const handleMapContextMenu = useCallback(async (e) => {
+    if (!can('place_edit', trip)) return
     e.originalEvent?.preventDefault()
     const { lat, lng } = e.latlng
     setPrefillCoords({ lat, lng })

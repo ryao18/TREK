@@ -12,7 +12,7 @@ import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 const router = express.Router();
 
 const MS_PER_DAY = 86400000;
-const MAX_TRIP_DAYS = 90;
+const MAX_TRIP_DAYS = 365;
 const MAX_COVER_SIZE = 20 * 1024 * 1024; // 20 MB
 
 const coversDir = path.join(__dirname, '../../uploads/covers');

@@ -123,18 +123,19 @@ async function fetchWikimediaPhoto(lat: number, lng: number, name?: string): Pro
         action: 'query', format: 'json',
         titles: name,
         prop: 'pageimages',
-        piprop: 'original',
+        piprop: 'thumbnail',
+        pithumbsize: '400',
         pilimit: '1',
         redirects: '1',
       });
       const res = await fetch(`https://en.wikipedia.org/w/api.php?${searchParams}`, { headers: { 'User-Agent': UA } });
       if (res.ok) {
-        const data = await res.json() as { query?: { pages?: Record<string, { original?: { source?: string } }> } };
+        const data = await res.json() as { query?: { pages?: Record<string, { thumbnail?: { source?: string } }> } };
         const pages = data.query?.pages;
         if (pages) {
           for (const page of Object.values(pages)) {
-            if (page.original?.source) {
-              return { photoUrl: page.original.source, attribution: 'Wikipedia' };
+            if (page.thumbnail?.source) {
+              return { photoUrl: page.thumbnail.source, attribution: 'Wikipedia' };
             }
           }
         }
@@ -204,7 +205,7 @@ function getMapsKey(userId: number): string | null {
   return decrypt_api_key(admin?.maps_api_key) || null;
 }
 
-const photoCache = new Map<string, { photoUrl: string; attribution: string | null; fetchedAt: number }>();
+const photoCache = new Map<string, { photoUrl: string; attribution: string | null; fetchedAt: number; error?: boolean }>();
 const PHOTO_TTL = 12 * 60 * 60 * 1000; // 12 hours
 const CACHE_MAX_ENTRIES = 1000;
 const CACHE_PRUNE_TARGET = 500;
@@ -380,6 +381,9 @@ router.get('/place-photo/:placeId', authenticate, async (req: Request, res: Resp
 
   const cached = photoCache.get(placeId);
   if (cached && Date.now() - cached.fetchedAt < PHOTO_TTL) {
+    if (cached.error) {
+      return res.status(404).json({ error: `(Cache) No photo available` });
+    }
     return res.json({ photoUrl: cached.photoUrl, attribution: cached.attribution });
   }
 
@@ -398,10 +402,12 @@ router.get('/place-photo/:placeId', authenticate, async (req: Request, res: Resp
         if (wiki) {
           photoCache.set(placeId, { ...wiki, fetchedAt: Date.now() });
           return res.json(wiki);
+        } else {
+          photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
         }
       } catch { /* fall through */ }
     }
-    return res.status(404).json({ error: 'No photo available' });
+    return res.status(404).json({ error: '(Wikimedia) No photo available' });
   }
 
   // Google Photos
@@ -416,11 +422,13 @@ router.get('/place-photo/:placeId', authenticate, async (req: Request, res: Resp
 
     if (!detailsRes.ok) {
       console.error('Google Places photo details error:', details.error?.message || detailsRes.status);
-      return res.status(404).json({ error: 'Photo could not be retrieved' });
+      photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
+      return res.status(404).json({ error: '(Google Places) Photo could not be retrieved' });
     }
 
     if (!details.photos?.length) {
-      return res.status(404).json({ error: 'No photo available' });
+      photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
+      return res.status(404).json({ error: '(Google Places) No photo available' });
     }
 
     const photo = details.photos[0];
@@ -435,7 +443,8 @@ router.get('/place-photo/:placeId', authenticate, async (req: Request, res: Resp
     const photoUrl = mediaData.photoUri;
 
     if (!photoUrl) {
-      return res.status(404).json({ error: 'Photo URL not available' });
+      photoCache.set(placeId, { photoUrl: '', attribution, fetchedAt: Date.now(), error: true });
+      return res.status(404).json({ error: '(Google Places) Photo URL not available' });
     }
 
     photoCache.set(placeId, { photoUrl, attribution, fetchedAt: Date.now() });
@@ -451,6 +460,7 @@ router.get('/place-photo/:placeId', authenticate, async (req: Request, res: Resp
     res.json({ photoUrl, attribution });
   } catch (err: unknown) {
     console.error('Place photo error:', err);
+    photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
     res.status(500).json({ error: 'Error fetching photo' });
   }
 });

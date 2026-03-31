@@ -30,7 +30,7 @@ interface PlacesSidebarProps {
   onCategoryFilterChange?: (categoryId: string) => void
 }
 
-export default function PlacesSidebar({
+const PlacesSidebar = React.memo(function PlacesSidebar({
   tripId, places, categories, assignments, selectedDayId, selectedPlaceId,
   onPlaceClick, onAddPlace, onAssignToDay, onEditPlace, onDeletePlace, days, isMobile, onCategoryFilterChange,
 }: PlacesSidebarProps) {
@@ -69,9 +69,9 @@ export default function PlacesSidebar({
   const [catDropOpen, setCatDropOpen] = useState(false)
 
   // Alle geplanten Ort-IDs abrufen (einem Tag zugewiesen)
-  const plannedIds = new Set(
+  const plannedIds = useMemo(() => new Set(
     Object.values(assignments).flatMap(da => da.map(a => a.place?.id).filter(Boolean))
-  )
+  ), [assignments])
 
   const filtered = useMemo(() => places.filter(p => {
     if (filter === 'unplanned' && plannedIds.has(p.id)) return false
@@ -79,7 +79,7 @@ export default function PlacesSidebar({
     if (search && !p.name.toLowerCase().includes(search.toLowerCase()) &&
         !(p.address || '').toLowerCase().includes(search.toLowerCase())) return false
     return true
-  }), [places, filter, categoryFilters, search, plannedIds.size])
+  }), [places, filter, categoryFilters, search, plannedIds])
 
   const isAssignedToSelectedDay = (placeId) =>
     selectedDayId && (assignments[String(selectedDayId)] || []).some(a => a.place?.id === placeId)
@@ -363,4 +363,6 @@ export default function PlacesSidebar({
       <ContextMenu menu={ctxMenu.menu} onClose={ctxMenu.close} />
     </div>
   )
-}
+})
+
+export default PlacesSidebar

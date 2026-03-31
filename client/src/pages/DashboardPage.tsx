@@ -10,6 +10,7 @@ import DemoBanner from '../components/Layout/DemoBanner'
 import CurrencyWidget from '../components/Dashboard/CurrencyWidget'
 import TimezoneWidget from '../components/Dashboard/TimezoneWidget'
 import TripFormModal from '../components/Trips/TripFormModal'
+import ConfirmDialog from '../components/shared/ConfirmDialog'
 import { useToast } from '../components/shared/Toast'
 import {
   Plus, Calendar, Trash2, Edit2, Map, ChevronDown, ChevronUp,
@@ -435,11 +436,11 @@ function ArchivedRow({ trip, onEdit, onUnarchive, onDelete, onClick, t, locale, 
   return (
     <div onClick={() => onClick(trip)} style={{
       display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-      borderRadius: 12, border: '1px solid #f3f4f6', background: 'white', cursor: 'pointer',
+      borderRadius: 12, border: '1px solid var(--border-faint)', background: 'var(--bg-card)', cursor: 'pointer',
       transition: 'border-color 0.12s',
     }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = '#e5e7eb'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = '#f3f4f6'}>
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-primary)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-faint)'}>
       {/* Mini cover */}
       <div style={{
         width: 40, height: 40, borderRadius: 10, flexShrink: 0,
@@ -448,8 +449,8 @@ function ArchivedRow({ trip, onEdit, onUnarchive, onDelete, onClick, t, locale, 
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trip.title}</span>
-          {!trip.is_owner && <span style={{ fontSize: 10, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 99, flexShrink: 0 }}>{t('dashboard.shared')}</span>}
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trip.title}</span>
+          {!trip.is_owner && <span style={{ fontSize: 10, color: 'var(--text-faint)', background: 'var(--bg-tertiary)', padding: '1px 6px', borderRadius: 99, flexShrink: 0 }}>{t('dashboard.shared')}</span>}
         </div>
         {trip.start_date && (
           <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
@@ -537,6 +538,7 @@ export default function DashboardPage(): React.ReactElement {
   const [showArchived, setShowArchived] = useState<boolean>(false)
   const [showWidgetSettings, setShowWidgetSettings] = useState<boolean | 'mobile'>(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => (localStorage.getItem('trek_dashboard_view') as 'grid' | 'list') || 'grid')
+  const [deleteTrip, setDeleteTrip] = useState<DashboardTrip | null>(null)
 
   const toggleViewMode = () => {
     setViewMode(prev => {
@@ -606,16 +608,18 @@ export default function DashboardPage(): React.ReactElement {
     }
   }
 
-  const handleDelete = async (trip) => {
-    if (!confirm(t('dashboard.confirm.delete', { title: trip.title }))) return
+  const handleDelete = (trip) => setDeleteTrip(trip)
+  const confirmDelete = async () => {
+    if (!deleteTrip) return
     try {
-      await tripsApi.delete(trip.id)
-      setTrips(prev => prev.filter(t => t.id !== trip.id))
-      setArchivedTrips(prev => prev.filter(t => t.id !== trip.id))
+      await tripsApi.delete(deleteTrip.id)
+      setTrips(prev => prev.filter(t => t.id !== deleteTrip.id))
+      setArchivedTrips(prev => prev.filter(t => t.id !== deleteTrip.id))
       toast.success(t('dashboard.toast.deleted'))
     } catch {
       toast.error(t('dashboard.toast.deleteError'))
     }
+    setDeleteTrip(null)
   }
 
   const handleArchive = async (id) => {
@@ -902,6 +906,14 @@ export default function DashboardPage(): React.ReactElement {
         onSave={editingTrip ? handleUpdate : handleCreate}
         trip={editingTrip}
         onCoverUpdate={handleCoverUpdate}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deleteTrip}
+        onClose={() => setDeleteTrip(null)}
+        onConfirm={confirmDelete}
+        title={t('common.delete')}
+        message={t('dashboard.confirm.delete', { title: deleteTrip?.title || '' })}
       />
 
       <style>{`

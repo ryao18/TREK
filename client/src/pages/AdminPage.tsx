@@ -15,6 +15,7 @@ import AddonManager from '../components/Admin/AddonManager'
 import PackingTemplateManager from '../components/Admin/PackingTemplateManager'
 import AuditLogPanel from '../components/Admin/AuditLogPanel'
 import AdminMcpTokensPanel from '../components/Admin/AdminMcpTokensPanel'
+import PermissionsPanel from '../components/Admin/PermissionsPanel'
 import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, AlertTriangle, RefreshCw, GitBranch, Sun, Link2, Copy, Plus } from 'lucide-react'
 import CustomSelect from '../components/shared/CustomSelect'
 
@@ -61,6 +62,7 @@ export default function AdminPage(): React.ReactElement {
     { id: 'users', label: t('admin.tabs.users') },
     { id: 'config', label: t('admin.tabs.config') },
     { id: 'addons', label: t('admin.tabs.addons') },
+    { id: 'permissions', label: t('admin.tabs.permissions') },
     { id: 'settings', label: t('admin.tabs.settings') },
     { id: 'backup', label: t('admin.tabs.backup') },
     { id: 'audit', label: t('admin.tabs.audit') },
@@ -1152,6 +1154,8 @@ export default function AdminPage(): React.ReactElement {
               </div>
             </div>
           )}
+
+          {activeTab === 'permissions' && <PermissionsPanel />}
 
           {activeTab === 'backup' && <BackupPanel />}
 

@@ -3,10 +3,11 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { db, canAccessTrip } from '../db/database';
+import { db, canAccessTrip, getTripOwnerId } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { validateStringLengths } from '../middleware/validate';
+import { checkPermission } from '../services/permissions';
 import { AuthRequest, CollabNote, CollabPoll, CollabMessage, TripFile } from '../types';
 
 interface ReactionRow {
@@ -112,6 +113,10 @@ router.post('/notes', authenticate, (req: Request, res: Response) => {
   const { tripId } = req.params;
   const { title, content, category, color, website } = req.body;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
   if (!title) return res.status(400).json({ error: 'Title is required' });
 
   const result = db.prepare(`
@@ -138,6 +143,10 @@ router.put('/notes/:id', authenticate, (req: Request, res: Response) => {
   const { tripId, id } = req.params;
   const { title, content, category, color, pinned, website } = req.body;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const existing = db.prepare('SELECT * FROM collab_notes WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!existing) return res.status(404).json({ error: 'Note not found' });
@@ -175,6 +184,10 @@ router.delete('/notes/:id', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const existing = db.prepare('SELECT id FROM collab_notes WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!existing) return res.status(404).json({ error: 'Note not found' });
@@ -195,6 +208,10 @@ router.post('/notes/:id/files', authenticate, noteUpload.single('file'), (req: R
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
   if (!verifyTripAccess(Number(tripId), authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const note = db.prepare('SELECT id FROM collab_notes WHERE id = ? AND trip_id = ?').get(id, tripId);
@@ -213,6 +230,10 @@ router.delete('/notes/:id/files/:fileId', authenticate, (req: Request, res: Resp
   const authReq = req as AuthRequest;
   const { tripId, id, fileId } = req.params;
   if (!verifyTripAccess(Number(tripId), authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ? AND note_id = ?').get(fileId, id) as TripFile | undefined;
   if (!file) return res.status(404).json({ error: 'File not found' });
@@ -278,6 +299,10 @@ router.post('/polls', authenticate, (req: Request, res: Response) => {
   const { tripId } = req.params;
   const { question, options, multiple, multiple_choice, deadline } = req.body;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
   if (!question) return res.status(400).json({ error: 'Question is required' });
   if (!Array.isArray(options) || options.length < 2) {
     return res.status(400).json({ error: 'At least 2 options are required' });
@@ -300,6 +325,10 @@ router.post('/polls/:id/vote', authenticate, (req: Request, res: Response) => {
   const { tripId, id } = req.params;
   const { option_index } = req.body;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const poll = db.prepare('SELECT * FROM collab_polls WHERE id = ? AND trip_id = ?').get(id, tripId) as CollabPoll | undefined;
   if (!poll) return res.status(404).json({ error: 'Poll not found' });
@@ -332,6 +361,10 @@ router.put('/polls/:id/close', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const poll = db.prepare('SELECT * FROM collab_polls WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!poll) return res.status(404).json({ error: 'Poll not found' });
@@ -347,6 +380,10 @@ router.delete('/polls/:id', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const poll = db.prepare('SELECT id FROM collab_polls WHERE id = ? AND trip_id = ?').get(id, tripId);
   if (!poll) return res.status(404).json({ error: 'Poll not found' });
@@ -401,6 +438,10 @@ router.post('/messages', authenticate, validateStringLengths({ text: 5000 }), (r
   const { tripId } = req.params;
   const { text, reply_to } = req.body;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
   if (!text || !text.trim()) return res.status(400).json({ error: 'Message text is required' });
 
   if (reply_to) {
@@ -439,6 +480,10 @@ router.post('/messages/:id/react', authenticate, (req: Request, res: Response) =
   const { tripId, id } = req.params;
   const { emoji } = req.body;
   if (!verifyTripAccess(Number(tripId), authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
   if (!emoji) return res.status(400).json({ error: 'Emoji is required' });
 
   const msg = db.prepare('SELECT id FROM collab_messages WHERE id = ? AND trip_id = ?').get(id, tripId);
@@ -460,6 +505,10 @@ router.delete('/messages/:id', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
   if (!verifyTripAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('collab_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const message = db.prepare('SELECT * FROM collab_messages WHERE id = ? AND trip_id = ?').get(id, tripId) as CollabMessage | undefined;
   if (!message) return res.status(404).json({ error: 'Message not found' });

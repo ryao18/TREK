@@ -184,6 +184,8 @@ export const adminApi = {
     apiClient.get('/admin/audit-log', { params }).then(r => r.data),
   mcpTokens: () => apiClient.get('/admin/mcp-tokens').then(r => r.data),
   deleteMcpToken: (id: number) => apiClient.delete(`/admin/mcp-tokens/${id}`).then(r => r.data),
+  getPermissions: () => apiClient.get('/admin/permissions').then(r => r.data),
+  updatePermissions: (permissions: Record<string, string>) => apiClient.put('/admin/permissions', { permissions }).then(r => r.data),
 }
 
 export const addonsApi = {

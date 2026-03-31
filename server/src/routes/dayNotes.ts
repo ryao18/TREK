@@ -1,8 +1,9 @@
 import express, { Request, Response } from 'express';
-import { db, canAccessTrip } from '../db/database';
+import { db, canAccessTrip, getTripOwnerId } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { validateStringLengths } from '../middleware/validate';
+import { checkPermission } from '../services/permissions';
 import { AuthRequest, DayNote } from '../types';
 
 const router = express.Router({ mergeParams: true });
@@ -28,6 +29,11 @@ router.post('/', authenticate, validateStringLengths({ text: 500, time: 150 }), 
   const { tripId, dayId } = req.params;
   if (!verifyAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
 
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('day_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
   const day = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(dayId, tripId);
   if (!day) return res.status(404).json({ error: 'Day not found' });
 
@@ -47,6 +53,11 @@ router.put('/:id', authenticate, validateStringLengths({ text: 500, time: 150 })
   const authReq = req as AuthRequest;
   const { tripId, dayId, id } = req.params;
   if (!verifyAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('day_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const note = db.prepare('SELECT * FROM day_notes WHERE id = ? AND day_id = ? AND trip_id = ?').get(id, dayId, tripId) as DayNote | undefined;
   if (!note) return res.status(404).json({ error: 'Note not found' });
@@ -71,6 +82,11 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, dayId, id } = req.params;
   if (!verifyAccess(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
+
+  const tripOwnerId = getTripOwnerId(tripId);
+  if (!tripOwnerId) return res.status(404).json({ error: 'Trip not found' });
+  if (!checkPermission('day_edit', authReq.user.role, tripOwnerId, authReq.user.id, tripOwnerId !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
 
   const note = db.prepare('SELECT id FROM day_notes WHERE id = ? AND day_id = ? AND trip_id = ?').get(id, dayId, tripId);
   if (!note) return res.status(404).json({ error: 'Note not found' });

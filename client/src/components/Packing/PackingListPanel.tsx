@@ -1061,9 +1061,9 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
 
       {/* ── Bag Modal (mobile + click) ── */}
       {showBagModal && bagTrackingEnabled && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, paddingTop: 140, overflowY: 'auto' }}
           onClick={() => setShowBagModal(false)}>
-          <div style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 360, maxHeight: '80vh', overflow: 'auto', padding: 20, boxShadow: '0 16px 48px rgba(0,0,0,0.15)' }}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 360, maxHeight: 'calc(100vh - 80px)', overflow: 'auto', padding: 20, boxShadow: '0 16px 48px rgba(0,0,0,0.15)', flexShrink: 0 }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{t('packing.bags')}</h3>

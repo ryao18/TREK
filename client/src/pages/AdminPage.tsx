@@ -122,7 +122,7 @@ export default function AdminPage(): React.ReactElement {
   const [updating, setUpdating] = useState<boolean>(false)
   const [updateResult, setUpdateResult] = useState<'success' | 'error' | null>(null)
 
-  const { user: currentUser, updateApiKeys, setAppRequireMfa } = useAuthStore()
+  const { user: currentUser, updateApiKeys, setAppRequireMfa, setTripRemindersEnabled } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -999,9 +999,15 @@ export default function AdminPage(): React.ReactElement {
                   </div>
 
                   {/* Notification event toggles — shown when any channel is active */}
-                  {(smtpValues.notification_channel || 'none') !== 'none' && (
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                  {(smtpValues.notification_channel || 'none') !== 'none' && (() => {
+                    const ch = smtpValues.notification_channel || 'none'
+                    const configValid = ch === 'email' ? !!(smtpValues.smtp_host?.trim()) : ch === 'webhook' ? !!(smtpValues.notification_webhook_url?.trim()) : false
+                    return (
+                    <div className={`space-y-2 pt-2 border-t border-slate-100 ${!configValid ? 'opacity-50 pointer-events-none' : ''}`}>
                       <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">{t('admin.notifications.events')}</p>
+                      {!configValid && (
+                        <p className="text-[10px] text-amber-600 mb-3">{t('admin.notifications.configureFirst')}</p>
+                      )}
                       <p className="text-[10px] text-slate-400 mb-3">{t('admin.notifications.eventsHint')}</p>
                       {[
                         { key: 'notify_trip_invite', label: t('settings.notifyTripInvite') },
@@ -1029,7 +1035,8 @@ export default function AdminPage(): React.ReactElement {
                         )
                       })}
                     </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Email (SMTP) settings — shown when email channel is active */}
                   {(smtpValues.notification_channel || 'none') === 'email' && (
@@ -1072,7 +1079,7 @@ export default function AdminPage(): React.ReactElement {
                   {/* Webhook settings — shown when webhook channel is active */}
                   {(smtpValues.notification_channel || 'none') === 'webhook' && (
                     <div className="space-y-3 pt-2 border-t border-slate-100">
-                      <p className="text-xs text-slate-400">{t('admin.webhook.hint') || 'Send notifications to an external webhook (Discord, Slack, etc.).'}</p>
+                      <p className="text-xs text-slate-400">{t('admin.webhook.hint')}</p>
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">Webhook URL</label>
                         <input
@@ -1097,6 +1104,9 @@ export default function AdminPage(): React.ReactElement {
                         try {
                           await authApi.updateAppSettings(payload)
                           toast.success(t('admin.notifications.saved'))
+                          authApi.getAppConfig().then((c: { trip_reminders_enabled?: boolean }) => {
+                            if (c?.trip_reminders_enabled !== undefined) setTripRemindersEnabled(c.trip_reminders_enabled)
+                          }).catch(() => {})
                         } catch { toast.error(t('common.error')) }
                       }}
                       className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"

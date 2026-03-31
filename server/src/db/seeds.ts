@@ -1,10 +1,25 @@
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
 
+function isOidcOnlyConfigured(): boolean {
+  if (process.env.OIDC_ONLY !== 'true') return false;
+  return !!(process.env.OIDC_ISSUER && process.env.OIDC_CLIENT_ID);
+}
+
 function seedAdminAccount(db: Database.Database): void {
   try {
     const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
     if (userCount > 0) return;
+
+    if (isOidcOnlyConfigured()) {
+      console.log('');
+      console.log('╔══════════════════════════════════════════════╗');
+      console.log('║  TREK — OIDC-Only Mode                       ║');
+      console.log('║  First SSO login will become admin.           ║');
+      console.log('╚══════════════════════════════════════════════╝');
+      console.log('');
+      return;
+    }
 
     const bcrypt = require('bcryptjs');
     const password = crypto.randomBytes(12).toString('base64url');

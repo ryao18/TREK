@@ -160,42 +160,55 @@ let reminderTask: ScheduledTask | null = null;
 function startTripReminders(): void {
   if (reminderTask) { reminderTask.stop(); reminderTask = null; }
 
+  try {
+    const { db } = require('./db/database');
+    const getSetting = (key: string) => (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)?.value;
+    const channel = getSetting('notification_channel') || 'none';
+    const reminderEnabled = getSetting('notify_trip_reminder') !== 'false';
+    const hasSmtp = !!(getSetting('smtp_host') || '').trim();
+    const hasWebhook = !!(getSetting('notification_webhook_url') || '').trim();
+    const channelReady = (channel === 'email' && hasSmtp) || (channel === 'webhook' && hasWebhook);
+
+    if (!channelReady || !reminderEnabled) {
+      const { logInfo: li } = require('./services/auditLog');
+      const reason = !channelReady ? `no ${channel === 'none' ? 'notification channel' : channel} configuration` : 'trip reminders disabled in settings';
+      li(`Trip reminders: disabled (${reason})`);
+      return;
+    }
+
+    const tripCount = (db.prepare('SELECT COUNT(*) as c FROM trips WHERE reminder_days > 0 AND start_date IS NOT NULL').get() as { c: number }).c;
+    const { logInfo: liSetup } = require('./services/auditLog');
+    liSetup(`Trip reminders: enabled via ${channel}${tripCount > 0 ? `, ${tripCount} trip(s) with active reminders` : ''}`);
+  } catch {
+    return;
+  }
+
   const tz = process.env.TZ || 'UTC';
   reminderTask = cron.schedule('0 9 * * *', async () => {
     try {
       const { db } = require('./db/database');
-      const { notify } = require('./services/notifications');
-
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dateStr = tomorrow.toISOString().split('T')[0];
+      const { notifyTripMembers } = require('./services/notifications');
 
       const trips = db.prepare(`
-        SELECT t.id, t.title, t.user_id FROM trips t
-        WHERE t.start_date = ?
-      `).all(dateStr) as { id: number; title: string; user_id: number }[];
+        SELECT t.id, t.title, t.user_id, t.reminder_days FROM trips t
+        WHERE t.reminder_days > 0
+          AND t.start_date IS NOT NULL
+          AND t.start_date = date('now', '+' || t.reminder_days || ' days')
+      `).all() as { id: number; title: string; user_id: number; reminder_days: number }[];
 
       for (const trip of trips) {
-        await notify({ userId: trip.user_id, event: 'trip_reminder', params: { trip: trip.title } }).catch(() => {});
-
-        const members = db.prepare('SELECT user_id FROM trip_members WHERE trip_id = ?').all(trip.id) as { user_id: number }[];
-        for (const m of members) {
-          await notify({ userId: m.user_id, event: 'trip_reminder', params: { trip: trip.title } }).catch(() => {});
-        }
+        await notifyTripMembers(trip.id, 0, 'trip_reminder', { trip: trip.title }).catch(() => {});
       }
 
+      const { logInfo: li } = require('./services/auditLog');
       if (trips.length > 0) {
-        const { logInfo: li } = require('./services/auditLog');
-        li(`Trip reminders sent for ${trips.length} trip(s) starting ${dateStr}`);
+        li(`Trip reminders sent for ${trips.length} trip(s): ${trips.map(t => `"${t.title}" (${t.reminder_days}d)`).join(', ')}`);
       }
     } catch (err: unknown) {
       const { logError: le } = require('./services/auditLog');
       le(`Trip reminder check failed: ${err instanceof Error ? err.message : err}`);
     }
   }, { timezone: tz });
-
-  const { logInfo: li4 } = require('./services/auditLog');
-  li4(`Trip reminders scheduled: daily at 09:00 (${tz})`);
 }
 
 function stop(): void {

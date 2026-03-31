@@ -41,6 +41,7 @@ function createTables(db: Database.Database): void {
       currency TEXT DEFAULT 'EUR',
       cover_image TEXT,
       is_archived INTEGER DEFAULT 0,
+      reminder_days INTEGER DEFAULT 3,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );

@@ -105,7 +105,7 @@ router.post('/', authenticate, (req: Request, res: Response) => {
   // Notify trip members about new booking
   import('../services/notifications').then(({ notifyTripMembers }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
-    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, booking: title, type: type || 'booking' }).catch(() => {});
+    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, booking: title, type: type || 'booking' }).catch(() => {});
   });
 });
 
@@ -225,7 +225,7 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
 
   import('../services/notifications').then(({ notifyTripMembers }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
-    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, booking: title || reservation.title, type: type || reservation.type || 'booking' }).catch(() => {});
+    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, booking: title || reservation.title, type: type || reservation.type || 'booking' }).catch(() => {});
   });
 });
 
@@ -250,7 +250,7 @@ router.delete('/:id', authenticate, (req: Request, res: Response) => {
 
   import('../services/notifications').then(({ notifyTripMembers }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
-    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, booking: reservation.title, type: reservation.type || 'booking' }).catch(() => {});
+    notifyTripMembers(Number(tripId), authReq.user.id, 'booking_change', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, booking: reservation.title, type: reservation.type || 'booking' }).catch(() => {});
   });
 });
 

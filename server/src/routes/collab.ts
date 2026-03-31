@@ -129,7 +129,7 @@ router.post('/notes', authenticate, (req: Request, res: Response) => {
 
   import('../services/notifications').then(({ notifyTripMembers }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
-    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username }).catch(() => {});
+    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email }).catch(() => {});
   });
 });
 
@@ -430,7 +430,7 @@ router.post('/messages', authenticate, validateStringLengths({ text: 5000 }), (r
   import('../services/notifications').then(({ notifyTripMembers }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
     const preview = text.trim().length > 80 ? text.trim().substring(0, 80) + '...' : text.trim();
-    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.username, preview }).catch(() => {});
+    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, preview }).catch(() => {});
   });
 });
 

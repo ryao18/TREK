@@ -112,6 +112,8 @@ app.use(enforceGlobalMfaPolicy);
 
       if (res.statusCode >= 500) {
         _logError(`${req.method} ${req.path} ${res.statusCode} ${ms}ms ip=${req.ip}`);
+      } else if (res.statusCode === 401 || res.statusCode === 403) {
+        _logDebug(`${req.method} ${req.path} ${res.statusCode} ${ms}ms ip=${req.ip}`);
       } else if (res.statusCode >= 400) {
         _logWarn(`${req.method} ${req.path} ${res.statusCode} ${ms}ms ip=${req.ip}`);
       }

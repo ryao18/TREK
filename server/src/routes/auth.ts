@@ -18,6 +18,7 @@ import { revokeUserSessions } from '../mcp';
 import { AuthRequest, User } from '../types';
 import { writeAudit, getClientIp } from '../services/auditLog';
 import { decrypt_api_key, maybe_encrypt_api_key } from '../services/apiKeyCrypto';
+import { startTripReminders } from '../scheduler';
 
 authenticator.options = { window: 1 };
 
@@ -185,6 +186,11 @@ router.get('/app-config', (_req: Request, res: Response) => {
   const oidcOnlyMode = oidcConfigured && oidcOnlySetting === 'true';
   const requireMfaRow = db.prepare("SELECT value FROM app_settings WHERE key = 'require_mfa'").get() as { value: string } | undefined;
   const notifChannel = (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_channel'").get() as { value: string } | undefined)?.value || 'none';
+  const tripReminderSetting = (db.prepare("SELECT value FROM app_settings WHERE key = 'notify_trip_reminder'").get() as { value: string } | undefined)?.value;
+  const hasSmtpHost = !!(process.env.SMTP_HOST || (db.prepare("SELECT value FROM app_settings WHERE key = 'smtp_host'").get() as { value: string } | undefined)?.value);
+  const hasWebhookUrl = !!(process.env.NOTIFICATION_WEBHOOK_URL || (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_webhook_url'").get() as { value: string } | undefined)?.value);
+  const channelConfigured = (notifChannel === 'email' && hasSmtpHost) || (notifChannel === 'webhook' && hasWebhookUrl);
+  const tripRemindersEnabled = channelConfigured && tripReminderSetting !== 'false';
   const setupComplete = userCount > 0 && !(db.prepare("SELECT id FROM users WHERE role = 'admin' AND must_change_password = 1 LIMIT 1").get());
   res.json({
     allow_registration: isDemo ? false : allowRegistration,
@@ -202,6 +208,7 @@ router.get('/app-config', (_req: Request, res: Response) => {
     demo_password: isDemo ? 'demo12345' : undefined,
     timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     notification_channel: notifChannel,
+    trip_reminders_enabled: tripRemindersEnabled,
   });
 });
 
@@ -684,6 +691,12 @@ router.put('/app-settings', authenticate, (req: Request, res: Response) => {
     details: summary,
     debugDetails,
   });
+
+  const notifRelated = ['notification_channel', 'notification_webhook_url', 'smtp_host', 'notify_trip_reminder'];
+  if (changedKeys.some(k => notifRelated.includes(k))) {
+    startTripReminders();
+  }
+
   res.json({ success: true });
 });
 

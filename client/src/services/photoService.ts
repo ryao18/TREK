@@ -44,7 +44,7 @@ export function isLoading(key: string): boolean {
 }
 
 // Convert image URL to base64 via canvas (CORS required — Wikimedia supports it)
-function urlToBase64(url: string, size: number = 48): Promise<string | null> {
+export function urlToBase64(url: string, size: number = 48): Promise<string | null> {
   return new Promise(resolve => {
     const img = new Image()
     img.crossOrigin = 'anonymous'

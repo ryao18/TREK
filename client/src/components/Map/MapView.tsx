@@ -264,7 +264,7 @@ function RouteLabel({ midpoint, walkingText, drivingText }: RouteLabelProps) {
 }
 
 // Module-level photo cache shared with PlaceAvatar
-import { getCached, isLoading, fetchPhoto, onPhotoLoaded, onThumbReady, getAllThumbs } from '../../services/photoService'
+import { getCached, isLoading, fetchPhoto, onPhotoLoaded, onThumbReady, getAllThumbs, urlToBase64 } from '../../services/photoService'
 
 // Live location tracker — blue dot with pulse animation (like Apple/Google Maps)
 function LocationTracker() {
@@ -400,7 +400,8 @@ export const MapView = memo(function MapView({
     }
 
     for (const place of places) {
-      if (place.image_url) continue
+      // Already have a base64 data URL — nothing to do
+      if (place.image_url && place.image_url.startsWith('data:')) continue
       const cacheKey = place.google_place_id || place.osm_id || `${place.lat},${place.lng}`
       if (!cacheKey) continue
 
@@ -413,7 +414,15 @@ export const MapView = memo(function MapView({
       // Subscribe for when thumb becomes available
       cleanups.push(onThumbReady(cacheKey, thumb => setThumb(cacheKey, thumb)))
 
-      // Start fetch if not yet started
+      // Place has an HTTP image URL stored in DB — convert to base64 directly
+      if (place.image_url && !isLoading(cacheKey)) {
+        urlToBase64(place.image_url).then(thumb => {
+          if (thumb) setThumb(cacheKey, thumb)
+        })
+        continue
+      }
+
+      // No image URL — fetch from API
       if (!cached && !isLoading(cacheKey)) {
         const photoId = place.google_place_id || place.osm_id
         if (photoId || (place.lat && place.lng)) {

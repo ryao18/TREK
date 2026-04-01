@@ -110,6 +110,7 @@ export interface BudgetItem {
   paid_by: number | null
   persons: number
   members: BudgetMember[]
+  expense_date: string | null
 }
 
 export interface BudgetMember {

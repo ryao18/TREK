@@ -436,6 +436,9 @@ function runMigrations(db: Database.Database): void {
     () => {
       try { db.exec('ALTER TABLE trips ADD COLUMN reminder_days INTEGER DEFAULT 3'); } catch {}
     },
+    () => {
+      try { db.exec('ALTER TABLE budget_items ADD COLUMN expense_date TEXT DEFAULT NULL'); } catch {}
+    },
   ];
 
   if (currentVersion < migrations.length) {

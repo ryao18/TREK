@@ -927,6 +927,7 @@ const fr: Record<string, string> = {
 
   // Budget
   'budget.title': 'Budget',
+  'budget.exportCsv': 'Exporter CSV',
   'budget.emptyTitle': 'Aucun budget créé',
   'budget.emptyText': 'Créez des catégories et des entrées pour planifier votre budget de voyage',
   'budget.emptyPlaceholder': 'Nom de la catégorie…',
@@ -941,6 +942,7 @@ const fr: Record<string, string> = {
   'budget.table.perDay': 'Par jour',
   'budget.table.perPersonDay': 'P. p / Jour',
   'budget.table.note': 'Note',
+  'budget.table.date': 'Date',
   'budget.newEntry': 'Nouvelle entrée',
   'budget.defaultEntry': 'Nouvelle entrée',
   'budget.defaultCategory': 'Nouvelle catégorie',

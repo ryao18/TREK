@@ -927,6 +927,7 @@ const zh: Record<string, string> = {
 
   // Budget
   'budget.title': '预算',
+  'budget.exportCsv': '导出 CSV',
   'budget.emptyTitle': '尚未创建预算',
   'budget.emptyText': '创建分类和条目来规划旅行预算',
   'budget.emptyPlaceholder': '输入分类名称...',
@@ -941,6 +942,7 @@ const zh: Record<string, string> = {
   'budget.table.perDay': '日均',
   'budget.table.perPersonDay': '人日均',
   'budget.table.note': '备注',
+  'budget.table.date': '日期',
   'budget.newEntry': '新建条目',
   'budget.defaultEntry': '新建条目',
   'budget.defaultCategory': '新分类',

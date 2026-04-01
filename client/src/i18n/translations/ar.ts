@@ -931,6 +931,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
 
   // Budget
   'budget.title': 'الميزانية',
+  'budget.exportCsv': 'تصدير CSV',
   'budget.emptyTitle': 'لم يتم إنشاء ميزانية بعد',
   'budget.emptyText': 'أنشئ فئات وإدخالات لتخطيط ميزانية سفرك',
   'budget.emptyPlaceholder': 'أدخل اسم الفئة...',
@@ -945,6 +946,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'budget.table.perDay': 'لكل يوم',
   'budget.table.perPersonDay': 'لكل شخص / يوم',
   'budget.table.note': 'ملاحظة',
+  'budget.table.date': 'التاريخ',
   'budget.newEntry': 'إدخال جديد',
   'budget.defaultEntry': 'إدخال جديد',
   'budget.defaultCategory': 'فئة جديدة',

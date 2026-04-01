@@ -927,6 +927,7 @@ const ru: Record<string, string> = {
 
   // Budget
   'budget.title': 'Бюджет',
+  'budget.exportCsv': 'Экспорт CSV',
   'budget.emptyTitle': 'Бюджет ещё не создан',
   'budget.emptyText': 'Создайте категории и записи для планирования бюджета поездки',
   'budget.emptyPlaceholder': 'Введите название категории...',
@@ -941,6 +942,7 @@ const ru: Record<string, string> = {
   'budget.table.perDay': 'В день',
   'budget.table.perPersonDay': 'Чел. / день',
   'budget.table.note': 'Заметка',
+  'budget.table.date': 'Дата',
   'budget.newEntry': 'Новая запись',
   'budget.defaultEntry': 'Новая запись',
   'budget.defaultCategory': 'Новая категория',

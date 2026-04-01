@@ -888,6 +888,7 @@ const es: Record<string, string> = {
 
   // Budget
   'budget.title': 'Presupuesto',
+  'budget.exportCsv': 'Exportar CSV',
   'budget.emptyTitle': 'Aún no se ha creado ningún presupuesto',
   'budget.emptyText': 'Crea categorías y entradas para planificar el presupuesto de tu viaje',
   'budget.emptyPlaceholder': 'Introduce el nombre de la categoría...',
@@ -902,6 +903,7 @@ const es: Record<string, string> = {
   'budget.table.perDay': 'Por día',
   'budget.table.perPersonDay': 'Por pers. / día',
   'budget.table.note': 'Nota',
+  'budget.table.date': 'Fecha',
   'budget.newEntry': 'Nueva entrada',
   'budget.defaultEntry': 'Nueva entrada',
   'budget.defaultCategory': 'Nueva categoría',

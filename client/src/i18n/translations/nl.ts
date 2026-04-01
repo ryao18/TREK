@@ -927,6 +927,7 @@ const nl: Record<string, string> = {
 
   // Budget
   'budget.title': 'Budget',
+  'budget.exportCsv': 'CSV exporteren',
   'budget.emptyTitle': 'Nog geen budget aangemaakt',
   'budget.emptyText': 'Maak categorieën en invoeren aan om je reisbudget te plannen',
   'budget.emptyPlaceholder': 'Categorienaam invoeren...',
@@ -941,6 +942,7 @@ const nl: Record<string, string> = {
   'budget.table.perDay': 'Per dag',
   'budget.table.perPersonDay': 'P. p. / dag',
   'budget.table.note': 'Notitie',
+  'budget.table.date': 'Datum',
   'budget.newEntry': 'Nieuwe invoer',
   'budget.defaultEntry': 'Nieuwe invoer',
   'budget.defaultCategory': 'Nieuwe categorie',

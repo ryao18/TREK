@@ -931,6 +931,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
 
   // Rozpočet (Budget)
   'budget.title': 'Rozpočet',
+  'budget.exportCsv': 'Exportovat CSV',
   'budget.emptyTitle': 'Zatím nebyl vytvořen žádný rozpočet',
   'budget.emptyText': 'Vytvořte kategorie a položky pro plánování cestovního rozpočtu',
   'budget.emptyPlaceholder': 'Zadejte název kategorie...',
@@ -945,6 +946,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'budget.table.perDay': 'Za den',
   'budget.table.perPersonDay': 'Os. / den',
   'budget.table.note': 'Poznámka',
+  'budget.table.date': 'Datum',
   'budget.newEntry': 'Nová položka',
   'budget.defaultEntry': 'Nová položka',
   'budget.defaultCategory': 'Nová kategorie',

@@ -928,6 +928,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
 
   // Budget
   'budget.title': 'Budget',
+  'budget.exportCsv': 'CSV exportieren',
   'budget.emptyTitle': 'Noch kein Budget erstellt',
   'budget.emptyText': 'Erstelle Kategorien und Einträge, um dein Reisebudget zu planen',
   'budget.emptyPlaceholder': 'Kategoriename eingeben...',
@@ -942,6 +943,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'budget.table.perDay': 'Pro Tag',
   'budget.table.perPersonDay': 'P. p / Tag',
   'budget.table.note': 'Notiz',
+  'budget.table.date': 'Datum',
   'budget.newEntry': 'Neuer Eintrag',
   'budget.defaultEntry': 'Neuer Eintrag',
   'budget.defaultCategory': 'Neue Kategorie',

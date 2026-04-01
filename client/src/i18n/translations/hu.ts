@@ -926,6 +926,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
 
   // Költségvetés
   'budget.title': 'Költségvetés',
+  'budget.exportCsv': 'CSV exportálás',
   'budget.emptyTitle': 'Még nincs költségvetés létrehozva',
   'budget.emptyText': 'Hozz létre kategóriákat és bejegyzéseket az utazási költségvetés tervezéséhez',
   'budget.emptyPlaceholder': 'Kategória neve...',
@@ -940,6 +941,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'budget.table.perDay': 'Naponta',
   'budget.table.perPersonDay': 'Fő / Nap',
   'budget.table.note': 'Megjegyzés',
+  'budget.table.date': 'Dátum',
   'budget.newEntry': 'Új bejegyzés',
   'budget.defaultEntry': 'Új bejegyzés',
   'budget.defaultCategory': 'Új kategória',

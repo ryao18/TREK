@@ -44,24 +44,14 @@ export function updateJwtSecret(newSecret: string): void {
 // old JWT_SECRET so existing encrypted values continue to decrypt correctly.
 // After re-saving all credentials via the admin panel you can switch to a new
 // random ENCRYPTION_KEY.
-let ENCRYPTION_KEY: string = process.env.ENCRYPTION_KEY || '';
+const ENCRYPTION_KEY: string = process.env.ENCRYPTION_KEY || '';
 
 if (!ENCRYPTION_KEY) {
-  const keyFile = path.join(dataDir, '.encryption_key');
-
-  try {
-    ENCRYPTION_KEY = fs.readFileSync(keyFile, 'utf8').trim();
-  } catch {
-    ENCRYPTION_KEY = crypto.randomBytes(32).toString('hex');
-    try {
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(keyFile, ENCRYPTION_KEY, { mode: 0o600 });
-      console.log('Generated and saved encryption key to', keyFile);
-    } catch (writeErr: unknown) {
-      console.warn('WARNING: Could not persist encryption key to disk:', writeErr instanceof Error ? writeErr.message : writeErr);
-      console.warn('Encrypted secrets will be unreadable after restart. Set ENCRYPTION_KEY env var for persistent encryption.');
-    }
-  }
+  console.error('FATAL: ENCRYPTION_KEY is not set.');
+  console.error('If this occurs after an update from a version that derived encryption from JWT_SECRET,');
+  console.error('set ENCRYPTION_KEY to the value of your old JWT_SECRET to keep existing secrets readable.');
+  console.error('For a fresh install, generate a random key: openssl rand -hex 32');
+  process.exit(1);
 }
 
 export { ENCRYPTION_KEY };

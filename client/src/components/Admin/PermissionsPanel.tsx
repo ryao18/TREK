@@ -154,6 +154,7 @@ export default function PermissionsPanel(): React.ReactElement {
                             value: l,
                             label: t(LEVEL_LABELS[l] || l),
                           }))}
+                          style={{ minWidth: 160 }}
                         />
                       </div>
                     </div>

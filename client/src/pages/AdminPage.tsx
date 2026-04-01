@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import apiClient, { adminApi, authApi, notificationsApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
+import { useAddonStore } from '../store/addonStore'
 import { useTranslation } from '../i18n'
 import { getApiErrorMessage } from '../types'
 import Navbar from '../components/Layout/Navbar'
@@ -59,15 +60,15 @@ export default function AdminPage(): React.ReactElement {
   const { demoMode, serverTimezone } = useAuthStore()
   const { t, locale } = useTranslation()
   const hour12 = useSettingsStore(s => s.settings.time_format) === '12h'
+  const mcpEnabled = useAddonStore(s => s.isEnabled('mcp'))
   const TABS = [
     { id: 'users', label: t('admin.tabs.users') },
     { id: 'config', label: t('admin.tabs.config') },
     { id: 'addons', label: t('admin.tabs.addons') },
-    { id: 'permissions', label: t('admin.tabs.permissions') },
     { id: 'settings', label: t('admin.tabs.settings') },
     { id: 'backup', label: t('admin.tabs.backup') },
     { id: 'audit', label: t('admin.tabs.audit') },
-    { id: 'mcp-tokens', label: t('admin.tabs.mcpTokens') },
+    ...(mcpEnabled ? [{ id: 'mcp-tokens', label: t('admin.tabs.mcpTokens') }] : []),
     { id: 'github', label: t('admin.tabs.github') },
   ]
 
@@ -618,6 +619,8 @@ export default function AdminPage(): React.ReactElement {
             </div>
           )}
 
+          {activeTab === 'users' && <div className="mt-6"><PermissionsPanel /></div>}
+
           {/* Create Invite Modal */}
           <Modal isOpen={showCreateInvite} onClose={() => setShowCreateInvite(false)} title={t('admin.invite.create')} size="sm">
             <div className="space-y-4">
@@ -1112,7 +1115,7 @@ export default function AdminPage(): React.ReactElement {
                         onClick={async () => {
                           const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify']
                           const payload: Record<string, string> = {}
-                          for (const k of smtpKeys) { if (smtpValues[k]) payload[k] = smtpValues[k] }
+                          for (const k of smtpKeys) { if (smtpValues[k] !== undefined) payload[k] = smtpValues[k] }
                           await authApi.updateAppSettings(payload).catch(() => {})
                           try {
                             const result = await notificationsApi.testSmtp()
@@ -1172,8 +1175,6 @@ export default function AdminPage(): React.ReactElement {
               </div>
             </div>
           )}
-
-          {activeTab === 'permissions' && <PermissionsPanel />}
 
           {activeTab === 'backup' && <BackupPanel />}
 

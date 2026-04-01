@@ -132,7 +132,7 @@ import { authenticate } from './middleware/auth';
 app.use('/uploads/avatars', express.static(path.join(__dirname, '../uploads/avatars')));
 app.use('/uploads/covers', express.static(path.join(__dirname, '../uploads/covers')));
 
-// Serve uploaded photos (public — needed for shared trips)
+// Serve uploaded photos — require auth token or valid share token
 app.get('/uploads/photos/:filename', (req: Request, res: Response) => {
   const safeName = path.basename(req.params.filename);
   const filePath = path.join(__dirname, '../uploads/photos', safeName);
@@ -141,6 +141,20 @@ app.get('/uploads/photos/:filename', (req: Request, res: Response) => {
     return res.status(403).send('Forbidden');
   }
   if (!fs.existsSync(resolved)) return res.status(404).send('Not found');
+
+  // Allow if authenticated or if a valid share token is present
+  const authHeader = req.headers.authorization;
+  const token = req.query.token as string || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null);
+  if (!token) return res.status(401).send('Authentication required');
+
+  try {
+    const jwt = require('jsonwebtoken');
+    jwt.verify(token, process.env.JWT_SECRET || require('./config').JWT_SECRET);
+  } catch {
+    // Check if it's a share token
+    const shareRow = db.prepare('SELECT id FROM share_tokens WHERE token = ?').get(token);
+    if (!shareRow) return res.status(401).send('Authentication required');
+  }
   res.sendFile(resolved);
 });
 

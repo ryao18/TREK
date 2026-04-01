@@ -142,15 +142,17 @@ export default function SettingsPage(): React.ReactElement {
     }
   }, [memoriesEnabled])
 
+  const [immichTestPassed, setImmichTestPassed] = useState(false)
+
   const handleSaveImmich = async () => {
     setSaving(s => ({ ...s, immich: true }))
     try {
       const saveRes = await apiClient.put('/integrations/immich/settings', { immich_url: immichUrl, immich_api_key: immichApiKey || undefined })
       if (saveRes.data.warning) toast.warn(saveRes.data.warning)
       toast.success(t('memories.saved'))
-      // Test connection
       const res = await apiClient.get('/integrations/immich/status')
       setImmichConnected(res.data.connected)
+      setImmichTestPassed(false)
     } catch {
       toast.error(t('memories.connectionError'))
     } finally {
@@ -161,13 +163,13 @@ export default function SettingsPage(): React.ReactElement {
   const handleTestImmich = async () => {
     setImmichTesting(true)
     try {
-      const res = await apiClient.get('/integrations/immich/status')
+      const res = await apiClient.post('/integrations/immich/test', { immich_url: immichUrl, immich_api_key: immichApiKey })
       if (res.data.connected) {
         toast.success(`${t('memories.connectionSuccess')} — ${res.data.user?.name || ''}`)
-        setImmichConnected(true)
+        setImmichTestPassed(true)
       } else {
         toast.error(`${t('memories.connectionError')}: ${res.data.error}`)
-        setImmichConnected(false)
+        setImmichTestPassed(false)
       }
     } catch {
       toast.error(t('memories.connectionError'))
@@ -677,19 +679,20 @@ export default function SettingsPage(): React.ReactElement {
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('memories.immichUrl')}</label>
-                  <input type="url" value={immichUrl} onChange={e => setImmichUrl(e.target.value)}
+                  <input type="url" value={immichUrl} onChange={e => { setImmichUrl(e.target.value); setImmichTestPassed(false) }}
                     placeholder="https://immich.example.com"
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('memories.immichApiKey')}</label>
-                  <input type="password" value={immichApiKey} onChange={e => setImmichApiKey(e.target.value)}
+                  <input type="password" value={immichApiKey} onChange={e => { setImmichApiKey(e.target.value); setImmichTestPassed(false) }}
                     placeholder={immichConnected ? '••••••••' : 'API Key'}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={handleSaveImmich} disabled={saving.immich}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400">
+                  <button onClick={handleSaveImmich} disabled={saving.immich || !immichTestPassed}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 disabled:bg-slate-400"
+                    title={!immichTestPassed ? t('memories.testFirst') : ''}>
                     <Save className="w-4 h-4" /> {t('common.save')}
                   </button>
                   <button onClick={handleTestImmich} disabled={immichTesting}

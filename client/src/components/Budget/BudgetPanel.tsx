@@ -4,9 +4,10 @@ import DOM from 'react-dom'
 import { useTripStore } from '../../store/tripStore'
 import { useCanDo } from '../../store/permissionsStore'
 import { useTranslation } from '../../i18n'
-import { Plus, Trash2, Calculator, Wallet, Pencil, Users, Check, Info, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Calculator, Wallet, Pencil, Users, Check, Info, ChevronDown, ChevronRight, Download } from 'lucide-react'
 import CustomSelect from '../shared/CustomSelect'
 import { budgetApi } from '../../api/client'
+import { CustomDatePicker } from '../shared/CustomDateTimePicker'
 import type { BudgetItem, BudgetMember } from '../../types'
 import { currencyDecimals } from '../../utils/formatters'
 
@@ -88,7 +89,7 @@ function InlineEditCell({ value, onSave, type = 'text', style = {}, placeholder 
 
   return (
     <div onClick={() => { if (readOnly) return; setEditValue(value ?? ''); setEditing(true) }} title={readOnly ? undefined : editTooltip}
-      style={{ cursor: readOnly ? 'default' : 'pointer', padding: '4px 6px', borderRadius: 4, minHeight: 28, display: 'flex', alignItems: 'center',
+      style={{ cursor: readOnly ? 'default' : 'pointer', padding: '2px 4px', borderRadius: 4, minHeight: 22, display: 'flex', alignItems: 'center',
         justifyContent: style?.textAlign === 'center' ? 'center' : 'flex-start', transition: 'background 0.15s',
         color: display ? 'var(--text-primary)' : 'var(--text-faint)', fontSize: 13, ...style }}
       onMouseEnter={e => { if (!readOnly) e.currentTarget.style.background = 'var(--bg-hover)' }}
@@ -100,7 +101,7 @@ function InlineEditCell({ value, onSave, type = 'text', style = {}, placeholder 
 
 // ── Add Item Row ─────────────────────────────────────────────────────────────
 interface AddItemRowProps {
-  onAdd: (data: { name: string; total_price: number; persons: number | null; days: number | null; note: string | null }) => void
+  onAdd: (data: { name: string; total_price: number; persons: number | null; days: number | null; note: string | null; expense_date: string | null }) => void
   t: (key: string) => string
 }
 
@@ -110,12 +111,13 @@ function AddItemRow({ onAdd, t }: AddItemRowProps) {
   const [persons, setPersons] = useState('')
   const [days, setDays] = useState('')
   const [note, setNote] = useState('')
+  const [expenseDate, setExpenseDate] = useState('')
   const nameRef = useRef(null)
 
   const handleAdd = () => {
     if (!name.trim()) return
-    onAdd({ name: name.trim(), total_price: parseFloat(String(price).replace(',', '.')) || 0, persons: parseInt(persons) || null, days: parseInt(days) || null, note: note.trim() || null })
-    setName(''); setPrice(''); setPersons(''); setDays(''); setNote('')
+    onAdd({ name: name.trim(), total_price: parseFloat(String(price).replace(',', '.')) || 0, persons: parseInt(persons) || null, days: parseInt(days) || null, note: note.trim() || null, expense_date: expenseDate || null })
+    setName(''); setPrice(''); setPersons(''); setDays(''); setNote(''); setExpenseDate('')
     setTimeout(() => nameRef.current?.focus(), 50)
   }
 
@@ -133,15 +135,20 @@ function AddItemRow({ onAdd, t }: AddItemRowProps) {
       </td>
       <td className="hidden sm:table-cell" style={{ padding: '4px 6px', textAlign: 'center' }}>
         <input value={persons} onChange={e => setPersons(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          placeholder="-" inputMode="numeric" style={{ ...inp, textAlign: 'center', maxWidth: 50, margin: '0 auto' }} />
+          placeholder="-" inputMode="numeric" style={{ ...inp, textAlign: 'center', maxWidth: 60, margin: '0 auto' }} />
       </td>
       <td className="hidden sm:table-cell" style={{ padding: '4px 6px', textAlign: 'center' }}>
         <input value={days} onChange={e => setDays(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          placeholder="-" inputMode="numeric" style={{ ...inp, textAlign: 'center', maxWidth: 50, margin: '0 auto' }} />
+          placeholder="-" inputMode="numeric" style={{ ...inp, textAlign: 'center', maxWidth: 60, margin: '0 auto' }} />
       </td>
       <td className="hidden md:table-cell" style={{ padding: '4px 6px', color: 'var(--text-faint)', fontSize: 12, textAlign: 'center' }}>-</td>
       <td className="hidden md:table-cell" style={{ padding: '4px 6px', color: 'var(--text-faint)', fontSize: 12, textAlign: 'center' }}>-</td>
       <td className="hidden lg:table-cell" style={{ padding: '4px 6px', color: 'var(--text-faint)', fontSize: 12, textAlign: 'center' }}>-</td>
+      <td className="hidden sm:table-cell" style={{ padding: '4px 6px', textAlign: 'center' }}>
+        <div style={{ maxWidth: 90, margin: '0 auto' }}>
+          <CustomDatePicker value={expenseDate} onChange={setExpenseDate} placeholder="-" compact />
+        </div>
+      </td>
       <td className="hidden sm:table-cell" style={{ padding: '4px 6px' }}>
         <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder={t('budget.table.note')} style={inp} />
       </td>
@@ -476,6 +483,41 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
     setNewCategoryName('')
   }
 
+  const handleExportCsv = () => {
+    const sep = ';'
+    const esc = (v: any) => { const s = String(v ?? ''); return s.includes(sep) || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s }
+    const d = currencyDecimals(currency)
+    const fmtPrice = (v: number | null | undefined) => v != null ? v.toFixed(d) : ''
+
+    const fmtDate = (iso: string) => { if (!iso) return ''; const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }) }
+    const header = ['Category', 'Name', 'Date', 'Total (' + currency + ')', 'Persons', 'Days', 'Per Person', 'Per Day', 'Per Person/Day', 'Note']
+    const rows = [header.join(sep)]
+
+    for (const cat of categoryNames) {
+      for (const item of (grouped[cat] || [])) {
+        const pp = calcPP(item.total_price, item.persons)
+        const pd = calcPD(item.total_price, item.days)
+        const ppd = calcPPD(item.total_price, item.persons, item.days)
+        rows.push([
+          esc(item.category), esc(item.name), esc(fmtDate(item.expense_date || '')),
+          fmtPrice(item.total_price), item.persons ?? '', item.days ?? '',
+          fmtPrice(pp), fmtPrice(pd), fmtPrice(ppd),
+          esc(item.note || ''),
+        ].join(sep))
+      }
+    }
+
+    const bom = '\uFEFF'
+    const blob = new Blob([bom + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const safeName = (trip?.title || 'trip').replace(/[^a-zA-Z0-9\u00C0-\u024F _-]/g, '').trim()
+    a.download = `budget-${safeName}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const th = { padding: '6px 8px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--border-primary)', whiteSpace: 'nowrap', background: 'var(--bg-secondary)' }
   const td = { padding: '2px 6px', borderBottom: '1px solid var(--border-secondary)', fontSize: 13, verticalAlign: 'middle', color: 'var(--text-primary)' }
 
@@ -512,6 +554,10 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
           <Calculator size={20} color="var(--text-primary)" />
           <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{t('budget.title')}</h2>
         </div>
+        <button onClick={handleExportCsv} title={t('budget.exportCsv')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border-primary)', background: 'none', color: 'var(--text-muted)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <Download size={13} /> CSV
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: 20, padding: '0 16px 40px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -564,14 +610,15 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        <th style={{ ...th, textAlign: 'left', minWidth: 100 }}>{t('budget.table.name')}</th>
-                        <th style={{ ...th, minWidth: 60 }}>{t('budget.table.total')}</th>
-                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 130 }}>{t('budget.table.persons')}</th>
-                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 45 }}>{t('budget.table.days')}</th>
-                        <th className="hidden md:table-cell" style={{ ...th, minWidth: 90 }}>{t('budget.table.perPerson')}</th>
-                        <th className="hidden md:table-cell" style={{ ...th, minWidth: 80 }}>{t('budget.table.perDay')}</th>
+                        <th style={{ ...th, textAlign: 'left', minWidth: 120 }}>{t('budget.table.name')}</th>
+                        <th style={{ ...th, minWidth: 75 }}>{t('budget.table.total')}</th>
+                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 160 }}>{t('budget.table.persons')}</th>
+                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 55 }}>{t('budget.table.days')}</th>
+                        <th className="hidden md:table-cell" style={{ ...th, minWidth: 100 }}>{t('budget.table.perPerson')}</th>
+                        <th className="hidden md:table-cell" style={{ ...th, minWidth: 90 }}>{t('budget.table.perDay')}</th>
                         <th className="hidden lg:table-cell" style={{ ...th, minWidth: 95 }}>{t('budget.table.perPersonDay')}</th>
-                        <th className="hidden sm:table-cell" style={{ ...th, textAlign: 'left', minWidth: 80 }}>{t('budget.table.note')}</th>
+                        <th className="hidden sm:table-cell" style={{ ...th, width: 90, maxWidth: 90 }}>{t('budget.table.date')}</th>
+                        <th className="hidden sm:table-cell" style={{ ...th, minWidth: 150 }}>{t('budget.table.note')}</th>
                         <th style={{ ...th, width: 36 }}></th>
                       </tr>
                     </thead>
@@ -623,6 +670,15 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
                             <td className="hidden md:table-cell" style={{ ...td, textAlign: 'center', color: pp != null ? 'var(--text-secondary)' : 'var(--text-faint)' }}>{pp != null ? fmt(pp, currency) : '-'}</td>
                             <td className="hidden md:table-cell" style={{ ...td, textAlign: 'center', color: pd != null ? 'var(--text-secondary)' : 'var(--text-faint)' }}>{pd != null ? fmt(pd, currency) : '-'}</td>
                             <td className="hidden lg:table-cell" style={{ ...td, textAlign: 'center', color: ppd != null ? 'var(--text-secondary)' : 'var(--text-faint)' }}>{ppd != null ? fmt(ppd, currency) : '-'}</td>
+                            <td className="hidden sm:table-cell" style={{ ...td, padding: '2px 6px', width: 90, maxWidth: 90, textAlign: 'center' }}>
+                              {canEdit ? (
+                                <div style={{ maxWidth: 90, margin: '0 auto' }}>
+                                  <CustomDatePicker value={item.expense_date || ''} onChange={v => handleUpdateField(item.id, 'expense_date', v || null)} placeholder="—" compact borderless />
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: 11, color: item.expense_date ? 'var(--text-secondary)' : 'var(--text-faint)' }}>{item.expense_date || '—'}</span>
+                              )}
+                            </td>
                             <td className="hidden sm:table-cell" style={td}><InlineEditCell value={item.note} onSave={v => handleUpdateField(item.id, 'note', v)} placeholder={t('budget.table.note')} locale={locale} editTooltip={t('budget.editTooltip')} readOnly={!canEdit} /></td>
                             <td style={{ ...td, textAlign: 'center' }}>
                               {canEdit && (
@@ -645,7 +701,7 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
           })}
         </div>
 
-        <div className="w-full md:w-[280px]" style={{ flexShrink: 0, position: 'sticky', top: 16, alignSelf: 'flex-start' }}>
+        <div className="w-full md:w-[180px]" style={{ flexShrink: 0, position: 'sticky', top: 16, alignSelf: 'flex-start' }}>
           <div style={{ marginBottom: 12 }}>
             <CustomSelect
               value={currency}
@@ -685,7 +741,7 @@ export default function BudgetPanel({ tripId, tripMembers = [] }: BudgetPanelPro
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 500, letterSpacing: 0.5 }}>{t('budget.totalBudget')}</div>
               </div>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1, marginBottom: 4 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, marginBottom: 4 }}>
               {Number(grandTotal).toLocaleString(locale, { minimumFractionDigits: currencyDecimals(currency), maximumFractionDigits: currencyDecimals(currency) })}
             </div>
             <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{SYMBOLS[currency] || currency} {currency}</div>

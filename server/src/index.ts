@@ -203,7 +203,7 @@ app.use('/api/admin', adminRoutes);
 
 // Public addons endpoint (authenticated but not admin-only)
 import { authenticate as addonAuth } from './middleware/auth';
-import { db as addonDb } from './db/database';
+import {db, db as addonDb} from './db/database';
 import { Addon } from './types';
 app.get('/api/addons', addonAuth, (req: Request, res: Response) => {
   const addons = addonDb.prepare('SELECT id, name, type, icon, enabled FROM addons WHERE enabled = 1 ORDER BY sort_order').all() as Pick<Addon, 'id' | 'name' | 'type' | 'icon' | 'enabled'>[];

@@ -123,14 +123,10 @@ router.get('/login', async (req: Request, res: Response) => {
     const doc = await discover(config.issuer);
     const state = crypto.randomBytes(32).toString('hex');
     const appUrl = process.env.APP_URL || (db.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").get() as { value: string } | undefined)?.value;
-    let redirectUri: string;
-    if (appUrl) {
-      redirectUri = `${appUrl.replace(/\/+$/, '')}/api/auth/oidc/callback`;
-    } else {
-      const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol;
-      const host = (req.headers['x-forwarded-host'] as string) || req.headers.host;
-      redirectUri = `${proto}://${host}/api/auth/oidc/callback`;
+    if (!appUrl) {
+      return res.status(500).json({ error: 'APP_URL is not configured. OIDC cannot be used.' });
     }
+    const redirectUri = `${appUrl.replace(/\/+$/, '')}/api/auth/oidc/callback`;
     const inviteToken = req.query.invite as string | undefined;
 
     pendingStates.set(state, { createdAt: Date.now(), redirectUri, inviteToken });

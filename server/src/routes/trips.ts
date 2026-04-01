@@ -406,7 +406,12 @@ router.get('/:id/export.ics', authenticate, (req: Request, res: Response) => {
   const days = db.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number ASC').all(req.params.id) as any[];
   const reservations = db.prepare('SELECT * FROM reservations WHERE trip_id = ?').all(req.params.id) as any[];
 
-  const esc = (s: string) => s.replace(/[\\;,\n]/g, m => m === '\n' ? '\\n' : '\\' + m);
+  const esc = (s: string) => s
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/\r/g, '');
   const fmtDate = (d: string) => d.replace(/-/g, '');
   const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const uid = (id: number, type: string) => `trek-${type}-${id}@trek`;
@@ -454,14 +459,14 @@ router.get('/:id/export.ics', authenticate, (req: Request, res: Response) => {
     ics += `SUMMARY:${esc(r.title)}\r\n`;
 
     let desc = r.type ? `Type: ${r.type}` : '';
-    if (r.confirmation_number) desc += `\\nConfirmation: ${r.confirmation_number}`;
-    if (meta.airline) desc += `\\nAirline: ${meta.airline}`;
-    if (meta.flight_number) desc += `\\nFlight: ${meta.flight_number}`;
-    if (meta.departure_airport) desc += `\\nFrom: ${meta.departure_airport}`;
-    if (meta.arrival_airport) desc += `\\nTo: ${meta.arrival_airport}`;
-    if (meta.train_number) desc += `\\nTrain: ${meta.train_number}`;
-    if (r.notes) desc += `\\n${r.notes}`;
-    if (desc) ics += `DESCRIPTION:${desc}\r\n`;
+    if (r.confirmation_number) desc += `\nConfirmation: ${r.confirmation_number}`;
+    if (meta.airline) desc += `\nAirline: ${meta.airline}`;
+    if (meta.flight_number) desc += `\nFlight: ${meta.flight_number}`;
+    if (meta.departure_airport) desc += `\nFrom: ${meta.departure_airport}`;
+    if (meta.arrival_airport) desc += `\nTo: ${meta.arrival_airport}`;
+    if (meta.train_number) desc += `\nTrain: ${meta.train_number}`;
+    if (r.notes) desc += `\n${r.notes}`;
+    if (desc) ics += `DESCRIPTION:${esc(desc)}\r\n`;
     if (r.location) ics += `LOCATION:${esc(r.location)}\r\n`;
     ics += `END:VEVENT\r\n`;
   }
@@ -469,7 +474,8 @@ router.get('/:id/export.ics', authenticate, (req: Request, res: Response) => {
   ics += 'END:VCALENDAR\r\n';
 
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${esc(trip.title || 'trek-trip')}.ics"`);
+  const safeFilename = (trip.title || 'trek-trip').replace(/["\r\n]/g, '').replace(/[^\w\s.-]/g, '_');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.ics"`);
   res.send(ics);
 });
 

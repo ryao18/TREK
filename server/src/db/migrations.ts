@@ -439,6 +439,22 @@ function runMigrations(db: Database.Database): void {
     () => {
       try { db.exec('ALTER TABLE budget_items ADD COLUMN expense_date TEXT DEFAULT NULL'); } catch {}
     },
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS trip_album_links (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          immich_album_id TEXT NOT NULL,
+          album_name TEXT NOT NULL DEFAULT '',
+          sync_enabled INTEGER NOT NULL DEFAULT 1,
+          last_synced_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(trip_id, user_id, immich_album_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_trip_album_links_trip ON trip_album_links(trip_id);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

@@ -250,7 +250,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'Bitte aktuelles und neues Passwort eingeben',
   'settings.passwordTooShort': 'Passwort muss mindestens 8 Zeichen lang sein',
   'settings.passwordMismatch': 'Passwörter stimmen nicht überein',
-  'settings.passwordWeak': 'Passwort muss Groß-, Kleinbuchstaben und eine Zahl enthalten',
+  'settings.passwordWeak': 'Passwort muss Groß-, Kleinbuchstaben, eine Zahl und ein Sonderzeichen enthalten',
   'settings.passwordChanged': 'Passwort erfolgreich geändert',
   'settings.deleteAccount': 'Löschen',
   'settings.deleteAccountTitle': 'Account wirklich löschen?',
@@ -349,7 +349,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
 
   // Register
   'register.passwordMismatch': 'Passwörter stimmen nicht überein',
-  'register.passwordTooShort': 'Passwort muss mindestens 6 Zeichen lang sein',
+  'register.passwordTooShort': 'Passwort muss mindestens 8 Zeichen lang sein',
   'register.failed': 'Registrierung fehlgeschlagen',
   'register.getStarted': 'Jetzt starten',
   'register.subtitle': 'Erstellen Sie ein Konto und beginnen Sie, Ihre Traumreisen zu planen.',

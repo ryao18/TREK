@@ -250,7 +250,7 @@ const zh: Record<string, string> = {
   'settings.passwordRequired': '请输入当前密码和新密码',
   'settings.passwordTooShort': '密码至少需要 8 个字符',
   'settings.passwordMismatch': '两次输入的密码不一致',
-  'settings.passwordWeak': '密码必须包含大写字母、小写字母和数字',
+  'settings.passwordWeak': '密码必须包含大写字母、小写字母、数字和特殊字符',
   'settings.passwordChanged': '密码修改成功',
   'settings.deleteAccount': '删除账户',
   'settings.deleteAccountTitle': '确定删除账户？',
@@ -349,7 +349,7 @@ const zh: Record<string, string> = {
 
   // Register
   'register.passwordMismatch': '两次输入的密码不一致',
-  'register.passwordTooShort': '密码至少需要 6 个字符',
+  'register.passwordTooShort': '密码至少需要 8 个字符',
   'register.failed': '注册失败',
   'register.getStarted': '开始使用',
   'register.subtitle': '创建账户，开始规划你的梦想旅行。',

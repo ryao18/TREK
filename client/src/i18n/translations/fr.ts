@@ -250,7 +250,7 @@ const fr: Record<string, string> = {
   'settings.passwordRequired': 'Veuillez saisir le mot de passe actuel et le nouveau',
   'settings.passwordTooShort': 'Le mot de passe doit comporter au moins 8 caractères',
   'settings.passwordMismatch': 'Les mots de passe ne correspondent pas',
-  'settings.passwordWeak': 'Le mot de passe doit contenir des majuscules, des minuscules et un chiffre',
+  'settings.passwordWeak': 'Le mot de passe doit contenir des majuscules, des minuscules, un chiffre et un caractère spécial',
   'settings.passwordChanged': 'Mot de passe modifié avec succès',
   'settings.deleteAccount': 'Supprimer le compte',
   'settings.deleteAccountTitle': 'Supprimer votre compte ?',
@@ -349,7 +349,7 @@ const fr: Record<string, string> = {
 
   // Register
   'register.passwordMismatch': 'Les mots de passe ne correspondent pas',
-  'register.passwordTooShort': 'Le mot de passe doit comporter au moins 6 caractères',
+  'register.passwordTooShort': 'Le mot de passe doit comporter au moins 8 caractères',
   'register.failed': 'Échec de l\'inscription',
   'register.getStarted': 'Commencer',
   'register.subtitle': 'Créez un compte et commencez à planifier vos voyages de rêve.',

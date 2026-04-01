@@ -347,7 +347,7 @@ const es: Record<string, string> = {
 
   // Register
   'register.passwordMismatch': 'Las contraseñas no coinciden',
-  'register.passwordTooShort': 'La contraseña debe tener al menos 6 caracteres',
+  'register.passwordTooShort': 'La contraseña debe tener al menos 8 caracteres',
   'register.failed': 'Falló el registro',
   'register.getStarted': 'Empezar',
   'register.subtitle': 'Crea una cuenta y empieza a planificar tus viajes.',
@@ -1425,7 +1425,7 @@ const es: Record<string, string> = {
 
   // Settings (2.6.2)
   'settings.currentPasswordRequired': 'La contraseña actual es obligatoria',
-  'settings.passwordWeak': 'La contraseña debe contener mayúsculas, minúsculas y números',
+  'settings.passwordWeak': 'La contraseña debe contener mayúsculas, minúsculas, números y un carácter especial',
 
   // Permissions
   'admin.tabs.permissions': 'Permisos',

@@ -250,7 +250,7 @@ const nl: Record<string, string> = {
   'settings.passwordRequired': 'Voer het huidige en nieuwe wachtwoord in',
   'settings.passwordTooShort': 'Wachtwoord moet minimaal 8 tekens bevatten',
   'settings.passwordMismatch': 'Wachtwoorden komen niet overeen',
-  'settings.passwordWeak': 'Wachtwoord moet hoofdletters, kleine letters en een cijfer bevatten',
+  'settings.passwordWeak': 'Wachtwoord moet hoofdletters, kleine letters, een cijfer en een speciaal teken bevatten',
   'settings.passwordChanged': 'Wachtwoord succesvol gewijzigd',
   'settings.deleteAccount': 'Account verwijderen',
   'settings.deleteAccountTitle': 'Account verwijderen?',
@@ -349,7 +349,7 @@ const nl: Record<string, string> = {
 
   // Register
   'register.passwordMismatch': 'Wachtwoorden komen niet overeen',
-  'register.passwordTooShort': 'Wachtwoord moet minimaal 6 tekens bevatten',
+  'register.passwordTooShort': 'Wachtwoord moet minimaal 8 tekens bevatten',
   'register.failed': 'Registratie mislukt',
   'register.getStarted': 'Aan de slag',
   'register.subtitle': 'Maak een account aan en begin met het plannen van je droomreizen.',

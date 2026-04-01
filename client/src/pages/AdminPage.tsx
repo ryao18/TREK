@@ -253,6 +253,10 @@ export default function AdminPage(): React.ReactElement {
       toast.error(t('admin.toast.fieldsRequired'))
       return
     }
+    if (createForm.password.trim().length < 8) {
+      toast.error(t('settings.passwordTooShort'))
+      return
+    }
     try {
       const data = await adminApi.createUser(createForm)
       setUsers(prev => [data.user, ...prev])
@@ -308,7 +312,13 @@ export default function AdminPage(): React.ReactElement {
         email: editForm.email.trim() || undefined,
         role: editForm.role,
       }
-      if (editForm.password.trim()) payload.password = editForm.password.trim()
+      if (editForm.password.trim()) {
+        if (editForm.password.trim().length < 8) {
+          toast.error(t('settings.passwordTooShort'))
+          return
+        }
+        payload.password = editForm.password.trim()
+      }
       const data = await adminApi.updateUser(editingUser.id, payload)
       setUsers(prev => prev.map(u => u.id === editingUser.id ? data.user : u))
       setEditingUser(null)

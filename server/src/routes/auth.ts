@@ -10,6 +10,7 @@ import fetch from 'node-fetch';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { db } from '../db/database';
+import { validatePassword } from '../services/passwordPolicy';
 import { authenticate, optionalAuth, demoUploadBlock } from '../middleware/auth';
 import { JWT_SECRET } from '../config';
 import { encryptMfaSecret, decryptMfaSecret } from '../services/mfaCrypto';
@@ -268,13 +269,8 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Username, email and password are required' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
-  }
-
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
-  }
+  const pwCheck = validatePassword(password);
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
@@ -382,11 +378,8 @@ router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req
   const { current_password, new_password } = req.body;
   if (!current_password) return res.status(400).json({ error: 'Current password is required' });
   if (!new_password) return res.status(400).json({ error: 'New password is required' });
-  if (new_password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-
-  if (!/[A-Z]/.test(new_password) || !/[a-z]/.test(new_password) || !/[0-9]/.test(new_password)) {
-    return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
-  }
+  const pwCheck = validatePassword(new_password);
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
   const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(authReq.user.id) as { password_hash: string } | undefined;
   if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {

@@ -225,7 +225,7 @@ const br: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'Informe a senha atual e a nova',
   'settings.passwordTooShort': 'A senha deve ter pelo menos 8 caracteres',
   'settings.passwordMismatch': 'As senhas não coincidem',
-  'settings.passwordWeak': 'A senha deve ter maiúscula, minúscula e número',
+  'settings.passwordWeak': 'A senha deve ter maiúscula, minúscula, número e um caractere especial',
   'settings.passwordChanged': 'Senha alterada com sucesso',
   'settings.deleteAccount': 'Excluir conta',
   'settings.deleteAccountTitle': 'Excluir sua conta?',
@@ -349,7 +349,7 @@ const br: Record<string, string | { name: string; category: string }[]> = {
 
   // Register
   'register.passwordMismatch': 'As senhas não coincidem',
-  'register.passwordTooShort': 'A senha deve ter pelo menos 6 caracteres',
+  'register.passwordTooShort': 'A senha deve ter pelo menos 8 caracteres',
   'register.failed': 'Falha no cadastro',
   'register.getStarted': 'Começar',
   'register.subtitle': 'Crie uma conta e comece a planejar suas viagens.',

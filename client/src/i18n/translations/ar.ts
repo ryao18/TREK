@@ -255,7 +255,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'أدخل كلمة المرور الحالية والجديدة',
   'settings.passwordTooShort': 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل',
   'settings.passwordMismatch': 'كلمتا المرور غير متطابقتين',
-  'settings.passwordWeak': 'يجب أن تحتوي كلمة المرور على حرف كبير وحرف صغير ورقم',
+  'settings.passwordWeak': 'يجب أن تحتوي كلمة المرور على حرف كبير وحرف صغير ورقم ورمز خاص',
   'settings.passwordChanged': 'تم تغيير كلمة المرور بنجاح',
   'settings.deleteAccount': 'حذف الحساب',
   'settings.deleteAccountTitle': 'هل تريد حذف حسابك؟',
@@ -354,7 +354,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
 
   // Register
   'register.passwordMismatch': 'كلمتا المرور غير متطابقتين',
-  'register.passwordTooShort': 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل',
+  'register.passwordTooShort': 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل',
   'register.failed': 'فشل التسجيل',
   'register.getStarted': 'ابدأ الآن',
   'register.subtitle': 'أنشئ حسابًا وابدأ التخطيط لرحلات أحلامك.',

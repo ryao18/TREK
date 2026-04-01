@@ -10,6 +10,7 @@ import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 import { getAllPermissions, savePermissions, PERMISSION_ACTIONS } from '../services/permissions';
 import { revokeUserSessions } from '../mcp';
 import { maybe_encrypt_api_key, decrypt_api_key } from '../services/apiKeyCrypto';
+import { validatePassword } from '../services/passwordPolicy';
 import { updateJwtSecret } from '../config';
 
 const router = express.Router();
@@ -46,6 +47,9 @@ router.post('/users', (req: Request, res: Response) => {
   if (!username?.trim() || !email?.trim() || !password?.trim()) {
     return res.status(400).json({ error: 'Username, email and password are required' });
   }
+
+  const pwCheck = validatePassword(password.trim());
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
   if (role && !['user', 'admin'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
@@ -97,6 +101,10 @@ router.put('/users/:id', (req: Request, res: Response) => {
     if (conflict) return res.status(409).json({ error: 'Email already taken' });
   }
 
+  if (password) {
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
+  }
   const passwordHash = password ? bcrypt.hashSync(password, 12) : null;
 
   db.prepare(`

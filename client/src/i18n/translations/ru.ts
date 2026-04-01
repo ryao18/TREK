@@ -250,7 +250,7 @@ const ru: Record<string, string> = {
   'settings.passwordRequired': 'Введите текущий и новый пароль',
   'settings.passwordTooShort': 'Пароль должен содержать не менее 8 символов',
   'settings.passwordMismatch': 'Пароли не совпадают',
-  'settings.passwordWeak': 'Пароль должен содержать заглавные, строчные буквы и цифру',
+  'settings.passwordWeak': 'Пароль должен содержать заглавные, строчные буквы, цифру и специальный символ',
   'settings.passwordChanged': 'Пароль успешно изменён',
   'settings.deleteAccount': 'Удалить аккаунт',
   'settings.deleteAccountTitle': 'Удалить ваш аккаунт?',
@@ -349,7 +349,7 @@ const ru: Record<string, string> = {
 
   // Register
   'register.passwordMismatch': 'Пароли не совпадают',
-  'register.passwordTooShort': 'Пароль должен содержать не менее 6 символов',
+  'register.passwordTooShort': 'Пароль должен содержать не менее 8 символов',
   'register.failed': 'Ошибка регистрации',
   'register.getStarted': 'Начать',
   'register.subtitle': 'Создайте аккаунт и начните планировать поездки мечты.',

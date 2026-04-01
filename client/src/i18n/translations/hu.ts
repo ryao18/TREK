@@ -201,7 +201,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'Kérjük, add meg a jelenlegi és az új jelszót',
   'settings.currentPasswordRequired': 'A jelenlegi jelszó megadása kötelező',
   'settings.passwordTooShort': 'A jelszónak legalább 8 karakter hosszúnak kell lennie',
-  'settings.passwordWeak': 'A jelszónak tartalmaznia kell nagybetűt, kisbetűt és számot',
+  'settings.passwordWeak': 'A jelszónak tartalmaznia kell nagybetűt, kisbetűt, számot és speciális karaktert',
   'settings.passwordMismatch': 'A jelszavak nem egyeznek',
   'settings.passwordChanged': 'Jelszó sikeresen módosítva',
   'settings.deleteAccount': 'Törlés',
@@ -349,7 +349,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
 
   // Regisztráció
   'register.passwordMismatch': 'A jelszavak nem egyeznek',
-  'register.passwordTooShort': 'A jelszónak legalább 6 karakter hosszúnak kell lennie',
+  'register.passwordTooShort': 'A jelszónak legalább 8 karakter hosszúnak kell lennie',
   'register.failed': 'Regisztráció sikertelen',
   'register.getStarted': 'Kezdjük',
   'register.subtitle': 'Hozz létre egy fiókot, és kezdd el megtervezni álomutazásaidat.',

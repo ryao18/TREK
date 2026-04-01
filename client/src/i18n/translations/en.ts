@@ -250,7 +250,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'Please enter current and new password',
   'settings.passwordTooShort': 'Password must be at least 8 characters',
   'settings.passwordMismatch': 'Passwords do not match',
-  'settings.passwordWeak': 'Password must contain uppercase, lowercase, and a number',
+  'settings.passwordWeak': 'Password must contain uppercase, lowercase, a number, and a special character',
   'settings.passwordChanged': 'Password changed successfully',
   'settings.mustChangePassword': 'You must change your password before you can continue. Please set a new password below.',
   'settings.deleteAccount': 'Delete account',
@@ -350,7 +350,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
 
   // Register
   'register.passwordMismatch': 'Passwords do not match',
-  'register.passwordTooShort': 'Password must be at least 6 characters',
+  'register.passwordTooShort': 'Password must be at least 8 characters',
   'register.failed': 'Registration failed',
   'register.getStarted': 'Get Started',
   'register.subtitle': 'Create an account and start planning your dream trips.',

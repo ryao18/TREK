@@ -203,7 +203,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'Zadejte prosím současné i nové heslo',
   'settings.passwordTooShort': 'Heslo musí mít alespoň 8 znaků',
   'settings.passwordMismatch': 'Hesla se neshodují',
-  'settings.passwordWeak': 'Heslo musí obsahovat velké a malé písmeno a číslici',
+  'settings.passwordWeak': 'Heslo musí obsahovat velké a malé písmeno, číslici a speciální znak',
   'settings.passwordChanged': 'Heslo bylo úspěšně změněno',
   'settings.deleteAccount': 'Smazat účet',
   'settings.deleteAccountTitle': 'Smazat váš účet?',
@@ -350,7 +350,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
 
   // Registrace (Register)
   'register.passwordMismatch': 'Hesla se neshodují',
-  'register.passwordTooShort': 'Heslo musí mít alespoň 6 znaků',
+  'register.passwordTooShort': 'Heslo musí mít alespoň 8 znaků',
   'register.failed': 'Registrace se nezdařila',
   'register.getStarted': 'Začínáme',
   'register.subtitle': 'Vytvořte si účet a začněte plánovat svou vysněnou cestu.',

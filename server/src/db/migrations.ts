@@ -463,6 +463,15 @@ function runMigrations(db: Database.Database): void {
         db.prepare("UPDATE app_settings SET value = ? WHERE key = 'smtp_pass'").run(encrypt_api_key(row.value));
       }
     },
+    // Encrypt any plaintext immich_api_key values in the users table
+    () => {
+      const rows = db.prepare(
+        "SELECT id, immich_api_key FROM users WHERE immich_api_key IS NOT NULL AND immich_api_key != '' AND immich_api_key NOT LIKE 'enc:v1:%'"
+      ).all() as { id: number; immich_api_key: string }[];
+      for (const row of rows) {
+        db.prepare('UPDATE users SET immich_api_key = ? WHERE id = ?').run(encrypt_api_key(row.immich_api_key), row.id);
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

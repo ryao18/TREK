@@ -4,8 +4,15 @@ import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { AuthRequest } from '../types';
 import { consumeEphemeralToken } from '../services/ephemeralTokens';
+import { maybe_encrypt_api_key, decrypt_api_key } from '../services/apiKeyCrypto';
 
 const router = express.Router();
+
+function getImmichCredentials(userId: number) {
+  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(userId) as any;
+  if (!user?.immich_url || !user?.immich_api_key) return null;
+  return { immich_url: user.immich_url as string, immich_api_key: decrypt_api_key(user.immich_api_key) as string };
+}
 
 /** Validate that an asset ID is a safe UUID-like string (no path traversal). */
 function isValidAssetId(id: string): boolean {
@@ -34,10 +41,10 @@ function isValidImmichUrl(raw: string): boolean {
 
 router.get('/settings', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
+  const creds = getImmichCredentials(authReq.user.id);
   res.json({
-    immich_url: user?.immich_url || '',
-    connected: !!(user?.immich_url && user?.immich_api_key),
+    immich_url: creds?.immich_url || '',
+    connected: !!(creds?.immich_url && creds?.immich_api_key),
   });
 });
 
@@ -49,7 +56,7 @@ router.put('/settings', authenticate, (req: Request, res: Response) => {
   }
   db.prepare('UPDATE users SET immich_url = ?, immich_api_key = ? WHERE id = ?').run(
     immich_url?.trim() || null,
-    immich_api_key?.trim() || null,
+    maybe_encrypt_api_key(immich_api_key),
     authReq.user.id
   );
   res.json({ success: true });
@@ -57,13 +64,13 @@ router.put('/settings', authenticate, (req: Request, res: Response) => {
 
 router.get('/status', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
-  if (!user?.immich_url || !user?.immich_api_key) {
+  const creds = getImmichCredentials(authReq.user.id);
+  if (!creds) {
     return res.json({ connected: false, error: 'Not configured' });
   }
   try {
-    const resp = await fetch(`${user.immich_url}/api/users/me`, {
-      headers: { 'x-api-key': user.immich_api_key, 'Accept': 'application/json' },
+    const resp = await fetch(`${creds.immich_url}/api/users/me`, {
+      headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return res.json({ connected: false, error: `HTTP ${resp.status}` });
@@ -79,13 +86,13 @@ router.get('/status', authenticate, async (req: Request, res: Response) => {
 router.get('/browse', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { page = '1', size = '50' } = req.query;
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
-  if (!user?.immich_url || !user?.immich_api_key) return res.status(400).json({ error: 'Immich not configured' });
+  const creds = getImmichCredentials(authReq.user.id);
+  if (!creds) return res.status(400).json({ error: 'Immich not configured' });
 
   try {
-    const resp = await fetch(`${user.immich_url}/api/timeline/buckets`, {
+    const resp = await fetch(`${creds.immich_url}/api/timeline/buckets`, {
       method: 'GET',
-      headers: { 'x-api-key': user.immich_api_key, 'Accept': 'application/json' },
+      headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
       signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) return res.status(resp.status).json({ error: 'Failed to fetch from Immich' });
@@ -100,8 +107,8 @@ router.get('/browse', authenticate, async (req: Request, res: Response) => {
 router.post('/search', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { from, to } = req.body;
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
-  if (!user?.immich_url || !user?.immich_api_key) return res.status(400).json({ error: 'Immich not configured' });
+  const creds = getImmichCredentials(authReq.user.id);
+  if (!creds) return res.status(400).json({ error: 'Immich not configured' });
 
   try {
     // Paginate through all results (Immich limits per-page to 1000)
@@ -109,9 +116,9 @@ router.post('/search', authenticate, async (req: Request, res: Response) => {
     let page = 1;
     const pageSize = 1000;
     while (true) {
-      const resp = await fetch(`${user.immich_url}/api/search/metadata`, {
+      const resp = await fetch(`${creds.immich_url}/api/search/metadata`, {
         method: 'POST',
-        headers: { 'x-api-key': user.immich_api_key, 'Content-Type': 'application/json' },
+        headers: { 'x-api-key': creds.immich_api_key, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           takenAfter: from ? `${from}T00:00:00.000Z` : undefined,
           takenBefore: to ? `${to}T23:59:59.999Z` : undefined,
@@ -219,12 +226,12 @@ router.get('/assets/:assetId/info', authenticate, async (req: Request, res: Resp
   if (!isValidAssetId(assetId)) return res.status(400).json({ error: 'Invalid asset ID' });
 
   // Only allow accessing own Immich credentials — prevent leaking other users' API keys
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
-  if (!user?.immich_url || !user?.immich_api_key) return res.status(404).json({ error: 'Not found' });
+  const creds = getImmichCredentials(authReq.user.id);
+  if (!creds) return res.status(404).json({ error: 'Not found' });
 
   try {
-    const resp = await fetch(`${user.immich_url}/api/assets/${assetId}`, {
-      headers: { 'x-api-key': user.immich_api_key, 'Accept': 'application/json' },
+    const resp = await fetch(`${creds.immich_url}/api/assets/${assetId}`, {
+      headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return res.status(resp.status).json({ error: 'Failed' });
@@ -275,12 +282,12 @@ router.get('/assets/:assetId/thumbnail', authFromQuery, async (req: Request, res
   if (!isValidAssetId(assetId)) return res.status(400).send('Invalid asset ID');
 
   // Only allow accessing own Immich credentials — prevent leaking other users' API keys
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
-  if (!user?.immich_url || !user?.immich_api_key) return res.status(404).send('Not found');
+  const creds = getImmichCredentials(authReq.user.id);
+  if (!creds) return res.status(404).send('Not found');
 
   try {
-    const resp = await fetch(`${user.immich_url}/api/assets/${assetId}/thumbnail`, {
-      headers: { 'x-api-key': user.immich_api_key },
+    const resp = await fetch(`${creds.immich_url}/api/assets/${assetId}/thumbnail`, {
+      headers: { 'x-api-key': creds.immich_api_key },
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return res.status(resp.status).send('Failed');
@@ -299,12 +306,12 @@ router.get('/assets/:assetId/original', authFromQuery, async (req: Request, res:
   if (!isValidAssetId(assetId)) return res.status(400).send('Invalid asset ID');
 
   // Only allow accessing own Immich credentials — prevent leaking other users' API keys
-  const user = db.prepare('SELECT immich_url, immich_api_key FROM users WHERE id = ?').get(authReq.user.id) as any;
-  if (!user?.immich_url || !user?.immich_api_key) return res.status(404).send('Not found');
+  const creds = getImmichCredentials(authReq.user.id);
+  if (!creds) return res.status(404).send('Not found');
 
   try {
-    const resp = await fetch(`${user.immich_url}/api/assets/${assetId}/original`, {
-      headers: { 'x-api-key': user.immich_api_key },
+    const resp = await fetch(`${creds.immich_url}/api/assets/${assetId}/original`, {
+      headers: { 'x-api-key': creds.immich_api_key },
       signal: AbortSignal.timeout(30000),
     });
     if (!resp.ok) return res.status(resp.status).send('Failed');

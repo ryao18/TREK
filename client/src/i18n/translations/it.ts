@@ -203,7 +203,7 @@ const it: Record<string, string | { name: string; category: string }[]> = {
   'settings.passwordRequired': 'Inserisci la password attuale e quella nuova',
   'settings.passwordTooShort': 'La password deve contenere almeno 8 caratteri',
   'settings.passwordMismatch': 'Le password non corrispondono',
-  'settings.passwordWeak': 'La password deve contenere lettere maiuscole, minuscole e un numero',
+  'settings.passwordWeak': 'La password deve contenere lettere maiuscole, minuscole, un numero e un carattere speciale',
   'settings.passwordChanged': 'Password cambiata con successo',
   'settings.deleteAccount': 'Elimina account',
   'settings.deleteAccountTitle': 'Eliminare il tuo account?',
@@ -351,7 +351,7 @@ const it: Record<string, string | { name: string; category: string }[]> = {
 
   // Register
   'register.passwordMismatch': 'Le password non corrispondono',
-  'register.passwordTooShort': 'La password deve contenere almeno 6 caratteri',
+  'register.passwordTooShort': 'La password deve contenere almeno 8 caratteri',
   'register.failed': 'Registrazione fallita',
   'register.getStarted': 'Inizia',
   'register.subtitle': 'Crea un account e inizia a programmare i viaggi dei tuoi sogni.',

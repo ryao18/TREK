@@ -55,11 +55,11 @@ export default function LoginPage(): React.ReactElement {
     if (oidcCode) {
       setIsLoading(true)
       window.history.replaceState({}, '', '/login')
-      fetch('/api/auth/oidc/exchange?code=' + encodeURIComponent(oidcCode))
+      fetch('/api/auth/oidc/exchange?code=' + encodeURIComponent(oidcCode), { credentials: 'include' })
         .then(r => r.json())
-        .then(data => {
+        .then(async data => {
           if (data.token) {
-            localStorage.setItem('auth_token', data.token)
+            await loadUser()
             navigate('/dashboard', { replace: true })
           } else {
             setError(data.error || 'OIDC login failed')
@@ -150,7 +150,7 @@ export default function LoginPage(): React.ReactElement {
       }
       if (mode === 'register') {
         if (!username.trim()) { setError('Username is required'); setIsLoading(false); return }
-        if (password.length < 6) { setError('Password must be at least 6 characters'); setIsLoading(false); return }
+        if (password.length < 8) { setError('Password must be at least 8 characters'); setIsLoading(false); return }
         await register(username, email, password, inviteToken || undefined)
       } else {
         const result = await login(email, password)

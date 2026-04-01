@@ -147,7 +147,8 @@ export default function SettingsPage(): React.ReactElement {
   const handleSaveImmich = async () => {
     setSaving(s => ({ ...s, immich: true }))
     try {
-      await apiClient.put('/integrations/immich/settings', { immich_url: immichUrl, immich_api_key: immichApiKey || undefined })
+      const saveRes = await apiClient.put('/integrations/immich/settings', { immich_url: immichUrl, immich_api_key: immichApiKey || undefined })
+      if (saveRes.data.warning) toast.warn(saveRes.data.warning)
       toast.success(t('memories.saved'))
       const res = await apiClient.get('/integrations/immich/status')
       setImmichConnected(res.data.connected)

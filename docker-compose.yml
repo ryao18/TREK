@@ -18,12 +18,13 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - JWT_SECRET=${JWT_SECRET:-} # Auto-generated if not set; persist across restarts for stable sessions
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-} # Recommended. Generate with: openssl rand -hex 32. If unset, falls back to data/.jwt_secret (existing installs) or auto-generates a key (fresh installs).
       - TZ=${TZ:-UTC} # Timezone for logs, reminders and scheduled tasks (e.g. Europe/Berlin)
       - LOG_LEVEL=${LOG_LEVEL:-info} # info = concise user actions; debug = verbose admin-level details
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-} # Comma-separated origins for CORS and email notification links
       - FORCE_HTTPS=true # Redirect HTTP to HTTPS when behind a TLS-terminating proxy
       - TRUST_PROXY=1 # Number of trusted proxies (for X-Forwarded-For / real client IP)
+      - ALLOW_INTERNAL_NETWORK=false # Set to true if Immich or other services are hosted on your local network (RFC-1918 IPs). Loopback and link-local addresses remain blocked regardless.
       - OIDC_ISSUER=https://auth.example.com # OpenID Connect provider URL
       - OIDC_CLIENT_ID=trek # OpenID Connect client ID
       - OIDC_CLIENT_SECRET=supersecret # OpenID Connect client secret

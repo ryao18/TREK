@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { db } from '../db/database';
@@ -10,6 +9,9 @@ import { AuthRequest, User, Addon } from '../types';
 import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 import { getAllPermissions, savePermissions, PERMISSION_ACTIONS } from '../services/permissions';
 import { revokeUserSessions } from '../mcp';
+import { maybe_encrypt_api_key, decrypt_api_key } from '../services/apiKeyCrypto';
+import { validatePassword } from '../services/passwordPolicy';
+import { updateJwtSecret } from '../config';
 
 const router = express.Router();
 
@@ -45,6 +47,9 @@ router.post('/users', (req: Request, res: Response) => {
   if (!username?.trim() || !email?.trim() || !password?.trim()) {
     return res.status(400).json({ error: 'Username, email and password are required' });
   }
+
+  const pwCheck = validatePassword(password.trim());
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
   if (role && !['user', 'admin'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
@@ -96,6 +101,10 @@ router.put('/users/:id', (req: Request, res: Response) => {
     if (conflict) return res.status(409).json({ error: 'Email already taken' });
   }
 
+  if (password) {
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
+  }
   const passwordHash = password ? bcrypt.hashSync(password, 12) : null;
 
   db.prepare(`
@@ -233,24 +242,26 @@ router.get('/audit-log', (req: Request, res: Response) => {
 
 router.get('/oidc', (_req: Request, res: Response) => {
   const get = (key: string) => (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value || '';
-  const secret = get('oidc_client_secret');
+  const secret = decrypt_api_key(get('oidc_client_secret'));
   res.json({
     issuer: get('oidc_issuer'),
     client_id: get('oidc_client_id'),
     client_secret_set: !!secret,
     display_name: get('oidc_display_name'),
     oidc_only: get('oidc_only') === 'true',
+    discovery_url: get('oidc_discovery_url'),
   });
 });
 
 router.put('/oidc', (req: Request, res: Response) => {
-  const { issuer, client_id, client_secret, display_name, oidc_only } = req.body;
+  const { issuer, client_id, client_secret, display_name, oidc_only, discovery_url } = req.body;
   const set = (key: string, val: string) => db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val || '');
   set('oidc_issuer', issuer);
   set('oidc_client_id', client_id);
-  if (client_secret !== undefined) set('oidc_client_secret', client_secret);
+  if (client_secret !== undefined) set('oidc_client_secret', maybe_encrypt_api_key(client_secret) ?? '');
   set('oidc_display_name', display_name);
   set('oidc_only', oidc_only ? 'true' : 'false');
+  set('oidc_discovery_url', discovery_url);
   const authReq = req as AuthRequest;
   writeAudit({
     userId: authReq.user.id,
@@ -323,49 +334,6 @@ router.get('/version-check', async (_req: Request, res: Response) => {
     res.json({ current: currentVersion, latest, update_available, release_url: data.html_url || '', is_docker: isDocker });
   } catch {
     res.json({ current: currentVersion, latest: currentVersion, update_available: false, is_docker: isDocker });
-  }
-});
-
-router.post('/update', async (req: Request, res: Response) => {
-  const rootDir = path.resolve(__dirname, '../../..');
-  const serverDir = path.resolve(__dirname, '../..');
-  const clientDir = path.join(rootDir, 'client');
-  const steps: { step: string; success?: boolean; output?: string; version?: string }[] = [];
-
-  try {
-    const pullOutput = execSync('git pull origin main', { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
-    steps.push({ step: 'git pull', success: true, output: pullOutput.trim() });
-
-    execSync('npm install --production --ignore-scripts', { cwd: serverDir, timeout: 120000, encoding: 'utf8' });
-    steps.push({ step: 'npm install (server)', success: true });
-
-    if (process.env.NODE_ENV === 'production') {
-      execSync('npm install --ignore-scripts', { cwd: clientDir, timeout: 120000, encoding: 'utf8' });
-      execSync('npm run build', { cwd: clientDir, timeout: 120000, encoding: 'utf8' });
-      steps.push({ step: 'npm install + build (client)', success: true });
-    }
-
-    delete require.cache[require.resolve('../../package.json')];
-    const { version: newVersion } = require('../../package.json');
-    steps.push({ step: 'version', version: newVersion });
-
-    const authReq = req as AuthRequest;
-    writeAudit({
-      userId: authReq.user.id,
-      action: 'admin.system_update',
-      resource: newVersion,
-      ip: getClientIp(req),
-    });
-    res.json({ success: true, steps, restarting: true });
-
-    setTimeout(() => {
-      console.log('[Update] Restarting after update...');
-      process.exit(0);
-    }, 1000);
-  } catch (err: unknown) {
-    console.error(err);
-    steps.push({ step: 'error', success: false, output: 'Internal error' });
-    res.status(500).json({ success: false, steps });
   }
 });
 
@@ -597,6 +565,30 @@ router.delete('/mcp-tokens/:id', (req: Request, res: Response) => {
   if (!token) return res.status(404).json({ error: 'Token not found' });
   db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(req.params.id);
   revokeUserSessions(token.user_id);
+  res.json({ success: true });
+});
+
+router.post('/rotate-jwt-secret', (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const newSecret = crypto.randomBytes(32).toString('hex');
+  const dataDir = path.resolve(__dirname, '../../data');
+  const secretFile = path.join(dataDir, '.jwt_secret');
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(secretFile, newSecret, { mode: 0o600 });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: 'Failed to persist new JWT secret to disk' });
+  }
+  updateJwtSecret(newSecret);
+  writeAudit({
+    user_id: authReq.user?.id ?? null,
+    username: authReq.user?.username ?? 'unknown',
+    action: 'admin.rotate_jwt_secret',
+    target_type: 'system',
+    target_id: null,
+    details: null,
+    ip: getClientIp(req),
+  });
   res.json({ success: true });
 });
 

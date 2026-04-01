@@ -9,6 +9,7 @@ import { broadcast } from '../websocket';
 import { validateStringLengths } from '../middleware/validate';
 import { checkPermission } from '../services/permissions';
 import { AuthRequest, CollabNote, CollabPoll, CollabMessage, TripFile } from '../types';
+import { checkSsrf, createPinnedAgent } from '../utils/ssrfGuard';
 
 interface ReactionRow {
   emoji: string;
@@ -513,35 +514,19 @@ router.get('/link-preview', authenticate, async (req: Request, res: Response) =>
 
   try {
     const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return res.status(400).json({ error: 'Only HTTP(S) URLs are allowed' });
-    }
-    const hostname = parsed.hostname.toLowerCase();
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' ||
-        hostname === '0.0.0.0' || hostname.endsWith('.local') || hostname.endsWith('.internal') ||
-        /^10\./.test(hostname) || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) || /^192\.168\./.test(hostname) ||
-        /^169\.254\./.test(hostname) || hostname === '[::1]' || hostname.startsWith('fc') || hostname.startsWith('fd') || hostname.startsWith('fe80')) {
-      return res.status(400).json({ error: 'Private/internal URLs are not allowed' });
-    }
-
-    const dns = require('dns').promises;
-    let resolved: { address: string };
-    try {
-      resolved = await dns.lookup(parsed.hostname);
-    } catch {
-      return res.status(400).json({ error: 'Could not resolve hostname' });
-    }
-    const ip = resolved.address;
-    if (/^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.|169\.254\.|::1|::ffff:(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.))/.test(ip)) {
-      return res.status(400).json({ error: 'Private/internal URLs are not allowed' });
+    const ssrf = await checkSsrf(url);
+    if (!ssrf.allowed) {
+      return res.status(400).json({ error: ssrf.error });
     }
 
     const nodeFetch = require('node-fetch');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    nodeFetch(url, { redirect: 'error',
+    nodeFetch(url, {
+      redirect: 'error',
       signal: controller.signal,
+      agent: createPinnedAgent(ssrf.resolvedIp!, parsed.protocol),
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NOMAD/1.0; +https://github.com/mauriceboe/NOMAD)' },
     })
       .then((r: { ok: boolean; text: () => Promise<string> }) => {

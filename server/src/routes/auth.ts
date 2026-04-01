@@ -10,6 +10,7 @@ import fetch from 'node-fetch';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { db } from '../db/database';
+import { validatePassword } from '../services/passwordPolicy';
 import { authenticate, optionalAuth, demoUploadBlock } from '../middleware/auth';
 import { JWT_SECRET } from '../config';
 import { encryptMfaSecret, decryptMfaSecret } from '../services/mfaCrypto';
@@ -18,8 +19,10 @@ import { randomBytes, createHash } from 'crypto';
 import { revokeUserSessions } from '../mcp';
 import { AuthRequest, OptionalAuthRequest, User } from '../types';
 import { writeAudit, getClientIp } from '../services/auditLog';
-import { decrypt_api_key, maybe_encrypt_api_key } from '../services/apiKeyCrypto';
+import { decrypt_api_key, maybe_encrypt_api_key, encrypt_api_key } from '../services/apiKeyCrypto';
 import { startTripReminders } from '../scheduler';
+import { createEphemeralToken } from '../services/ephemeralTokens';
+import { setAuthCookie, clearAuthCookie } from '../services/cookie';
 
 authenticator.options = { window: 1 };
 
@@ -112,23 +115,27 @@ const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
 const RATE_LIMIT_CLEANUP = 5 * 60 * 1000; // 5 minutes
 
 const loginAttempts = new Map<string, { count: number; first: number }>();
+const mfaAttempts = new Map<string, { count: number; first: number }>();
 setInterval(() => {
   const now = Date.now();
   for (const [key, record] of loginAttempts) {
     if (now - record.first >= RATE_LIMIT_WINDOW) loginAttempts.delete(key);
   }
+  for (const [key, record] of mfaAttempts) {
+    if (now - record.first >= RATE_LIMIT_WINDOW) mfaAttempts.delete(key);
+  }
 }, RATE_LIMIT_CLEANUP);
 
-function rateLimiter(maxAttempts: number, windowMs: number) {
+function rateLimiter(maxAttempts: number, windowMs: number, store = loginAttempts) {
   return (req: Request, res: Response, next: NextFunction) => {
     const key = req.ip || 'unknown';
     const now = Date.now();
-    const record = loginAttempts.get(key);
+    const record = store.get(key);
     if (record && record.count >= maxAttempts && now - record.first < windowMs) {
       return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
     }
     if (!record || now - record.first >= windowMs) {
-      loginAttempts.set(key, { count: 1, first: now });
+      store.set(key, { count: 1, first: now });
     } else {
       record.count++;
     }
@@ -136,6 +143,7 @@ function rateLimiter(maxAttempts: number, windowMs: number) {
   };
 }
 const authLimiter = rateLimiter(10, RATE_LIMIT_WINDOW);
+const mfaLimiter = rateLimiter(5, RATE_LIMIT_WINDOW, mfaAttempts);
 
 function isOidcOnlyMode(): boolean {
   const get = (key: string) => (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value || null;
@@ -222,6 +230,7 @@ router.post('/demo-login', (_req: Request, res: Response) => {
   if (!user) return res.status(500).json({ error: 'Demo user not found' });
   const token = generateToken(user);
   const safe = stripUserForClient(user) as Record<string, unknown>;
+  setAuthCookie(res, token);
   res.json({ token, user: { ...safe, avatar_url: avatarUrl(user) } });
 });
 
@@ -262,13 +271,8 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Username, email and password are required' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
-  }
-
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-    return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
-  }
+  const pwCheck = validatePassword(password);
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
@@ -305,6 +309,7 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
     }
 
     writeAudit({ userId: Number(result.lastInsertRowid), action: 'user.register', ip: getClientIp(req), details: { username, email, role } });
+    setAuthCookie(res, token);
     res.status(201).json({ token, user: { ...user, avatar_url: null } });
   } catch (err: unknown) {
     res.status(500).json({ error: 'Error creating user' });
@@ -348,6 +353,7 @@ router.post('/login', authLimiter, (req: Request, res: Response) => {
   const userSafe = stripUserForClient(user) as Record<string, unknown>;
 
   writeAudit({ userId: Number(user.id), action: 'user.login', ip: getClientIp(req), details: { email } });
+  setAuthCookie(res, token);
   res.json({ token, user: { ...userSafe, avatar_url: avatarUrl(user) } });
 });
 
@@ -365,6 +371,11 @@ router.get('/me', authenticate, (req: Request, res: Response) => {
   res.json({ user: { ...base, avatar_url: avatarUrl(user) } });
 });
 
+router.post('/logout', (req: Request, res: Response) => {
+  clearAuthCookie(res);
+  res.json({ success: true });
+});
+
 router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   if (isOidcOnlyMode()) {
@@ -376,11 +387,8 @@ router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req
   const { current_password, new_password } = req.body;
   if (!current_password) return res.status(400).json({ error: 'Current password is required' });
   if (!new_password) return res.status(400).json({ error: 'New password is required' });
-  if (new_password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-
-  if (!/[A-Z]/.test(new_password) || !/[a-z]/.test(new_password) || !/[0-9]/.test(new_password)) {
-    return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
-  }
+  const pwCheck = validatePassword(new_password);
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
   const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(authReq.user.id) as { password_hash: string } | undefined;
   if (!user || !bcrypt.compareSync(current_password, user.password_hash)) {
@@ -665,6 +673,7 @@ router.put('/app-settings', authenticate, (req: Request, res: Response) => {
       }
       // Don't save masked password
       if (key === 'smtp_pass' && val === '••••••••') continue;
+      if (key === 'smtp_pass') val = encrypt_api_key(val);
       db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val);
     }
   }
@@ -776,7 +785,7 @@ router.get('/travel-stats', authenticate, (req: Request, res: Response) => {
   });
 });
 
-router.post('/mfa/verify-login', authLimiter, (req: Request, res: Response) => {
+router.post('/mfa/verify-login', mfaLimiter, (req: Request, res: Response) => {
   const { mfa_token, code } = req.body as { mfa_token?: string; code?: string };
   if (!mfa_token || !code) {
     return res.status(400).json({ error: 'Verification token and code are required' });
@@ -810,6 +819,7 @@ router.post('/mfa/verify-login', authLimiter, (req: Request, res: Response) => {
     const sessionToken = generateToken(user);
     const userSafe = stripUserForClient(user) as Record<string, unknown>;
     writeAudit({ userId: Number(user.id), action: 'user.login', ip: getClientIp(req), details: { mfa: true } });
+    setAuthCookie(res, sessionToken);
     res.json({ token: sessionToken, user: { ...userSafe, avatar_url: avatarUrl(user) } });
   } catch {
     return res.status(401).json({ error: 'Invalid or expired verification token' });
@@ -844,7 +854,7 @@ router.post('/mfa/setup', authenticate, (req: Request, res: Response) => {
     });
 });
 
-router.post('/mfa/enable', authenticate, (req: Request, res: Response) => {
+router.post('/mfa/enable', authenticate, mfaLimiter, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { code } = req.body as { code?: string };
   if (!code) {
@@ -948,6 +958,26 @@ router.delete('/mcp-tokens/:id', authenticate, (req: Request, res: Response) => 
   db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(id);
   revokeUserSessions(authReq.user.id);
   res.json({ success: true });
+});
+
+// Short-lived single-use token for WebSocket connections (avoids JWT in WS URL)
+router.post('/ws-token', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const token = createEphemeralToken(authReq.user.id, 'ws');
+  if (!token) return res.status(503).json({ error: 'Service unavailable' });
+  res.json({ token });
+});
+
+// Short-lived single-use token for direct resource URLs (file downloads, Immich assets)
+router.post('/resource-token', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { purpose } = req.body as { purpose?: string };
+  if (purpose !== 'download' && purpose !== 'immich') {
+    return res.status(400).json({ error: 'Invalid purpose' });
+  }
+  const token = createEphemeralToken(authReq.user.id, purpose);
+  if (!token) return res.status(503).json({ error: 'Service unavailable' });
+  res.json({ token });
 });
 
 export default router;

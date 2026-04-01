@@ -3,6 +3,15 @@ import { Camera, Plus, Share2, EyeOff, Eye, X, Check, Search, ArrowUpDown, MapPi
 import apiClient from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { useTranslation } from '../../i18n'
+import { getAuthUrl } from '../../api/authUrl'
+
+function ImmichImg({ baseUrl, style, loading }: { baseUrl: string; style?: React.CSSProperties; loading?: 'lazy' | 'eager' }) {
+  const [src, setSrc] = useState('')
+  useEffect(() => {
+    getAuthUrl(baseUrl, 'immich').then(setSrc)
+  }, [baseUrl])
+  return src ? <img src={src} alt="" loading={loading} style={style} /> : null
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,6 +119,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   const [lightboxUserId, setLightboxUserId] = useState<number | null>(null)
   const [lightboxInfo, setLightboxInfo] = useState<any>(null)
   const [lightboxInfoLoading, setLightboxInfoLoading] = useState(false)
+  const [lightboxOriginalSrc, setLightboxOriginalSrc] = useState('')
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -221,13 +231,8 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const token = useAuthStore(s => s.token)
-
-  const thumbnailUrl = (assetId: string, userId: number) =>
-    `/api/integrations/immich/assets/${assetId}/thumbnail?userId=${userId}&token=${token}`
-
-  const originalUrl = (assetId: string, userId: number) =>
-    `/api/integrations/immich/assets/${assetId}/original?userId=${userId}&token=${token}`
+  const thumbnailBaseUrl = (assetId: string, userId: number) =>
+    `/api/integrations/immich/assets/${assetId}/thumbnail?userId=${userId}`
 
   const ownPhotos = tripPhotos.filter(p => p.user_id === currentUser?.id)
   const othersPhotos = tripPhotos.filter(p => p.user_id !== currentUser?.id && p.shared)
@@ -448,7 +453,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                           outline: isSelected ? '3px solid var(--text-primary)' : 'none',
                           outlineOffset: -3,
                         }}>
-                        <img src={thumbnailUrl(asset.id, currentUser!.id)} alt="" loading="lazy"
+                        <ImmichImg baseUrl={thumbnailBaseUrl(asset.id, currentUser!.id)} loading="lazy"
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         {isSelected && (
                           <div style={{
@@ -626,12 +631,14 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                   style={{ position: 'relative', aspectRatio: '1', borderRadius: 10, overflow: 'visible', cursor: 'pointer' }}
                   onClick={() => {
                     setLightboxId(photo.immich_asset_id); setLightboxUserId(photo.user_id); setLightboxInfo(null)
+                    setLightboxOriginalSrc('')
+                    getAuthUrl(`/api/integrations/immich/assets/${photo.immich_asset_id}/original?userId=${photo.user_id}`, 'immich').then(setLightboxOriginalSrc)
                     setLightboxInfoLoading(true)
                     apiClient.get(`/integrations/immich/assets/${photo.immich_asset_id}/info?userId=${photo.user_id}`)
                       .then(r => setLightboxInfo(r.data)).catch(() => {}).finally(() => setLightboxInfoLoading(false))
                   }}>
 
-                  <img src={thumbnailUrl(photo.immich_asset_id, photo.user_id)} alt="" loading="lazy"
+                  <ImmichImg baseUrl={thumbnailBaseUrl(photo.immich_asset_id, photo.user_id)} loading="lazy"
                     style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} />
 
                   {/* Other user's avatar */}
@@ -748,7 +755,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
           </button>
           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 16, alignItems: 'flex-start', justifyContent: 'center', padding: 20, width: '100%', height: '100%' }}>
             <img
-              src={originalUrl(lightboxId, lightboxUserId)}
+              src={lightboxOriginalSrc}
               alt=""
               style={{ maxWidth: lightboxInfo ? 'calc(100% - 280px)' : '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 10, cursor: 'default' }}
             />

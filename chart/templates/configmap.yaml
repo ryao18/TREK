@@ -10,3 +10,6 @@ data:
   {{- if .Values.env.ALLOWED_ORIGINS }}
   ALLOWED_ORIGINS: {{ .Values.env.ALLOWED_ORIGINS | quote }}
   {{- end }}
+  {{- if .Values.env.ALLOW_INTERNAL_NETWORK }}
+  ALLOW_INTERNAL_NETWORK: {{ .Values.env.ALLOW_INTERNAL_NETWORK | quote }}
+  {{- end }}

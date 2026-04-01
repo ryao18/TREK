@@ -1,9 +1,9 @@
 import 'dotenv/config';
-import { JWT_SECRET_IS_GENERATED } from './config';
 import express, { Request, Response, NextFunction } from 'express';
 import { enforceGlobalMfaPolicy } from './middleware/mfaPolicy';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
 
@@ -87,6 +87,7 @@ if (shouldForceHttps) {
 }
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.use(enforceGlobalMfaPolicy);
 
@@ -282,9 +283,6 @@ const server = app.listen(PORT, () => {
     '──────────────────────────────────────',
   ];
   banner.forEach(l => console.log(l));
-  if (JWT_SECRET_IS_GENERATED) {
-    sLogWarn('[SECURITY WARNING] JWT_SECRET was auto-generated. Sessions will not persist across restarts. Set JWT_SECRET env var for production use.');
-  }
   if (process.env.DEMO_MODE === 'true') sLogInfo('Demo mode: ENABLED');
   if (process.env.DEMO_MODE === 'true' && process.env.NODE_ENV === 'production') {
     sLogWarn('SECURITY WARNING: DEMO_MODE is enabled in production!');
@@ -292,6 +290,8 @@ const server = app.listen(PORT, () => {
   scheduler.start();
   scheduler.startTripReminders();
   scheduler.startDemoReset();
+  const { startTokenCleanup } = require('./services/ephemeralTokens');
+  startTokenCleanup();
   import('./websocket').then(({ setupWebSocket }) => {
     setupWebSocket(server);
   });

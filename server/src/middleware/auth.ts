@@ -4,9 +4,16 @@ import { db } from '../db/database';
 import { JWT_SECRET } from '../config';
 import { AuthRequest, OptionalAuthRequest, User } from '../types';
 
-const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+function extractToken(req: Request): string | null {
+  // Prefer httpOnly cookie; fall back to Authorization: Bearer (MCP, API clients)
+  const cookieToken = (req as any).cookies?.trek_session;
+  if (cookieToken) return cookieToken;
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  return (authHeader && authHeader.split(' ')[1]) || null;
+}
+
+const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+  const token = extractToken(req);
 
   if (!token) {
     res.status(401).json({ error: 'Access token required' });
@@ -30,8 +37,7 @@ const authenticate = (req: Request, res: Response, next: NextFunction): void => 
 };
 
 const optionalAuth = (req: Request, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = extractToken(req);
 
   if (!token) {
     (req as OptionalAuthRequest).user = null;

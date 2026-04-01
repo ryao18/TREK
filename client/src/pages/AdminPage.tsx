@@ -17,7 +17,7 @@ import PackingTemplateManager from '../components/Admin/PackingTemplateManager'
 import AuditLogPanel from '../components/Admin/AuditLogPanel'
 import AdminMcpTokensPanel from '../components/Admin/AdminMcpTokensPanel'
 import PermissionsPanel from '../components/Admin/PermissionsPanel'
-import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, AlertTriangle, RefreshCw, GitBranch, Sun, Link2, Copy, Plus } from 'lucide-react'
+import { Users, Map, Briefcase, Shield, Trash2, Edit2, Camera, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, GitBranch, Sun, Link2, Copy, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
 import CustomSelect from '../components/shared/CustomSelect'
 
 interface AdminUser {
@@ -45,6 +45,7 @@ interface OidcConfig {
   client_secret_set: boolean
   display_name: string
   oidc_only: boolean
+  discovery_url: string
 }
 
 interface UpdateInfo {
@@ -85,7 +86,7 @@ export default function AdminPage(): React.ReactElement {
   useEffect(() => { adminApi.getBagTracking().then(d => setBagTrackingEnabled(d.enabled)).catch(() => {}) }, [])
 
   // OIDC config
-  const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', oidc_only: false })
+  const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', oidc_only: false, discovery_url: '' })
   const [savingOidc, setSavingOidc] = useState<boolean>(false)
 
   // Registration toggle
@@ -122,12 +123,13 @@ export default function AdminPage(): React.ReactElement {
   // Version check & update
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false)
-  const [updating, setUpdating] = useState<boolean>(false)
-  const [updateResult, setUpdateResult] = useState<'success' | 'error' | null>(null)
 
-  const { user: currentUser, updateApiKeys, setAppRequireMfa, setTripRemindersEnabled } = useAuthStore()
+  const { user: currentUser, updateApiKeys, setAppRequireMfa, setTripRemindersEnabled, logout } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
+
+  const [showRotateJwtModal, setShowRotateJwtModal] = useState<boolean>(false)
+  const [rotatingJwt, setRotatingJwt] = useState<boolean>(false)
 
   useEffect(() => {
     loadData()
@@ -175,26 +177,6 @@ export default function AdminPage(): React.ReactElement {
       setWeatherKey(data.settings?.openweather_api_key || '')
     } catch (err: unknown) {
       // ignore
-    }
-  }
-
-  const handleInstallUpdate = async () => {
-    setUpdating(true)
-    setUpdateResult(null)
-    try {
-      await adminApi.installUpdate()
-      setUpdateResult('success')
-      // Server is restarting — poll until it comes back, then reload
-      const poll = setInterval(async () => {
-        try {
-          await authApi.getAppConfig()
-          clearInterval(poll)
-          window.location.reload()
-        } catch { /* still restarting */ }
-      }, 2000)
-    } catch {
-      setUpdateResult('error')
-      setUpdating(false)
     }
   }
 
@@ -272,6 +254,10 @@ export default function AdminPage(): React.ReactElement {
       toast.error(t('admin.toast.fieldsRequired'))
       return
     }
+    if (createForm.password.trim().length < 8) {
+      toast.error(t('settings.passwordTooShort'))
+      return
+    }
     try {
       const data = await adminApi.createUser(createForm)
       setUsers(prev => [data.user, ...prev])
@@ -327,7 +313,13 @@ export default function AdminPage(): React.ReactElement {
         email: editForm.email.trim() || undefined,
         role: editForm.role,
       }
-      if (editForm.password.trim()) payload.password = editForm.password.trim()
+      if (editForm.password.trim()) {
+        if (editForm.password.trim().length < 8) {
+          toast.error(t('settings.passwordTooShort'))
+          return
+        }
+        payload.password = editForm.password.trim()
+      }
       const data = await adminApi.updateUser(editingUser.id, payload)
       setUsers(prev => prev.map(u => u.id === editingUser.id ? data.user : u))
       setEditingUser(null)
@@ -395,23 +387,13 @@ export default function AdminPage(): React.ReactElement {
                     {t('admin.update.button')}
                   </a>
                 )}
-                {updateInfo.is_docker ? (
-                  <button
-                    onClick={() => setShowUpdateModal(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
-                  >
-                    <Download className="w-4 h-4" />
-                    {t('admin.update.howTo')}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowUpdateModal(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
-                  >
-                    <Download className="w-4 h-4" />
-                    {t('admin.update.install')}
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowUpdateModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-colors bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
+                >
+                  <Download className="w-4 h-4" />
+                  {t('admin.update.howTo')}
+                </button>
               </div>
             </div>
           )}
@@ -915,6 +897,17 @@ export default function AdminPage(): React.ReactElement {
                     <p className="text-xs text-slate-400 mt-1">{t('admin.oidcIssuerHint')}</p>
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Discovery URL <span className="text-slate-400 font-normal">(optional)</span></label>
+                    <input
+                      type="url"
+                      value={oidcConfig.discovery_url}
+                      onChange={e => setOidcConfig(c => ({ ...c, discovery_url: e.target.value }))}
+                      placeholder='https://auth.example.com/application/o/trek/.well-known/openid-configuration'
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Override the auto-constructed discovery URL. Required for providers like Authentik where the endpoint is not at <code className="bg-slate-100 px-1 rounded">{'<issuer>/.well-known/openid-configuration'}</code>.</p>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Client ID</label>
                     <input
                       type="text"
@@ -955,7 +948,7 @@ export default function AdminPage(): React.ReactElement {
                     onClick={async () => {
                       setSavingOidc(true)
                       try {
-                        const payload: Record<string, unknown> = { issuer: oidcConfig.issuer, client_id: oidcConfig.client_id, display_name: oidcConfig.display_name, oidc_only: oidcConfig.oidc_only }
+                        const payload: Record<string, unknown> = { issuer: oidcConfig.issuer, client_id: oidcConfig.client_id, display_name: oidcConfig.display_name, oidc_only: oidcConfig.oidc_only, discovery_url: oidcConfig.discovery_url }
                         if (oidcConfig.client_secret) payload.client_secret = oidcConfig.client_secret
                         await adminApi.updateOidc(payload)
                         toast.success(t('admin.oidcSaved'))
@@ -1155,6 +1148,31 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                 </div>
               </div>
+
+              {/* Danger Zone */}
+              <div className="bg-white rounded-xl border border-red-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-red-100 bg-red-50">
+                  <h2 className="font-semibold text-red-700 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Danger Zone
+                  </h2>
+                </div>
+                <div className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">Rotate JWT Secret</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Generate a new JWT signing secret. All active sessions will be invalidated immediately.</p>
+                    </div>
+                    <button
+                      onClick={() => setShowRotateJwtModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Rotate
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1304,78 +1322,37 @@ export default function AdminPage(): React.ReactElement {
         )}
       </Modal>
 
-      {/* Update confirmation popup — matches backup restore style */}
+      {/* Update instructions popup */}
       {showUpdateModal && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={() => { if (!updating) setShowUpdateModal(false) }}
+          onClick={() => setShowUpdateModal(false)}
         >
           <div
             onClick={e => e.stopPropagation()}
             style={{ width: '100%', maxWidth: 440, borderRadius: 16, overflow: 'hidden' }}
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
           >
-            {updateResult === 'success' ? (
-              <>
-                <div style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <CheckCircle size={20} style={{ color: 'white' }} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.success')}</h3>
-                  </div>
-                </div>
-                <div style={{ padding: '20px 24px', textAlign: 'center' }}>
-                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{t('admin.update.reloadHint')}</p>
-                </div>
-              </>
-            ) : updateResult === 'error' ? (
-              <>
-                <div style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <XCircle size={20} style={{ color: 'white' }} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.failed')}</h3>
-                  </div>
-                </div>
-                <div style={{ padding: '0 24px 20px', display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-                  <button
-                    onClick={() => { setShowUpdateModal(false); setUpdateResult(null) }}
-                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
-                    style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-                  >
-                    {t('common.cancel')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Red header */}
-                <div style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <AlertTriangle size={20} style={{ color: 'white' }} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.confirmTitle')}</h3>
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
-                      v{updateInfo?.current} → v{updateInfo?.latest}
-                    </p>
-                  </div>
-                </div>
+            <div style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <ArrowUpCircle size={20} style={{ color: 'white' }} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'white' }}>{t('admin.update.howTo')}</h3>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                  v{updateInfo?.current} → v{updateInfo?.latest}
+                </p>
+              </div>
+            </div>
 
-                {/* Body */}
-                <div style={{ padding: '20px 24px' }}>
-                  {updateInfo?.is_docker ? (
-                    <>
-                      <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                        {t('admin.update.dockerText').replace('{version}', `v${updateInfo.latest}`)}
-                      </p>
+            <div style={{ padding: '20px 24px' }}>
+              <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                {t('admin.update.dockerText').replace('{version}', `v${updateInfo?.latest ?? ''}`)}
+              </p>
 
-                      <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 10, fontSize: 12, lineHeight: 1.8, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
-                        className="bg-gray-900 dark:bg-gray-950 text-gray-100 border border-gray-700"
-                      >
+              <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 10, fontSize: 12, lineHeight: 1.8, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                className="bg-gray-900 dark:bg-gray-950 text-gray-100 border border-gray-700"
+              >
 {`docker pull mauriceboe/nomad:latest
 docker stop nomad && docker rm nomad
 docker run -d --name nomad \\
@@ -1384,90 +1361,93 @@ docker run -d --name nomad \\
   -v /opt/nomad/uploads:/app/uploads \\
   --restart unless-stopped \\
   mauriceboe/nomad:latest`}
-                      </div>
+              </div>
 
-                      <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
-                        className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                      >
-                        <div className="flex items-start gap-2">
-                          <CheckCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                          <span>{t('admin.update.dataInfo')}</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                        {updateInfo && t('admin.update.confirmText').replace('{current}', `v${updateInfo.current}`).replace('{version}', `v${updateInfo.latest}`)}
-                      </p>
-
-                      <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
-                        className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                      >
-                        <div className="flex items-start gap-2">
-                          <CheckCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                          <span>{t('admin.update.dataInfo')}</span>
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
-                        className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                      >
-                        <div className="flex items-start gap-2">
-                          <Download className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                          <span>
-                            {t('admin.update.backupHint')}{' '}
-                            <button
-                              onClick={() => { setShowUpdateModal(false); setActiveTab('backup') }}
-                              className="underline font-semibold hover:text-blue-950 dark:hover:text-blue-100"
-                            >{t('admin.update.backupLink')}</button>
-                          </span>
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
-                        className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
-                      >
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                          <span>{t('admin.update.warning')}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
+              <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
+                className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+              >
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>{t('admin.update.dataInfo')}</span>
                 </div>
+              </div>
 
-                {/* Footer */}
-                <div style={{ padding: '0 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setShowUpdateModal(false)}
-                    disabled={updating}
-                    className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40"
-                    style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  {!updateInfo?.is_docker && (
-                    <button
-                      onClick={handleInstallUpdate}
-                      disabled={updating}
-                      className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200 disabled:opacity-60 flex items-center gap-2"
-                      style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-                    >
-                      {updating ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Download size={14} />
-                      )}
-                      {updating ? t('admin.update.installing') : t('admin.update.confirm')}
-                    </button>
-                  )}
+              {updateInfo?.release_url && (
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, fontSize: 12, lineHeight: 1.5 }}
+                  className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                >
+                  <div className="flex items-start gap-2">
+                    <ExternalLink className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <span>
+                      <a href={updateInfo.release_url} target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                        {t('admin.update.button')}
+                      </a>
+                    </span>
+                  </div>
                 </div>
-              </>
-            )}
+              )}
+            </div>
+
+            <div style={{ padding: '0 24px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowUpdateModal(false)}
+                className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-gray-200"
+                style={{ padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                {t('common.close')}
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Rotate JWT Secret confirmation modal */}
+      <Modal
+        isOpen={showRotateJwtModal}
+        onClose={() => setShowRotateJwtModal(false)}
+        title="Rotate JWT Secret"
+        size="sm"
+        footer={
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setShowRotateJwtModal(false)}
+              disabled={rotatingJwt}
+              className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={async () => {
+                setRotatingJwt(true)
+                try {
+                  await adminApi.rotateJwtSecret()
+                  setShowRotateJwtModal(false)
+                  logout()
+                  navigate('/login')
+                } catch {
+                  toast.error(t('common.error'))
+                  setRotatingJwt(false)
+                }
+              }}
+              disabled={rotatingJwt}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white rounded-lg font-medium"
+            >
+              {rotatingJwt ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Rotate &amp; Log out
+            </button>
+          </div>
+        }
+      >
+        <div className="flex gap-3">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-900 mb-1">Warning, this will invalidate all sessions and log you out.</p>
+            <p className="text-xs text-slate-500">A new JWT secret will be generated immediately. Every logged-in user — including you — will be signed out and will need to log in again.</p>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

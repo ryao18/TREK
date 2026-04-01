@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import fetch from 'node-fetch';
 import { db } from '../db/database';
+import { decrypt_api_key } from './apiKeyCrypto';
 import { logInfo, logDebug, logError } from './auditLog';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ function getSmtpConfig(): SmtpConfig | null {
   const host = process.env.SMTP_HOST || getAppSetting('smtp_host');
   const port = process.env.SMTP_PORT || getAppSetting('smtp_port');
   const user = process.env.SMTP_USER || getAppSetting('smtp_user');
-  const pass = process.env.SMTP_PASS || getAppSetting('smtp_pass');
+  const pass = process.env.SMTP_PASS || decrypt_api_key(getAppSetting('smtp_pass')) || '';
   const from = process.env.SMTP_FROM || getAppSetting('smtp_from');
   if (!host || !port || !from) return null;
   return { host, port: parseInt(port, 10), user: user || '', pass: pass || '', from, secure: parseInt(port, 10) === 465 };

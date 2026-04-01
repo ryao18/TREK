@@ -156,6 +156,8 @@ services:
       # - OIDC_ADMIN_VALUE=app-trek-admins # Value of the OIDC claim that grants admin role
       # - OIDC_DISCOVERY_URL= # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik)
       # - DEMO_MODE=false # Enable demo mode (resets data hourly)
+      # - ADMIN_EMAIL=admin@trek.local # Initial admin e-mail — only used on first boot when no users exist
+      # - ADMIN_PASSWORD=changeme      # Initial admin password — only used on first boot when no users exist
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -288,6 +290,9 @@ trek.yourdomain.com {
 | `OIDC_DISPLAY_NAME` | Label shown on the SSO login button | `SSO` |
 | `OIDC_ONLY` | Disable local password auth entirely (first SSO login becomes admin) | `false` |
 | `OIDC_DISCOVERY_URL` | Override the auto-constructed OIDC discovery endpoint. Useful for providers that expose it at a non-standard path (e.g. Authentik: `https://auth.example.com/application/o/trek/.well-known/openid-configuration`) | — |
+| **Initial Setup** | | |
+| `ADMIN_EMAIL` | Email for the first admin account created on initial boot. Must be set together with `ADMIN_PASSWORD`. If either is omitted a random password is generated and printed to the server log. Has no effect once any user exists. | `admin@trek.local` |
+| `ADMIN_PASSWORD` | Password for the first admin account created on initial boot. Must be set together with `ADMIN_EMAIL`. | random |
 | **Other** | | |
 | `DEMO_MODE` | Enable demo mode (hourly data resets) | `false` |
 

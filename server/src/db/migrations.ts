@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { encrypt_api_key } from '../services/apiKeyCrypto';
 
 function runMigrations(db: Database.Database): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
@@ -447,6 +448,13 @@ function runMigrations(db: Database.Database): void {
     },
     () => {
       try { db.exec('ALTER TABLE trips ADD COLUMN reminder_days INTEGER DEFAULT 3'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+    },
+    // Encrypt any plaintext oidc_client_secret left in app_settings
+    () => {
+      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_client_secret'").get() as { value: string } | undefined;
+      if (row?.value && !row.value.startsWith('enc:v1:')) {
+        db.prepare("UPDATE app_settings SET value = ? WHERE key = 'oidc_client_secret'").run(encrypt_api_key(row.value));
+      }
     },
   ];
 

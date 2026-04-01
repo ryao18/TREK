@@ -9,6 +9,7 @@ import { AuthRequest, User, Addon } from '../types';
 import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 import { getAllPermissions, savePermissions, PERMISSION_ACTIONS } from '../services/permissions';
 import { revokeUserSessions } from '../mcp';
+import { maybe_encrypt_api_key, decrypt_api_key } from '../services/apiKeyCrypto';
 
 const router = express.Router();
 
@@ -232,7 +233,7 @@ router.get('/audit-log', (req: Request, res: Response) => {
 
 router.get('/oidc', (_req: Request, res: Response) => {
   const get = (key: string) => (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value || '';
-  const secret = get('oidc_client_secret');
+  const secret = decrypt_api_key(get('oidc_client_secret'));
   res.json({
     issuer: get('oidc_issuer'),
     client_id: get('oidc_client_id'),
@@ -247,7 +248,7 @@ router.put('/oidc', (req: Request, res: Response) => {
   const set = (key: string, val: string) => db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val || '');
   set('oidc_issuer', issuer);
   set('oidc_client_id', client_id);
-  if (client_secret !== undefined) set('oidc_client_secret', client_secret);
+  if (client_secret !== undefined) set('oidc_client_secret', maybe_encrypt_api_key(client_secret) ?? '');
   set('oidc_display_name', display_name);
   set('oidc_only', oidc_only ? 'true' : 'false');
   const authReq = req as AuthRequest;

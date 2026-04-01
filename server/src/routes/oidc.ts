@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { db } from '../db/database';
 import { JWT_SECRET } from '../config';
 import { User } from '../types';
+import { decrypt_api_key } from '../services/apiKeyCrypto';
 
 interface OidcDiscoveryDoc {
   authorization_endpoint: string;
@@ -57,7 +58,7 @@ function getOidcConfig() {
   const get = (key: string) => (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value || null;
   const issuer = process.env.OIDC_ISSUER || get('oidc_issuer');
   const clientId = process.env.OIDC_CLIENT_ID || get('oidc_client_id');
-  const clientSecret = process.env.OIDC_CLIENT_SECRET || get('oidc_client_secret');
+  const clientSecret = process.env.OIDC_CLIENT_SECRET || decrypt_api_key(get('oidc_client_secret'));
   const displayName = process.env.OIDC_DISPLAY_NAME || get('oidc_display_name') || 'SSO';
   if (!issuer || !clientId || !clientSecret) return null;
   return { issuer: issuer.replace(/\/+$/, ''), clientId, clientSecret, displayName };

@@ -18,7 +18,7 @@ import { randomBytes, createHash } from 'crypto';
 import { revokeUserSessions } from '../mcp';
 import { AuthRequest, OptionalAuthRequest, User } from '../types';
 import { writeAudit, getClientIp } from '../services/auditLog';
-import { decrypt_api_key, maybe_encrypt_api_key } from '../services/apiKeyCrypto';
+import { decrypt_api_key, maybe_encrypt_api_key, encrypt_api_key } from '../services/apiKeyCrypto';
 import { startTripReminders } from '../scheduler';
 
 authenticator.options = { window: 1 };
@@ -665,6 +665,7 @@ router.put('/app-settings', authenticate, (req: Request, res: Response) => {
       }
       // Don't save masked password
       if (key === 'smtp_pass' && val === '••••••••') continue;
+      if (key === 'smtp_pass') val = encrypt_api_key(val);
       db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val);
     }
   }

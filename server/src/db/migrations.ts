@@ -456,6 +456,13 @@ function runMigrations(db: Database.Database): void {
         db.prepare("UPDATE app_settings SET value = ? WHERE key = 'oidc_client_secret'").run(encrypt_api_key(row.value));
       }
     },
+    // Encrypt any plaintext smtp_pass left in app_settings
+    () => {
+      const row = db.prepare("SELECT value FROM app_settings WHERE key = 'smtp_pass'").get() as { value: string } | undefined;
+      if (row?.value && !row.value.startsWith('enc:v1:')) {
+        db.prepare("UPDATE app_settings SET value = ? WHERE key = 'smtp_pass'").run(encrypt_api_key(row.value));
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

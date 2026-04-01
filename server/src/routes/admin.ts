@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { db } from '../db/database';
@@ -323,49 +322,6 @@ router.get('/version-check', async (_req: Request, res: Response) => {
     res.json({ current: currentVersion, latest, update_available, release_url: data.html_url || '', is_docker: isDocker });
   } catch {
     res.json({ current: currentVersion, latest: currentVersion, update_available: false, is_docker: isDocker });
-  }
-});
-
-router.post('/update', async (req: Request, res: Response) => {
-  const rootDir = path.resolve(__dirname, '../../..');
-  const serverDir = path.resolve(__dirname, '../..');
-  const clientDir = path.join(rootDir, 'client');
-  const steps: { step: string; success?: boolean; output?: string; version?: string }[] = [];
-
-  try {
-    const pullOutput = execSync('git pull origin main', { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
-    steps.push({ step: 'git pull', success: true, output: pullOutput.trim() });
-
-    execSync('npm install --production --ignore-scripts', { cwd: serverDir, timeout: 120000, encoding: 'utf8' });
-    steps.push({ step: 'npm install (server)', success: true });
-
-    if (process.env.NODE_ENV === 'production') {
-      execSync('npm install --ignore-scripts', { cwd: clientDir, timeout: 120000, encoding: 'utf8' });
-      execSync('npm run build', { cwd: clientDir, timeout: 120000, encoding: 'utf8' });
-      steps.push({ step: 'npm install + build (client)', success: true });
-    }
-
-    delete require.cache[require.resolve('../../package.json')];
-    const { version: newVersion } = require('../../package.json');
-    steps.push({ step: 'version', version: newVersion });
-
-    const authReq = req as AuthRequest;
-    writeAudit({
-      userId: authReq.user.id,
-      action: 'admin.system_update',
-      resource: newVersion,
-      ip: getClientIp(req),
-    });
-    res.json({ success: true, steps, restarting: true });
-
-    setTimeout(() => {
-      console.log('[Update] Restarting after update...');
-      process.exit(0);
-    }, 1000);
-  } catch (err: unknown) {
-    console.error(err);
-    steps.push({ step: 'error', success: false, output: 'Internal error' });
-    res.status(500).json({ success: false, steps });
   }
 });
 

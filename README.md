@@ -136,7 +136,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-} # Auto-generated if not set. If upgrading, set to your old JWT_SECRET value to keep existing encrypted secrets readable.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY} # Required. Generate with: openssl rand -hex 32. Upgrading? Set this to the contents of ./data/.jwt_secret to keep existing encrypted secrets readable.
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-} # Comma-separated origins for CORS and email notification links
       - TZ=${TZ:-UTC} # Timezone for logs, reminders and scheduled tasks (e.g. Europe/Berlin)
       - LOG_LEVEL=${LOG_LEVEL:-info} # info = concise user actions; debug = verbose admin-level details
@@ -246,7 +246,7 @@ trek.yourdomain.com {
 | **Core** | | |
 | `PORT` | Server port | `3000` |
 | `NODE_ENV` | Environment (`production` / `development`) | `production` |
-| `ENCRYPTION_KEY` | At-rest encryption key for stored secrets (API keys, MFA, SMTP, OIDC); auto-generated and saved to `data/` if not set. **Upgrading:** set to your old `JWT_SECRET` value to keep existing encrypted data readable, then re-save credentials to migrate | Auto-generated |
+| `ENCRYPTION_KEY` | **Required.** At-rest encryption key for stored secrets (API keys, MFA, SMTP, OIDC). Generate with `openssl rand -hex 32`. **Upgrading:** set to the contents of `./data/.jwt_secret` to keep existing encrypted data readable. | — |
 | `TZ` | Timezone for logs, reminders and cron jobs (e.g. `Europe/Berlin`) | `UTC` |
 | `LOG_LEVEL` | `info` = concise user actions, `debug` = verbose details | `info` |
 | `ALLOWED_ORIGINS` | Comma-separated origins for CORS and email links | same-origin |

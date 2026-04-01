@@ -48,8 +48,8 @@ const ENCRYPTION_KEY: string = process.env.ENCRYPTION_KEY || '';
 
 if (!ENCRYPTION_KEY) {
   console.error('FATAL: ENCRYPTION_KEY is not set.');
-  console.error('If this occurs after an update from a version that derived encryption from JWT_SECRET,');
-  console.error('set ENCRYPTION_KEY to the value of your old JWT_SECRET to keep existing secrets readable.');
+  console.error('If this occurs after an update, set ENCRYPTION_KEY to the value of your old JWT secret.');
+  console.error('Your JWT secret is stored in data/.jwt_secret (host path: ./data/.jwt_secret).');
   console.error('For a fresh install, generate a random key: openssl rand -hex 32');
   process.exit(1);
 }

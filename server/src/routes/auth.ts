@@ -113,23 +113,27 @@ const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
 const RATE_LIMIT_CLEANUP = 5 * 60 * 1000; // 5 minutes
 
 const loginAttempts = new Map<string, { count: number; first: number }>();
+const mfaAttempts = new Map<string, { count: number; first: number }>();
 setInterval(() => {
   const now = Date.now();
   for (const [key, record] of loginAttempts) {
     if (now - record.first >= RATE_LIMIT_WINDOW) loginAttempts.delete(key);
   }
+  for (const [key, record] of mfaAttempts) {
+    if (now - record.first >= RATE_LIMIT_WINDOW) mfaAttempts.delete(key);
+  }
 }, RATE_LIMIT_CLEANUP);
 
-function rateLimiter(maxAttempts: number, windowMs: number) {
+function rateLimiter(maxAttempts: number, windowMs: number, store = loginAttempts) {
   return (req: Request, res: Response, next: NextFunction) => {
     const key = req.ip || 'unknown';
     const now = Date.now();
-    const record = loginAttempts.get(key);
+    const record = store.get(key);
     if (record && record.count >= maxAttempts && now - record.first < windowMs) {
       return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
     }
     if (!record || now - record.first >= windowMs) {
-      loginAttempts.set(key, { count: 1, first: now });
+      store.set(key, { count: 1, first: now });
     } else {
       record.count++;
     }
@@ -137,6 +141,7 @@ function rateLimiter(maxAttempts: number, windowMs: number) {
   };
 }
 const authLimiter = rateLimiter(10, RATE_LIMIT_WINDOW);
+const mfaLimiter = rateLimiter(5, RATE_LIMIT_WINDOW, mfaAttempts);
 
 function isOidcOnlyMode(): boolean {
   const get = (key: string) => (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value || null;
@@ -778,7 +783,7 @@ router.get('/travel-stats', authenticate, (req: Request, res: Response) => {
   });
 });
 
-router.post('/mfa/verify-login', authLimiter, (req: Request, res: Response) => {
+router.post('/mfa/verify-login', mfaLimiter, (req: Request, res: Response) => {
   const { mfa_token, code } = req.body as { mfa_token?: string; code?: string };
   if (!mfa_token || !code) {
     return res.status(400).json({ error: 'Verification token and code are required' });
@@ -846,7 +851,7 @@ router.post('/mfa/setup', authenticate, (req: Request, res: Response) => {
     });
 });
 
-router.post('/mfa/enable', authenticate, (req: Request, res: Response) => {
+router.post('/mfa/enable', authenticate, mfaLimiter, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { code } = req.body as { code?: string };
   if (!code) {

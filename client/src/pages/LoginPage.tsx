@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { SUPPORTED_LANGUAGES, useTranslation } from '../i18n'
 import { authApi } from '../api/client'
+import { getApiErrorMessage } from '../types'
 import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route, Shield, KeyRound } from 'lucide-react'
 
 interface AppConfig {
@@ -171,7 +172,7 @@ export default function LoginPage(): React.ReactElement {
       setShowTakeoff(true)
       setTimeout(() => navigate('/dashboard'), 2600)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('login.error'))
+      setError(getApiErrorMessage(err, t('login.error')))
       setIsLoading(false)
     }
   }

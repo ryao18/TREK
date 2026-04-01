@@ -214,6 +214,111 @@ router.post('/import/gpx', authenticate, requireTripAccess, gpxUpload.single('fi
   }
 });
 
+// Import places from a shared Google Maps list URL
+router.post('/import/google-list', authenticate, requireTripAccess, async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (!checkPermission('place_edit', authReq.user.role, authReq.trip!.user_id, authReq.user.id, authReq.trip!.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
+  const { tripId } = req.params;
+  const { url } = req.body;
+  if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    // Extract list ID from various Google Maps list URL formats
+    let listId: string | null = null;
+    let resolvedUrl = url;
+
+    // Follow redirects for short URLs (maps.app.goo.gl, goo.gl)
+    if (url.includes('goo.gl') || url.includes('maps.app')) {
+      const redirectRes = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(10000) });
+      resolvedUrl = redirectRes.url;
+    }
+
+    // Pattern: /placelists/list/{ID}
+    const plMatch = resolvedUrl.match(/placelists\/list\/([A-Za-z0-9_-]+)/);
+    if (plMatch) listId = plMatch[1];
+
+    // Pattern: !2s{ID} in data URL params
+    if (!listId) {
+      const dataMatch = resolvedUrl.match(/!2s([A-Za-z0-9_-]{15,})/);
+      if (dataMatch) listId = dataMatch[1];
+    }
+
+    if (!listId) {
+      return res.status(400).json({ error: 'Could not extract list ID from URL. Please use a shared Google Maps list link.' });
+    }
+
+    // Fetch list data from Google Maps internal API
+    const apiUrl = `https://www.google.com/maps/preview/entitylist/getlist?authuser=0&hl=en&gl=us&pb=!1m1!1s${encodeURIComponent(listId)}!2e2!3e2!4i500!16b1`;
+    const apiRes = await fetch(apiUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!apiRes.ok) {
+      return res.status(502).json({ error: 'Failed to fetch list from Google Maps' });
+    }
+
+    const rawText = await apiRes.text();
+    const jsonStr = rawText.substring(rawText.indexOf('\n') + 1);
+    const listData = JSON.parse(jsonStr);
+
+    const meta = listData[0];
+    if (!meta) {
+      return res.status(400).json({ error: 'Invalid list data received from Google Maps' });
+    }
+
+    const listName = meta[4] || 'Google Maps List';
+    const items = meta[8];
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'List is empty or could not be read' });
+    }
+
+    // Parse place data from items
+    const places: { name: string; lat: number; lng: number; notes: string | null }[] = [];
+    for (const item of items) {
+      const coords = item?.[1]?.[5];
+      const lat = coords?.[2];
+      const lng = coords?.[3];
+      const name = item?.[2];
+      const note = item?.[3] || null;
+
+      if (name && typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+        places.push({ name, lat, lng, notes: note || null });
+      }
+    }
+
+    if (places.length === 0) {
+      return res.status(400).json({ error: 'No places with coordinates found in list' });
+    }
+
+    // Insert places into trip
+    const insertStmt = db.prepare(`
+      INSERT INTO places (trip_id, name, lat, lng, notes, transport_mode)
+      VALUES (?, ?, ?, ?, ?, 'walking')
+    `);
+    const created: any[] = [];
+    const insertAll = db.transaction(() => {
+      for (const p of places) {
+        const result = insertStmt.run(tripId, p.name, p.lat, p.lng, p.notes);
+        const place = getPlaceWithTags(Number(result.lastInsertRowid));
+        created.push(place);
+      }
+    });
+    insertAll();
+
+    res.status(201).json({ places: created, count: created.length, listName });
+    for (const place of created) {
+      broadcast(tripId, 'place:created', { place }, req.headers['x-socket-id'] as string);
+    }
+  } catch (err: unknown) {
+    console.error('[Places] Google list import error:', err instanceof Error ? err.message : err);
+    res.status(400).json({ error: 'Failed to import Google Maps list. Make sure the list is shared publicly.' });
+  }
+});
+
 router.get('/:id', authenticate, requireTripAccess, (req: Request, res: Response) => {
   const { tripId, id } = req.params 
 

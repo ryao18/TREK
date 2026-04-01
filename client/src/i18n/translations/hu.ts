@@ -6,6 +6,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'common.edit': 'Szerkesztés',
   'common.add': 'Hozzáadás',
   'common.loading': 'Betöltés...',
+  'common.import': 'Importálás',
   'common.error': 'Hiba',
   'common.back': 'Vissza',
   'common.all': 'Összes',
@@ -779,10 +780,14 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
 
   // Helyek oldalsáv
   'places.addPlace': 'Hely/Tevékenység hozzáadása',
-  'places.importGpx': 'GPX importálás',
+  'places.importGpx': 'GPX',
   'places.gpxImported': '{count} hely importálva GPX-ből',
   'places.urlResolved': 'Hely importálva URL-ből',
   'places.gpxError': 'GPX importálás sikertelen',
+  'places.importGoogleList': 'Google Lista',
+  'places.googleListHint': 'Illessz be egy megosztott Google Maps lista linket az osszes hely importalasahoz.',
+  'places.googleListImported': '{count} hely importalva a(z) "{list}" listabol',
+  'places.googleListError': 'Google Maps lista importalasa sikertelen',
   'places.assignToDay': 'Melyik naphoz adod?',
   'places.all': 'Összes',
   'places.unplanned': 'Nem tervezett',

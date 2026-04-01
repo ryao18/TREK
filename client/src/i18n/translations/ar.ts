@@ -10,6 +10,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'common.edit': 'تعديل',
   'common.add': 'إضافة',
   'common.loading': 'جارٍ التحميل...',
+  'common.import': 'استيراد',
   'common.error': 'خطأ',
   'common.back': 'رجوع',
   'common.all': 'الكل',
@@ -783,9 +784,13 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
 
   // Places Sidebar
   'places.addPlace': 'إضافة مكان/نشاط',
-  'places.importGpx': 'استيراد GPX',
+  'places.importGpx': 'GPX',
   'places.gpxImported': 'تم استيراد {count} مكان من GPX',
   'places.gpxError': 'فشل استيراد GPX',
+  'places.importGoogleList': 'قائمة Google',
+  'places.googleListHint': 'الصق رابط قائمة Google Maps المشتركة لاستيراد جميع الأماكن.',
+  'places.googleListImported': 'تم استيراد {count} أماكن من "{list}"',
+  'places.googleListError': 'فشل استيراد قائمة Google Maps',
   'places.urlResolved': 'تم استيراد المكان من الرابط',
   'places.assignToDay': 'إلى أي يوم تريد الإضافة؟',
   'places.all': 'الكل',

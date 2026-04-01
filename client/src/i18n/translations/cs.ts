@@ -6,6 +6,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'common.edit': 'Upravit',
   'common.add': 'Přidat',
   'common.loading': 'Načítání...',
+  'common.import': 'Importovat',
   'common.error': 'Chyba',
   'common.back': 'Zpět',
   'common.all': 'Vše',
@@ -783,10 +784,14 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
 
   // Boční panel míst (Places Sidebar)
   'places.addPlace': 'Přidat místo/aktivitu',
-  'places.importGpx': 'Importovat GPX',
+  'places.importGpx': 'GPX',
   'places.gpxImported': '{count} míst importováno z GPX',
   'places.urlResolved': 'Místo importováno z URL',
   'places.gpxError': 'Import GPX se nezdařil',
+  'places.importGoogleList': 'Google Seznam',
+  'places.googleListHint': 'Vložte sdílený odkaz na seznam Google Maps pro import všech míst.',
+  'places.googleListImported': '{count} míst importováno ze seznamu "{list}"',
+  'places.googleListError': 'Import seznamu Google Maps se nezdařil',
   'places.assignToDay': 'Přidat do kterého dne?',
   'places.all': 'Vše',
   'places.unplanned': 'Nezařazené',

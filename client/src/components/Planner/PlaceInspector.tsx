@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getAuthUrl } from '../../api/authUrl'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
@@ -340,10 +342,8 @@ export default function PlaceInspector({
 
           {/* Description / Summary */}
           {(place.description || place.notes || googleDetails?.summary) && (
-            <div style={{ background: 'var(--bg-hover)', borderRadius: 10, overflow: 'hidden' }}>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: '1.5', padding: '8px 12px' }}>
-                {place.description || place.notes || googleDetails?.summary}
-              </p>
+            <div className="collab-note-md" style={{ background: 'var(--bg-hover)', borderRadius: 10, overflow: 'hidden', fontSize: 12, color: 'var(--text-muted)', lineHeight: '1.5', padding: '8px 12px' }}>
+              <Markdown remarkPlugins={[remarkGfm]}>{place.description || place.notes || googleDetails?.summary || ''}</Markdown>
             </div>
           )}
 
@@ -392,7 +392,7 @@ export default function PlaceInspector({
                           </div>
                         )}
                       </div>
-                      {res.notes && <div style={{ padding: '0 10px 6px', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.4 }}>{res.notes}</div>}
+                      {res.notes && <div className="collab-note-md" style={{ padding: '0 10px 6px', fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.4 }}><Markdown remarkPlugins={[remarkGfm]}>{res.notes}</Markdown></div>}
                       {(() => {
                         const meta = typeof res.metadata === 'string' ? JSON.parse(res.metadata || '{}') : (res.metadata || {})
                         if (!meta || Object.keys(meta).length === 0) return null

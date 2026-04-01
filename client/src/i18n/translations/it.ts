@@ -6,6 +6,7 @@ const it: Record<string, string | { name: string; category: string }[]> = {
   'common.edit': 'Modifica',
   'common.add': 'Aggiungi',
   'common.loading': 'Caricamento...',
+  'common.import': 'Importa',
   'common.error': 'Errore',
   'common.back': 'Indietro',
   'common.all': 'Tutti',
@@ -779,10 +780,14 @@ const it: Record<string, string | { name: string; category: string }[]> = {
 
   // Places Sidebar
   'places.addPlace': 'Aggiungi Luogo/Attività',
-  'places.importGpx': 'Importa GPX',
+  'places.importGpx': 'GPX',
   'places.gpxImported': '{count} luoghi importati da GPX',
   'places.urlResolved': 'Luogo importato dall\'URL',
   'places.gpxError': 'Importazione GPX non riuscita',
+  'places.importGoogleList': 'Lista Google',
+  'places.googleListHint': 'Incolla un link condiviso di una lista Google Maps per importare tutti i luoghi.',
+  'places.googleListImported': '{count} luoghi importati da "{list}"',
+  'places.googleListError': 'Importazione lista Google Maps non riuscita',
   'places.assignToDay': 'A quale giorno aggiungere?',
   'places.all': 'Tutti',
   'places.unplanned': 'Non pianificati',

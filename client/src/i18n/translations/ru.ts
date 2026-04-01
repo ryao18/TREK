@@ -6,6 +6,7 @@ const ru: Record<string, string> = {
   'common.edit': 'Редактировать',
   'common.add': 'Добавить',
   'common.loading': 'Загрузка...',
+  'common.import': 'Импорт',
   'common.error': 'Ошибка',
   'common.back': 'Назад',
   'common.all': 'Все',
@@ -780,9 +781,13 @@ const ru: Record<string, string> = {
 
   // Places Sidebar
   'places.addPlace': 'Добавить место/активность',
-  'places.importGpx': 'Импорт GPX',
+  'places.importGpx': 'GPX',
   'places.gpxImported': '{count} мест импортировано из GPX',
   'places.gpxError': 'Ошибка импорта GPX',
+  'places.importGoogleList': 'Список Google',
+  'places.googleListHint': 'Вставьте ссылку на общий список Google Maps для импорта всех мест.',
+  'places.googleListImported': '{count} мест импортировано из "{list}"',
+  'places.googleListError': 'Не удалось импортировать список Google Maps',
   'places.urlResolved': 'Место импортировано из URL',
   'places.assignToDay': 'Добавить в какой день?',
   'places.all': 'Все',

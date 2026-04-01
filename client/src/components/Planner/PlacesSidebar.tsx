@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import { useState, useRef, useMemo, useCallback } from 'react'
 import DOM from 'react-dom'
-import { Search, Plus, X, CalendarDays, Pencil, Trash2, ExternalLink, Navigation, Upload, ChevronDown, Check } from 'lucide-react'
+import { Search, Plus, X, CalendarDays, Pencil, Trash2, ExternalLink, Navigation, Upload, ChevronDown, Check, MapPin } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTranslation } from '../../i18n'
@@ -56,6 +56,27 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
       toast.error(err?.response?.data?.error || t('places.gpxError'))
     }
   }
+
+  const [googleListOpen, setGoogleListOpen] = useState(false)
+  const [googleListUrl, setGoogleListUrl] = useState('')
+  const [googleListLoading, setGoogleListLoading] = useState(false)
+
+  const handleGoogleListImport = async () => {
+    if (!googleListUrl.trim()) return
+    setGoogleListLoading(true)
+    try {
+      const result = await placesApi.importGoogleList(tripId, googleListUrl.trim())
+      await loadTrip(tripId)
+      toast.success(t('places.googleListImported', { count: result.count, list: result.listName }))
+      setGoogleListOpen(false)
+      setGoogleListUrl('')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || t('places.googleListError'))
+    } finally {
+      setGoogleListLoading(false)
+    }
+  }
+
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [categoryFilters, setCategoryFiltersLocal] = useState<Set<string>>(new Set())
@@ -105,18 +126,32 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
         </button>}
         {canEditPlaces && <>
         <input ref={gpxInputRef} type="file" accept=".gpx" style={{ display: 'none' }} onChange={handleGpxImport} />
-        <button
-          onClick={() => gpxInputRef.current?.click()}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-            width: '100%', padding: '5px 12px', borderRadius: 8, marginBottom: 10,
-            border: '1px dashed var(--border-primary)', background: 'none',
-            color: 'var(--text-faint)', fontSize: 11, fontWeight: 500,
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <Upload size={11} strokeWidth={2} /> {t('places.importGpx')}
-        </button>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <button
+            onClick={() => gpxInputRef.current?.click()}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              flex: 1, padding: '5px 12px', borderRadius: 8,
+              border: '1px dashed var(--border-primary)', background: 'none',
+              color: 'var(--text-faint)', fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <Upload size={11} strokeWidth={2} /> {t('places.importGpx')}
+          </button>
+          <button
+            onClick={() => setGoogleListOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              flex: 1, padding: '5px 12px', borderRadius: 8,
+              border: '1px dashed var(--border-primary)', background: 'none',
+              color: 'var(--text-faint)', fontSize: 11, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <MapPin size={11} strokeWidth={2} /> {t('places.importGoogleList')}
+          </button>
+        </div>
         </>}
 
         {/* Filter-Tabs */}
@@ -361,6 +396,64 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
                   </button>
                 )
               })}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {googleListOpen && ReactDOM.createPortal(
+        <div
+          onClick={() => { setGoogleListOpen(false); setGoogleListUrl('') }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-card)', borderRadius: 16, width: '100%', maxWidth: 440, padding: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+              {t('places.importGoogleList')}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 16 }}>
+              {t('places.googleListHint')}
+            </div>
+            <input
+              type="text"
+              value={googleListUrl}
+              onChange={e => setGoogleListUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !googleListLoading) handleGoogleListImport() }}
+              placeholder="https://maps.app.goo.gl/..."
+              autoFocus
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10,
+                border: '1px solid var(--border-primary)', background: 'var(--bg-tertiary)',
+                fontSize: 13, color: 'var(--text-primary)', outline: 'none',
+                fontFamily: 'inherit', boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setGoogleListOpen(false); setGoogleListUrl('') }}
+                style={{
+                  padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border-primary)',
+                  background: 'none', color: 'var(--text-primary)', fontSize: 13, fontWeight: 500,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleGoogleListImport}
+                disabled={!googleListUrl.trim() || googleListLoading}
+                style={{
+                  padding: '8px 16px', borderRadius: 10, border: 'none',
+                  background: !googleListUrl.trim() || googleListLoading ? 'var(--bg-tertiary)' : 'var(--accent)',
+                  color: !googleListUrl.trim() || googleListLoading ? 'var(--text-faint)' : 'var(--accent-text)',
+                  fontSize: 13, fontWeight: 500, cursor: !googleListUrl.trim() || googleListLoading ? 'default' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {googleListLoading ? t('common.loading') : t('common.import')}
+              </button>
             </div>
           </div>
         </div>,

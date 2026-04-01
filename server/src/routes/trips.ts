@@ -126,19 +126,12 @@ router.get('/', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const archived = req.query.archived === '1' ? 1 : 0;
   const userId = authReq.user.id;
-  const isAdminUser = authReq.user.role === 'admin';
-  const trips = isAdminUser
-    ? db.prepare(`
-        ${TRIP_SELECT}
-        WHERE t.is_archived = :archived
-        ORDER BY t.created_at DESC
-      `).all({ userId, archived })
-    : db.prepare(`
-        ${TRIP_SELECT}
-        LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
-        WHERE (t.user_id = :userId OR m.user_id IS NOT NULL) AND t.is_archived = :archived
-        ORDER BY t.created_at DESC
-      `).all({ userId, archived });
+  const trips = db.prepare(`
+    ${TRIP_SELECT}
+    LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
+    WHERE (t.user_id = :userId OR m.user_id IS NOT NULL) AND t.is_archived = :archived
+    ORDER BY t.created_at DESC
+  `).all({ userId, archived });
   res.json({ trips });
 });
 
@@ -171,14 +164,11 @@ router.post('/', authenticate, (req: Request, res: Response) => {
 router.get('/:id', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const userId = authReq.user.id;
-  const isAdminUser = authReq.user.role === 'admin';
-  const trip = isAdminUser
-    ? db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId, tripId: req.params.id })
-    : db.prepare(`
-        ${TRIP_SELECT}
-        LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
-        WHERE t.id = :tripId AND (t.user_id = :userId OR m.user_id IS NOT NULL)
-      `).get({ userId, tripId: req.params.id });
+  const trip = db.prepare(`
+    ${TRIP_SELECT}
+    LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
+    WHERE t.id = :tripId AND (t.user_id = :userId OR m.user_id IS NOT NULL)
+  `).get({ userId, tripId: req.params.id });
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
   res.json({ trip });
 });

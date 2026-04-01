@@ -6,6 +6,7 @@ const fr: Record<string, string> = {
   'common.edit': 'Modifier',
   'common.add': 'Ajouter',
   'common.loading': 'Chargement…',
+  'common.import': 'Importer',
   'common.error': 'Erreur',
   'common.back': 'Retour',
   'common.all': 'Tout',
@@ -780,9 +781,13 @@ const fr: Record<string, string> = {
 
   // Places Sidebar
   'places.addPlace': 'Ajouter un lieu/activité',
-  'places.importGpx': 'Importer GPX',
+  'places.importGpx': 'GPX',
   'places.gpxImported': '{count} lieux importés depuis GPX',
   'places.gpxError': 'L\'import GPX a échoué',
+  'places.importGoogleList': 'Liste Google',
+  'places.googleListHint': 'Collez un lien de liste Google Maps partagée pour importer tous les lieux.',
+  'places.googleListImported': '{count} lieux importés depuis "{list}"',
+  'places.googleListError': 'Impossible d\'importer la liste Google Maps',
   'places.urlResolved': 'Lieu importé depuis l\'URL',
   'places.assignToDay': 'Ajouter à quel jour ?',
   'places.all': 'Tous',

@@ -6,6 +6,7 @@ const nl: Record<string, string> = {
   'common.edit': 'Bewerken',
   'common.add': 'Toevoegen',
   'common.loading': 'Laden...',
+  'common.import': 'Importeren',
   'common.error': 'Fout',
   'common.back': 'Terug',
   'common.all': 'Alles',
@@ -780,9 +781,13 @@ const nl: Record<string, string> = {
 
   // Places Sidebar
   'places.addPlace': 'Plaats/activiteit toevoegen',
-  'places.importGpx': 'GPX importeren',
+  'places.importGpx': 'GPX',
   'places.gpxImported': '{count} plaatsen geïmporteerd uit GPX',
   'places.gpxError': 'GPX-import mislukt',
+  'places.importGoogleList': 'Google Lijst',
+  'places.googleListHint': 'Plak een gedeelde Google Maps lijstlink om alle plaatsen te importeren.',
+  'places.googleListImported': '{count} plaatsen geimporteerd uit "{list}"',
+  'places.googleListError': 'Google Maps lijst importeren mislukt',
   'places.urlResolved': 'Plaats geïmporteerd van URL',
   'places.assignToDay': 'Aan welke dag toevoegen?',
   'places.all': 'Alle',

@@ -107,6 +107,8 @@ export const placesApi = {
     const fd = new FormData(); fd.append('file', file)
     return apiClient.post(`/trips/${tripId}/places/import/gpx`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
   },
+  importGoogleList: (tripId: number | string, url: string) =>
+    apiClient.post(`/trips/${tripId}/places/import/google-list`, { url }).then(r => r.data),
 }
 
 export const assignmentsApi = {

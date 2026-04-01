@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { db } from '../db/database';
+import { db, canAccessTrip } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { AuthRequest } from '../types';
@@ -164,6 +164,7 @@ router.post('/search', authenticate, async (req: Request, res: Response) => {
 router.get('/trips/:tripId/photos', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;
+  if (!canAccessTrip(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
 
   const photos = db.prepare(`
     SELECT tp.immich_asset_id, tp.user_id, tp.shared, tp.added_at,
@@ -182,6 +183,7 @@ router.get('/trips/:tripId/photos', authenticate, (req: Request, res: Response) 
 router.post('/trips/:tripId/photos', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;
+  if (!canAccessTrip(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
   const { asset_ids, shared = true } = req.body;
 
   if (!Array.isArray(asset_ids) || asset_ids.length === 0) {
@@ -212,6 +214,7 @@ router.post('/trips/:tripId/photos', authenticate, (req: Request, res: Response)
 // Remove a photo from a trip (own photos only)
 router.delete('/trips/:tripId/photos/:assetId', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
+  if (!canAccessTrip(req.params.tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
   db.prepare('DELETE FROM trip_photos WHERE trip_id = ? AND user_id = ? AND immich_asset_id = ?')
     .run(req.params.tripId, authReq.user.id, req.params.assetId);
   res.json({ success: true });
@@ -221,6 +224,7 @@ router.delete('/trips/:tripId/photos/:assetId', authenticate, (req: Request, res
 // Toggle sharing for a specific photo
 router.put('/trips/:tripId/photos/:assetId/sharing', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
+  if (!canAccessTrip(req.params.tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
   const { shared } = req.body;
   db.prepare('UPDATE trip_photos SET shared = ? WHERE trip_id = ? AND user_id = ? AND immich_asset_id = ?')
     .run(shared ? 1 : 0, req.params.tripId, authReq.user.id, req.params.assetId);
@@ -361,6 +365,8 @@ router.get('/albums', authenticate, async (req: Request, res: Response) => {
 
 // Get album links for a trip
 router.get('/trips/:tripId/album-links', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (!canAccessTrip(req.params.tripId, (authReq as AuthRequest).user.id)) return res.status(404).json({ error: 'Trip not found' });
   const links = db.prepare(`
     SELECT tal.*, u.username
     FROM trip_album_links tal
@@ -375,6 +381,7 @@ router.get('/trips/:tripId/album-links', authenticate, (req: Request, res: Respo
 router.post('/trips/:tripId/album-links', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;
+  if (!canAccessTrip(tripId, authReq.user.id)) return res.status(404).json({ error: 'Trip not found' });
   const { album_id, album_name } = req.body;
   if (!album_id) return res.status(400).json({ error: 'album_id required' });
 

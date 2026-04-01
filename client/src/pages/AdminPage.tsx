@@ -1122,7 +1122,7 @@ export default function AdminPage(): React.ReactElement {
                         onClick={async () => {
                           const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify']
                           const payload: Record<string, string> = {}
-                          for (const k of smtpKeys) { if (smtpValues[k]) payload[k] = smtpValues[k] }
+                          for (const k of smtpKeys) { if (smtpValues[k] !== undefined) payload[k] = smtpValues[k] }
                           await authApi.updateAppSettings(payload).catch(() => {})
                           try {
                             const result = await notificationsApi.testSmtp()

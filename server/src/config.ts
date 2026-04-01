@@ -41,40 +41,59 @@ export function updateJwtSecret(newSecret: string): void {
 //
 // Resolution order:
 //   1. ENCRYPTION_KEY env var — explicit, always takes priority.
-//   2. data/.jwt_secret — used automatically for existing installs that upgrade
-//      without setting ENCRYPTION_KEY; encrypted data stays readable with no
-//      manual intervention required.
-//   3. data/.encryption_key — auto-generated and persisted on first start of a
-//      fresh install where neither of the above is available.
+//   2. data/.encryption_key file — present on any install that has started at
+//      least once (written automatically by cases 1b and 3 below).
+//   3. data/.jwt_secret — one-time fallback for existing installs upgrading
+//      without a pre-set ENCRYPTION_KEY. The value is immediately persisted to
+//      data/.encryption_key so JWT rotation can never break decryption later.
+//   4. Auto-generated — fresh install with none of the above; persisted to
+//      data/.encryption_key.
+const encKeyFile = path.join(dataDir, '.encryption_key');
 let _encryptionKey: string = process.env.ENCRYPTION_KEY || '';
 
-if (!_encryptionKey) {
-  // Fallback 1: existing install — reuse the JWT secret so previously encrypted
-  // values remain readable after an upgrade.
+if (_encryptionKey) {
+  // Env var is set explicitly — persist it to file so the value survives
+  // container restarts even if the env var is later removed.
   try {
-    _encryptionKey = fs.readFileSync(jwtSecretFile, 'utf8').trim();
-    console.warn('WARNING: ENCRYPTION_KEY is not set. Falling back to JWT secret for at-rest encryption.');
-    console.warn('Set ENCRYPTION_KEY explicitly to decouple encryption from JWT signing (recommended).');
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(encKeyFile, _encryptionKey, { mode: 0o600 });
   } catch {
-    // JWT secret not found — must be a fresh install, fall through.
+    // Non-fatal: env var is the source of truth when set.
   }
-}
-
-if (!_encryptionKey) {
-  // Fallback 2: fresh install — auto-generate a dedicated key.
-  const encKeyFile = path.join(dataDir, '.encryption_key');
+} else {
+  // Try the dedicated key file first (covers all installs after first start).
   try {
     _encryptionKey = fs.readFileSync(encKeyFile, 'utf8').trim();
   } catch {
-    _encryptionKey = crypto.randomBytes(32).toString('hex');
+    // File not found — first start on an existing or fresh install.
+  }
+
+  if (!_encryptionKey) {
+    // One-time migration: existing install upgrading for the first time.
+    // Use the JWT secret as the encryption key and immediately write it to
+    // .encryption_key so future JWT rotations cannot break decryption.
     try {
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(encKeyFile, _encryptionKey, { mode: 0o600 });
-      console.log('Generated and saved encryption key to', encKeyFile);
-    } catch (writeErr: unknown) {
-      console.warn('WARNING: Could not persist encryption key to disk:', writeErr instanceof Error ? writeErr.message : writeErr);
-      console.warn('Set ENCRYPTION_KEY env var to avoid losing access to encrypted secrets on restart.');
+      _encryptionKey = fs.readFileSync(jwtSecretFile, 'utf8').trim();
+      console.warn('WARNING: ENCRYPTION_KEY is not set. Falling back to JWT secret for at-rest encryption.');
+      console.warn('The value has been persisted to data/.encryption_key — JWT rotation is now safe.');
+    } catch {
+      // JWT secret not found — must be a fresh install.
     }
+  }
+
+  if (!_encryptionKey) {
+    // Fresh install — auto-generate a dedicated key.
+    _encryptionKey = crypto.randomBytes(32).toString('hex');
+  }
+
+  // Persist whatever key was resolved so subsequent starts skip the fallback chain.
+  try {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(encKeyFile, _encryptionKey, { mode: 0o600 });
+    console.log('Encryption key persisted to', encKeyFile);
+  } catch (writeErr: unknown) {
+    console.warn('WARNING: Could not persist encryption key to disk:', writeErr instanceof Error ? writeErr.message : writeErr);
+    console.warn('Set ENCRYPTION_KEY env var to avoid losing access to encrypted secrets on restart.');
   }
 }
 

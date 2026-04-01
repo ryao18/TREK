@@ -108,6 +108,7 @@ const ACTION_LABELS: Record<string, string> = {
   'admin.user_role_change': 'changed user role',
   'admin.user_delete': 'deleted user',
   'admin.invite_create': 'created invite',
+  'immich.private_ip_configured': 'configured Immich with private IP',
 };
 
 /** Best-effort; never throws — failures are logged only. */
@@ -157,6 +158,9 @@ function buildInfoSummary(action: string, details?: Record<string, unknown>): st
     if (details.allow_registration !== undefined) parts.push(`registration=${details.allow_registration}`);
     if (details.require_mfa !== undefined) parts.push(`mfa=${details.require_mfa}`);
     return parts.length ? ` (${parts.join(', ')})` : '';
+  }
+  if (action === 'immich.private_ip_configured') {
+    return details.resolved_ip ? ` url=${details.immich_url} ip=${details.resolved_ip}` : '';
   }
   return '';
 }

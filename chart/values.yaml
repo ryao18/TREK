@@ -16,7 +16,10 @@ env:
   NODE_ENV: production
   PORT: 3000
   # ALLOWED_ORIGINS: ""
-# NOTE: If using ingress, ensure env.ALLOWED_ORIGINS matches the domains in ingress.hosts for proper CORS configuration.
+  # NOTE: If using ingress, ensure env.ALLOWED_ORIGINS matches the domains in ingress.hosts for proper CORS configuration.
+  # ALLOW_INTERNAL_NETWORK: "false"
+  # Set to "true" if Immich or other integrated services are hosted on a private/RFC-1918 network address.
+  # Loopback (127.x) and link-local/metadata addresses (169.254.x) are always blocked.
 
 
 # Secret environment variables stored in a Kubernetes Secret.

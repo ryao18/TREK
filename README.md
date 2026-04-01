@@ -140,6 +140,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-} # Comma-separated origins for CORS and email notification links
       - TZ=${TZ:-UTC} # Timezone for logs, reminders and scheduled tasks (e.g. Europe/Berlin)
       - LOG_LEVEL=${LOG_LEVEL:-info} # info = concise user actions; debug = verbose admin-level details
+      # - ALLOW_INTERNAL_NETWORK=true # Uncomment if Immich is on your local network (RFC-1918 IPs)
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -251,6 +252,7 @@ trek.yourdomain.com {
 | `ALLOWED_ORIGINS` | Comma-separated origins for CORS and email links | same-origin |
 | `FORCE_HTTPS` | Redirect HTTP to HTTPS behind a TLS-terminating proxy | `false` |
 | `TRUST_PROXY` | Number of trusted reverse proxies for `X-Forwarded-For` | `1` |
+| `ALLOW_INTERNAL_NETWORK` | Allow outbound requests to private/RFC-1918 IP addresses. Set to `true` if Immich or other integrated services are hosted on your local network. Loopback (`127.x`) and link-local/metadata addresses (`169.254.x`) are always blocked regardless of this setting. | `false` |
 | **OIDC / SSO** | | |
 | `OIDC_ISSUER` | OpenID Connect provider URL | — |
 | `OIDC_CLIENT_ID` | OIDC client ID | — |

@@ -5,6 +5,8 @@ import { broadcast } from '../websocket';
 import { AuthRequest } from '../types';
 import { consumeEphemeralToken } from '../services/ephemeralTokens';
 import { maybe_encrypt_api_key, decrypt_api_key } from '../services/apiKeyCrypto';
+import { checkSsrf } from '../utils/ssrfGuard';
+import { writeAudit, getClientIp } from '../services/auditLog';
 
 const router = express.Router();
 
@@ -19,24 +21,6 @@ function isValidAssetId(id: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(id) && id.length <= 100;
 }
 
-/** Validate that an Immich URL is a safe HTTP(S) URL (no internal/metadata IPs). */
-function isValidImmichUrl(raw: string): boolean {
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-    const hostname = url.hostname.toLowerCase();
-    // Block metadata endpoints and localhost
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
-    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') return false;
-    // Block link-local and loopback ranges
-    if (hostname.startsWith('10.') || hostname.startsWith('172.') || hostname.startsWith('192.168.')) return false;
-    if (hostname.endsWith('.internal') || hostname.endsWith('.local')) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // ── Immich Connection Settings ──────────────────────────────────────────────
 
 router.get('/settings', authenticate, (req: Request, res: Response) => {
@@ -48,17 +32,40 @@ router.get('/settings', authenticate, (req: Request, res: Response) => {
   });
 });
 
-router.put('/settings', authenticate, (req: Request, res: Response) => {
+router.put('/settings', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { immich_url, immich_api_key } = req.body;
-  if (immich_url && !isValidImmichUrl(immich_url.trim())) {
-    return res.status(400).json({ error: 'Invalid Immich URL. Must be a valid HTTP(S) URL.' });
+
+  if (immich_url) {
+    const ssrf = await checkSsrf(immich_url.trim());
+    if (!ssrf.allowed) {
+      return res.status(400).json({ error: `Invalid Immich URL: ${ssrf.error}` });
+    }
+    db.prepare('UPDATE users SET immich_url = ?, immich_api_key = ? WHERE id = ?').run(
+      immich_url.trim(),
+      maybe_encrypt_api_key(immich_api_key),
+      authReq.user.id
+    );
+    if (ssrf.isPrivate) {
+      writeAudit({
+        userId: authReq.user.id,
+        action: 'immich.private_ip_configured',
+        ip: getClientIp(req),
+        details: { immich_url: immich_url.trim(), resolved_ip: ssrf.resolvedIp },
+      });
+      return res.json({
+        success: true,
+        warning: `Immich URL resolves to a private IP address (${ssrf.resolvedIp}). Make sure this is intentional.`,
+      });
+    }
+  } else {
+    db.prepare('UPDATE users SET immich_url = ?, immich_api_key = ? WHERE id = ?').run(
+      null,
+      maybe_encrypt_api_key(immich_api_key),
+      authReq.user.id
+    );
   }
-  db.prepare('UPDATE users SET immich_url = ?, immich_api_key = ? WHERE id = ?').run(
-    immich_url?.trim() || null,
-    maybe_encrypt_api_key(immich_api_key),
-    authReq.user.id
-  );
+
   res.json({ success: true });
 });
 

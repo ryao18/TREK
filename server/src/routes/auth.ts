@@ -22,6 +22,7 @@ import { writeAudit, getClientIp } from '../services/auditLog';
 import { decrypt_api_key, maybe_encrypt_api_key, encrypt_api_key } from '../services/apiKeyCrypto';
 import { startTripReminders } from '../scheduler';
 import { createEphemeralToken } from '../services/ephemeralTokens';
+import { setAuthCookie, clearAuthCookie } from '../services/cookie';
 
 authenticator.options = { window: 1 };
 
@@ -229,6 +230,7 @@ router.post('/demo-login', (_req: Request, res: Response) => {
   if (!user) return res.status(500).json({ error: 'Demo user not found' });
   const token = generateToken(user);
   const safe = stripUserForClient(user) as Record<string, unknown>;
+  setAuthCookie(res, token);
   res.json({ token, user: { ...safe, avatar_url: avatarUrl(user) } });
 });
 
@@ -307,6 +309,7 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
     }
 
     writeAudit({ userId: Number(result.lastInsertRowid), action: 'user.register', ip: getClientIp(req), details: { username, email, role } });
+    setAuthCookie(res, token);
     res.status(201).json({ token, user: { ...user, avatar_url: null } });
   } catch (err: unknown) {
     res.status(500).json({ error: 'Error creating user' });
@@ -350,6 +353,7 @@ router.post('/login', authLimiter, (req: Request, res: Response) => {
   const userSafe = stripUserForClient(user) as Record<string, unknown>;
 
   writeAudit({ userId: Number(user.id), action: 'user.login', ip: getClientIp(req), details: { email } });
+  setAuthCookie(res, token);
   res.json({ token, user: { ...userSafe, avatar_url: avatarUrl(user) } });
 });
 
@@ -365,6 +369,11 @@ router.get('/me', authenticate, (req: Request, res: Response) => {
 
   const base = stripUserForClient(user as User) as Record<string, unknown>;
   res.json({ user: { ...base, avatar_url: avatarUrl(user) } });
+});
+
+router.post('/logout', (req: Request, res: Response) => {
+  clearAuthCookie(res);
+  res.json({ success: true });
 });
 
 router.put('/me/password', authenticate, rateLimiter(5, RATE_LIMIT_WINDOW), (req: Request, res: Response) => {
@@ -810,6 +819,7 @@ router.post('/mfa/verify-login', mfaLimiter, (req: Request, res: Response) => {
     const sessionToken = generateToken(user);
     const userSafe = stripUserForClient(user) as Record<string, unknown>;
     writeAudit({ userId: Number(user.id), action: 'user.login', ip: getClientIp(req), details: { mfa: true } });
+    setAuthCookie(res, sessionToken);
     res.json({ token: sessionToken, user: { ...userSafe, avatar_url: avatarUrl(user) } });
   } catch {
     return res.status(401).json({ error: 'Invalid or expired verification token' });

@@ -55,11 +55,11 @@ export default function LoginPage(): React.ReactElement {
     if (oidcCode) {
       setIsLoading(true)
       window.history.replaceState({}, '', '/login')
-      fetch('/api/auth/oidc/exchange?code=' + encodeURIComponent(oidcCode))
+      fetch('/api/auth/oidc/exchange?code=' + encodeURIComponent(oidcCode), { credentials: 'include' })
         .then(r => r.json())
-        .then(data => {
+        .then(async data => {
           if (data.token) {
-            localStorage.setItem('auth_token', data.token)
+            await loadUser()
             navigate('/dashboard', { replace: true })
           } else {
             setError(data.error || 'OIDC login failed')

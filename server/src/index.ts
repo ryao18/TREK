@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { enforceGlobalMfaPolicy } from './middleware/mfaPolicy';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
 
@@ -86,6 +87,7 @@ if (shouldForceHttps) {
 }
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.use(enforceGlobalMfaPolicy);
 

@@ -9,7 +9,7 @@ let reconnectDelay = 1000
 const MAX_RECONNECT_DELAY = 30000
 const listeners = new Set<WebSocketListener>()
 const activeTrips = new Set<string>()
-let currentToken: string | null = null
+let shouldReconnect = false
 let refetchCallback: RefetchCallback | null = null
 let mySocketId: string | null = null
 let connecting = false
@@ -27,15 +27,15 @@ function getWsUrl(wsToken: string): string {
   return `${protocol}://${location.host}/ws?token=${wsToken}`
 }
 
-async function fetchWsToken(jwt: string): Promise<string | null> {
+async function fetchWsToken(): Promise<string | null> {
   try {
     const resp = await fetch('/api/auth/ws-token', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${jwt}` },
+      credentials: 'include',
     })
     if (resp.status === 401) {
-      // JWT expired — stop reconnecting
-      currentToken = null
+      // Session expired — stop reconnecting
+      shouldReconnect = false
       return null
     }
     if (!resp.ok) return null
@@ -65,26 +65,25 @@ function scheduleReconnect(): void {
   if (reconnectTimer) return
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
-    if (currentToken) {
-      connectInternal(currentToken, true)
+    if (shouldReconnect) {
+      connectInternal(true)
     }
   }, reconnectDelay)
   reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
 }
 
-async function connectInternal(token: string, _isReconnect = false): Promise<void> {
+async function connectInternal(_isReconnect = false): Promise<void> {
   if (connecting) return
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return
   }
 
   connecting = true
-  const wsToken = await fetchWsToken(token)
+  const wsToken = await fetchWsToken()
   connecting = false
 
   if (!wsToken) {
-    // currentToken may have been cleared on 401; only schedule reconnect if still active
-    if (currentToken) scheduleReconnect()
+    if (shouldReconnect) scheduleReconnect()
     return
   }
 
@@ -113,7 +112,7 @@ async function connectInternal(token: string, _isReconnect = false): Promise<voi
 
   socket.onclose = () => {
     socket = null
-    if (currentToken) {
+    if (shouldReconnect) {
       scheduleReconnect()
     }
   }
@@ -123,18 +122,18 @@ async function connectInternal(token: string, _isReconnect = false): Promise<voi
   }
 }
 
-export function connect(token: string): void {
-  currentToken = token
+export function connect(): void {
+  shouldReconnect = true
   reconnectDelay = 1000
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
-  connectInternal(token, false)
+  connectInternal(false)
 }
 
 export function disconnect(): void {
-  currentToken = null
+  shouldReconnect = false
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null

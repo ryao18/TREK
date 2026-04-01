@@ -6,6 +6,7 @@ import { db } from '../db/database';
 import { JWT_SECRET } from '../config';
 import { User } from '../types';
 import { decrypt_api_key } from '../services/apiKeyCrypto';
+import { setAuthCookie } from '../services/cookie';
 
 interface OidcDiscoveryDoc {
   authorization_endpoint: string;
@@ -289,6 +290,7 @@ router.get('/exchange', (req: Request, res: Response) => {
   if (!entry) return res.status(400).json({ error: 'Invalid or expired code' });
   authCodes.delete(code);
   if (Date.now() - entry.created > AUTH_CODE_TTL) return res.status(400).json({ error: 'Code expired' });
+  setAuthCookie(res, entry.token);
   res.json({ token: entry.token });
 });
 

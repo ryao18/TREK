@@ -1,13 +1,10 @@
 export async function getAuthUrl(url: string, purpose: 'download' | 'immich'): Promise<string> {
-  const jwt = localStorage.getItem('auth_token')
-  if (!jwt || !url) return url
+  if (!url) return url
   try {
     const resp = await fetch('/api/auth/resource-token', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${jwt}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ purpose }),
     })
     if (!resp.ok) return url

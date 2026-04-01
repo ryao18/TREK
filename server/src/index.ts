@@ -152,7 +152,7 @@ app.get('/uploads/photos/:filename', (req: Request, res: Response) => {
     jwt.verify(token, process.env.JWT_SECRET || require('./config').JWT_SECRET);
   } catch {
     // Check if it's a share token
-    const shareRow = db.prepare('SELECT id FROM share_tokens WHERE token = ?').get(token);
+    const shareRow = addonDb.prepare('SELECT id FROM share_tokens WHERE token = ?').get(token);
     if (!shareRow) return res.status(401).send('Authentication required');
   }
   res.sendFile(resolved);
@@ -203,7 +203,7 @@ app.use('/api/admin', adminRoutes);
 
 // Public addons endpoint (authenticated but not admin-only)
 import { authenticate as addonAuth } from './middleware/auth';
-import {db, db as addonDb} from './db/database';
+import {db as addonDb} from './db/database';
 import { Addon } from './types';
 app.get('/api/addons', addonAuth, (req: Request, res: Response) => {
   const addons = addonDb.prepare('SELECT id, name, type, icon, enabled FROM addons WHERE enabled = 1 ORDER BY sort_order').all() as Pick<Addon, 'id' | 'name' | 'type' | 'icon' | 'enabled'>[];

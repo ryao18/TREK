@@ -92,7 +92,8 @@ router.get('/status', authenticate, async (req: Request, res: Response) => {
 router.post('/test', authenticate, async (req: Request, res: Response) => {
   const { immich_url, immich_api_key } = req.body;
   if (!immich_url || !immich_api_key) return res.json({ connected: false, error: 'URL and API key required' });
-  if (!isValidImmichUrl(immich_url)) return res.json({ connected: false, error: 'Invalid Immich URL' });
+  const ssrf = await checkSsrf(immich_url);
+  if (!ssrf.allowed) return res.json({ connected: false, error: ssrf.error ?? 'Invalid Immich URL' });
   try {
     const resp = await fetch(`${immich_url}/api/users/me`, {
       headers: { 'x-api-key': immich_api_key, 'Accept': 'application/json' },

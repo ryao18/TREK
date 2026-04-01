@@ -44,6 +44,7 @@ interface OidcConfig {
   client_secret_set: boolean
   display_name: string
   oidc_only: boolean
+  discovery_url: string
 }
 
 interface UpdateInfo {
@@ -84,7 +85,7 @@ export default function AdminPage(): React.ReactElement {
   useEffect(() => { adminApi.getBagTracking().then(d => setBagTrackingEnabled(d.enabled)).catch(() => {}) }, [])
 
   // OIDC config
-  const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', oidc_only: false })
+  const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', oidc_only: false, discovery_url: '' })
   const [savingOidc, setSavingOidc] = useState<boolean>(false)
 
   // Registration toggle
@@ -880,6 +881,17 @@ export default function AdminPage(): React.ReactElement {
                     <p className="text-xs text-slate-400 mt-1">{t('admin.oidcIssuerHint')}</p>
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Discovery URL <span className="text-slate-400 font-normal">(optional)</span></label>
+                    <input
+                      type="url"
+                      value={oidcConfig.discovery_url}
+                      onChange={e => setOidcConfig(c => ({ ...c, discovery_url: e.target.value }))}
+                      placeholder='https://auth.example.com/application/o/trek/.well-known/openid-configuration'
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Override the auto-constructed discovery URL. Required for providers like Authentik where the endpoint is not at <code className="bg-slate-100 px-1 rounded">{'<issuer>/.well-known/openid-configuration'}</code>.</p>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Client ID</label>
                     <input
                       type="text"
@@ -920,7 +932,7 @@ export default function AdminPage(): React.ReactElement {
                     onClick={async () => {
                       setSavingOidc(true)
                       try {
-                        const payload: Record<string, unknown> = { issuer: oidcConfig.issuer, client_id: oidcConfig.client_id, display_name: oidcConfig.display_name, oidc_only: oidcConfig.oidc_only }
+                        const payload: Record<string, unknown> = { issuer: oidcConfig.issuer, client_id: oidcConfig.client_id, display_name: oidcConfig.display_name, oidc_only: oidcConfig.oidc_only, discovery_url: oidcConfig.discovery_url }
                         if (oidcConfig.client_secret) payload.client_secret = oidcConfig.client_secret
                         await adminApi.updateOidc(payload)
                         toast.success(t('admin.oidcSaved'))

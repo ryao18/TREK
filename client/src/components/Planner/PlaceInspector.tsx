@@ -1,10 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-
-function authUrl(url: string): string {
-  const token = localStorage.getItem('auth_token')
-  if (!token || !url) return url
-  return `${url}${url.includes('?') ? '&' : '?'}token=${token}`
-}
+import { getAuthUrl } from '../../api/authUrl'
 import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
@@ -587,11 +582,11 @@ export default function PlaceInspector({
               {filesExpanded && placeFiles.length > 0 && (
                 <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {placeFiles.map(f => (
-                    <a key={f.id} href={authUrl(f.url)} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', cursor: 'pointer' }}>
+                    <button key={f.id} onClick={async () => { const u = await getAuthUrl(f.url, 'download'); window.open(u, '_blank', 'noopener noreferrer') }} style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', cursor: 'pointer', background: 'none', border: 'none', width: '100%', textAlign: 'left' }}>
                       {(f.mime_type || '').startsWith('image/') ? <FileImage size={12} color="#6b7280" /> : <File size={12} color="#6b7280" />}
                       <span style={{ fontSize: 12, color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
                       {f.file_size && <span style={{ fontSize: 11, color: 'var(--text-faint)', flexShrink: 0 }}>{formatFileSize(f.file_size)}</span>}
-                    </a>
+                    </button>
                   ))}
                 </div>
               )}

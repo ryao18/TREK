@@ -278,6 +278,8 @@ const server = app.listen(PORT, () => {
   scheduler.start();
   scheduler.startTripReminders();
   scheduler.startDemoReset();
+  const { startTokenCleanup } = require('./services/ephemeralTokens');
+  startTokenCleanup();
   import('./websocket').then(({ setupWebSocket }) => {
     setupWebSocket(server);
   });

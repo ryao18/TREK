@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config';
 import { db, canAccessTrip } from '../db/database';
+import { consumeEphemeralToken } from '../services/ephemeralTokens';
 import { authenticate, demoUploadBlock } from '../middleware/auth';
 import { requireTripAccess } from '../middleware/tripAccess';
 import { broadcast } from '../websocket';
@@ -84,17 +85,25 @@ function getPlaceFiles(tripId: string | number, placeId: number) {
 router.get('/:id/download', (req: Request, res: Response) => {
   const { tripId, id } = req.params;
 
-  // Accept token from Authorization header or query parameter
+  // Accept token from Authorization header (JWT) or query parameter (ephemeral token)
   const authHeader = req.headers['authorization'];
-  const token = (authHeader && authHeader.split(' ')[1]) || (req.query.token as string);
-  if (!token) return res.status(401).json({ error: 'Authentication required' });
+  const bearerToken = authHeader && authHeader.split(' ')[1];
+  const queryToken = req.query.token as string | undefined;
+
+  if (!bearerToken && !queryToken) return res.status(401).json({ error: 'Authentication required' });
 
   let userId: number;
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: number };
-    userId = decoded.id;
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+  if (bearerToken) {
+    try {
+      const decoded = jwt.verify(bearerToken, JWT_SECRET, { algorithms: ['HS256'] }) as { id: number };
+      userId = decoded.id;
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  } else {
+    const uid = consumeEphemeralToken(queryToken!, 'download');
+    if (!uid) return res.status(401).json({ error: 'Invalid or expired token' });
+    userId = uid;
   }
 
   const trip = verifyTripOwnership(tripId, userId);

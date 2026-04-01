@@ -12,6 +12,7 @@ const activeTrips = new Set<string>()
 let currentToken: string | null = null
 let refetchCallback: RefetchCallback | null = null
 let mySocketId: string | null = null
+let connecting = false
 
 export function getSocketId(): string | null {
   return mySocketId
@@ -21,9 +22,28 @@ export function setRefetchCallback(fn: RefetchCallback | null): void {
   refetchCallback = fn
 }
 
-function getWsUrl(token: string): string {
+function getWsUrl(wsToken: string): string {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${location.host}/ws?token=${token}`
+  return `${protocol}://${location.host}/ws?token=${wsToken}`
+}
+
+async function fetchWsToken(jwt: string): Promise<string | null> {
+  try {
+    const resp = await fetch('/api/auth/ws-token', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${jwt}` },
+    })
+    if (resp.status === 401) {
+      // JWT expired — stop reconnecting
+      currentToken = null
+      return null
+    }
+    if (!resp.ok) return null
+    const { token } = await resp.json()
+    return token as string
+  } catch {
+    return null
+  }
 }
 
 function handleMessage(event: MessageEvent): void {
@@ -52,12 +72,23 @@ function scheduleReconnect(): void {
   reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
 }
 
-function connectInternal(token: string, _isReconnect = false): void {
+async function connectInternal(token: string, _isReconnect = false): Promise<void> {
+  if (connecting) return
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return
   }
 
-  const url = getWsUrl(token)
+  connecting = true
+  const wsToken = await fetchWsToken(token)
+  connecting = false
+
+  if (!wsToken) {
+    // currentToken may have been cleared on 401; only schedule reconnect if still active
+    if (currentToken) scheduleReconnect()
+    return
+  }
+
+  const url = getWsUrl(wsToken)
   socket = new WebSocket(url)
 
   socket.onopen = () => {

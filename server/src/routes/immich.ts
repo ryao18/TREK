@@ -1,8 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { db } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { broadcast } from '../websocket';
 import { AuthRequest } from '../types';
+import { consumeEphemeralToken } from '../services/ephemeralTokens';
 
 const router = express.Router();
 
@@ -254,11 +255,16 @@ router.get('/assets/:assetId/info', authenticate, async (req: Request, res: Resp
 
 // ── Proxy Immich Assets ─────────────────────────────────────────────────────
 
-// Asset proxy routes accept token via query param (for <img> src usage)
-function authFromQuery(req: Request, res: Response, next: Function) {
-  const token = req.query.token as string;
-  if (token && !req.headers.authorization) {
-    req.headers.authorization = `Bearer ${token}`;
+// Asset proxy routes accept ephemeral token via query param (for <img> src usage)
+function authFromQuery(req: Request, res: Response, next: NextFunction) {
+  const queryToken = req.query.token as string | undefined;
+  if (queryToken) {
+    const userId = consumeEphemeralToken(queryToken, 'immich');
+    if (!userId) return res.status(401).send('Invalid or expired token');
+    const user = db.prepare('SELECT id, username, email, role, mfa_enabled FROM users WHERE id = ?').get(userId) as any;
+    if (!user) return res.status(401).send('User not found');
+    (req as AuthRequest).user = user;
+    return next();
   }
   return (authenticate as any)(req, res, next);
 }

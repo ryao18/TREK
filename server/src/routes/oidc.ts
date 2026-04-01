@@ -60,22 +60,24 @@ function getOidcConfig() {
   const clientId = process.env.OIDC_CLIENT_ID || get('oidc_client_id');
   const clientSecret = process.env.OIDC_CLIENT_SECRET || decrypt_api_key(get('oidc_client_secret'));
   const displayName = process.env.OIDC_DISPLAY_NAME || get('oidc_display_name') || 'SSO';
+  const discoveryUrl = process.env.OIDC_DISCOVERY_URL || get('oidc_discovery_url') || null;
   if (!issuer || !clientId || !clientSecret) return null;
-  return { issuer: issuer.replace(/\/+$/, ''), clientId, clientSecret, displayName };
+  return { issuer: issuer.replace(/\/+$/, ''), clientId, clientSecret, displayName, discoveryUrl };
 }
 
 let discoveryCache: OidcDiscoveryDoc | null = null;
 let discoveryCacheTime = 0;
 const DISCOVERY_TTL = 60 * 60 * 1000; // 1 hour
 
-async function discover(issuer: string) {
-  if (discoveryCache && Date.now() - discoveryCacheTime < DISCOVERY_TTL && discoveryCache._issuer === issuer) {
+async function discover(issuer: string, discoveryUrl?: string | null) {
+  const url = discoveryUrl || `${issuer}/.well-known/openid-configuration`;
+  if (discoveryCache && Date.now() - discoveryCacheTime < DISCOVERY_TTL && discoveryCache._issuer === url) {
     return discoveryCache;
   }
-  const res = await fetch(`${issuer}/.well-known/openid-configuration`);
+  const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to fetch OIDC discovery document');
   const doc = await res.json() as OidcDiscoveryDoc;
-  doc._issuer = issuer;
+  doc._issuer = url;
   discoveryCache = doc;
   discoveryCacheTime = Date.now();
   return doc;
@@ -120,7 +122,7 @@ router.get('/login', async (req: Request, res: Response) => {
   }
 
   try {
-    const doc = await discover(config.issuer);
+    const doc = await discover(config.issuer, config.discoveryUrl);
     const state = crypto.randomBytes(32).toString('hex');
     const appUrl = process.env.APP_URL || (db.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").get() as { value: string } | undefined)?.value;
     if (!appUrl) {
@@ -172,7 +174,7 @@ router.get('/callback', async (req: Request, res: Response) => {
   }
 
   try {
-    const doc = await discover(config.issuer);
+    const doc = await discover(config.issuer, config.discoveryUrl);
 
     const tokenRes = await fetch(doc.token_endpoint, {
       method: 'POST',

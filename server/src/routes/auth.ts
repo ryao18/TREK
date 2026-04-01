@@ -20,6 +20,7 @@ import { AuthRequest, OptionalAuthRequest, User } from '../types';
 import { writeAudit, getClientIp } from '../services/auditLog';
 import { decrypt_api_key, maybe_encrypt_api_key, encrypt_api_key } from '../services/apiKeyCrypto';
 import { startTripReminders } from '../scheduler';
+import { createEphemeralToken } from '../services/ephemeralTokens';
 
 authenticator.options = { window: 1 };
 
@@ -949,6 +950,26 @@ router.delete('/mcp-tokens/:id', authenticate, (req: Request, res: Response) => 
   db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(id);
   revokeUserSessions(authReq.user.id);
   res.json({ success: true });
+});
+
+// Short-lived single-use token for WebSocket connections (avoids JWT in WS URL)
+router.post('/ws-token', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const token = createEphemeralToken(authReq.user.id, 'ws');
+  if (!token) return res.status(503).json({ error: 'Service unavailable' });
+  res.json({ token });
+});
+
+// Short-lived single-use token for direct resource URLs (file downloads, Immich assets)
+router.post('/resource-token', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const { purpose } = req.body as { purpose?: string };
+  if (purpose !== 'download' && purpose !== 'immich') {
+    return res.status(400).json({ error: 'Invalid purpose' });
+  }
+  const token = createEphemeralToken(authReq.user.id, purpose);
+  if (!token) return res.status(503).json({ error: 'Service unavailable' });
+  res.json({ token });
 });
 
 export default router;

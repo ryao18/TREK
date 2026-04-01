@@ -240,17 +240,19 @@ router.get('/oidc', (_req: Request, res: Response) => {
     client_secret_set: !!secret,
     display_name: get('oidc_display_name'),
     oidc_only: get('oidc_only') === 'true',
+    discovery_url: get('oidc_discovery_url'),
   });
 });
 
 router.put('/oidc', (req: Request, res: Response) => {
-  const { issuer, client_id, client_secret, display_name, oidc_only } = req.body;
+  const { issuer, client_id, client_secret, display_name, oidc_only, discovery_url } = req.body;
   const set = (key: string, val: string) => db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val || '');
   set('oidc_issuer', issuer);
   set('oidc_client_id', client_id);
   if (client_secret !== undefined) set('oidc_client_secret', maybe_encrypt_api_key(client_secret) ?? '');
   set('oidc_display_name', display_name);
   set('oidc_only', oidc_only ? 'true' : 'false');
+  set('oidc_discovery_url', discovery_url);
   const authReq = req as AuthRequest;
   writeAudit({
     userId: authReq.user.id,

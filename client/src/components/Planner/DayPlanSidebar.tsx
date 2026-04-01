@@ -79,6 +79,7 @@ interface DayPlanSidebarProps {
   reservations?: Reservation[]
   onAddReservation: () => void
   onNavigateToFiles?: () => void
+  onExpandedDaysChange?: (expandedDayIds: Set<number>) => void
 }
 
 const DayPlanSidebar = React.memo(function DayPlanSidebar({
@@ -91,6 +92,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
   reservations = [],
   onAddReservation,
   onNavigateToFiles,
+  onExpandedDaysChange,
 }: DayPlanSidebarProps) {
   const toast = useToast()
   const { t, language, locale } = useTranslation()
@@ -109,6 +111,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
     } catch {}
     return new Set(days.map(d => d.id))
   })
+  useEffect(() => { onExpandedDaysChange?.(expandedDays) }, [expandedDays])
   const [editingDayId, setEditingDayId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [isCalculating, setIsCalculating] = useState(false)

@@ -1337,6 +1337,7 @@ const zh: Record<string, string> = {
   'memories.immichUrl': 'Immich 服务器地址',
   'memories.immichApiKey': 'API 密钥',
   'memories.testConnection': '测试连接',
+  'memories.testFirst': '请先测试连接',
   'memories.connected': '已连接',
   'memories.disconnected': '未连接',
   'memories.connectionSuccess': '已连接到 Immich',

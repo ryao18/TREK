@@ -1291,6 +1291,7 @@ const es: Record<string, string> = {
   'memories.immichUrl': 'URL del servidor Immich',
   'memories.immichApiKey': 'Clave API',
   'memories.testConnection': 'Probar conexión',
+  'memories.testFirst': 'Probar conexión primero',
   'memories.connected': 'Conectado',
   'memories.disconnected': 'No conectado',
   'memories.connectionSuccess': 'Conectado a Immich',

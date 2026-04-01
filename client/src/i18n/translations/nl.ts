@@ -1337,6 +1337,7 @@ const nl: Record<string, string> = {
   'memories.immichUrl': 'Immich Server URL',
   'memories.immichApiKey': 'API-sleutel',
   'memories.testConnection': 'Verbinding testen',
+  'memories.testFirst': 'Test eerst de verbinding',
   'memories.connected': 'Verbonden',
   'memories.disconnected': 'Niet verbonden',
   'memories.connectionSuccess': 'Verbonden met Immich',

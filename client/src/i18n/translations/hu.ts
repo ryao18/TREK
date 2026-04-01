@@ -1408,6 +1408,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'memories.immichUrl': 'Immich szerver URL',
   'memories.immichApiKey': 'API kulcs',
   'memories.testConnection': 'Kapcsolat tesztelése',
+  'memories.testFirst': 'Először teszteld a kapcsolatot',
   'memories.connected': 'Csatlakoztatva',
   'memories.disconnected': 'Nincs csatlakoztatva',
   'memories.connectionSuccess': 'Csatlakozva az Immichhez',

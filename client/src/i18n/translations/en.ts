@@ -1335,6 +1335,7 @@ const en: Record<string, string | { name: string; category: string }[]> = {
   'memories.immichUrl': 'Immich Server URL',
   'memories.immichApiKey': 'API Key',
   'memories.testConnection': 'Test connection',
+  'memories.testFirst': 'Test connection first',
   'memories.connected': 'Connected',
   'memories.disconnected': 'Not connected',
   'memories.connectionSuccess': 'Connected to Immich',

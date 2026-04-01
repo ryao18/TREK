@@ -1341,6 +1341,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'memories.immichUrl': 'عنوان خادم Immich',
   'memories.immichApiKey': 'مفتاح API',
   'memories.testConnection': 'اختبار الاتصال',
+  'memories.testFirst': 'اختبر الاتصال أولاً',
   'memories.connected': 'متصل',
   'memories.disconnected': 'غير متصل',
   'memories.connectionSuccess': 'تم الاتصال بـ Immich',

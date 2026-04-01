@@ -1337,6 +1337,7 @@ const ru: Record<string, string> = {
   'memories.immichUrl': 'URL сервера Immich',
   'memories.immichApiKey': 'API-ключ',
   'memories.testConnection': 'Проверить подключение',
+  'memories.testFirst': 'Сначала проверьте подключение',
   'memories.connected': 'Подключено',
   'memories.disconnected': 'Не подключено',
   'memories.connectionSuccess': 'Подключение к Immich установлено',

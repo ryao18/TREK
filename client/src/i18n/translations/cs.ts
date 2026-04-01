@@ -1341,6 +1341,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'memories.immichUrl': 'URL serveru Immich',
   'memories.immichApiKey': 'API klíč',
   'memories.testConnection': 'Otestovat připojení',
+  'memories.testFirst': 'Nejprve otestujte připojení',
   'memories.connected': 'Připojeno',
   'memories.disconnected': 'Nepřipojeno',
   'memories.connectionSuccess': 'Připojeno k Immich',

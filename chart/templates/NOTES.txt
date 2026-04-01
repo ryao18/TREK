@@ -4,10 +4,9 @@
    - To generate a random key at install (preserved across upgrades), set `generateEncryptionKey: true`.
    - To use an existing Kubernetes secret, set `existingSecret` to the secret name. The secret must
      contain a key matching `existingSecretKey` (defaults to `ENCRYPTION_KEY`).
-   - If left empty, the server auto-generates and persists the key to the data PVC — safe as long as
-     the PVC persists.
-   - Upgrading from a version that used JWT_SECRET for encryption: set `secretEnv.ENCRYPTION_KEY` to
-     your old JWT_SECRET value, then re-save credentials via the admin panel.
+   - If left empty, the server resolves the key automatically: existing installs fall back to
+     data/.jwt_secret (encrypted data stays readable with no manual action); fresh installs
+     auto-generate a key persisted to the data PVC.
 
 2. JWT_SECRET is managed entirely by the server:
    - Auto-generated on first start and persisted to the data PVC (data/.jwt_secret).

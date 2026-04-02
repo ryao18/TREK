@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User, Check, X, ArrowRight, Trash2, CheckCheck } from 'lucide-react'
 import { useTranslation } from '../../i18n'
-import { useNotificationStore, InAppNotification } from '../../store/notificationStore'
+import { useInAppNotificationStore, InAppNotification } from '../../store/inAppNotificationStore'
 import { useSettingsStore } from '../../store/settingsStore'
 
 function relativeTime(dateStr: string, locale: string): string {
@@ -29,7 +29,7 @@ export default function InAppNotificationItem({ notification, onClose }: Notific
   const dark = darkMode === true || darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const [responding, setResponding] = useState(false)
 
-  const { markRead, markUnread, deleteNotification, respondToBoolean } = useNotificationStore()
+  const { markRead, markUnread, deleteNotification, respondToBoolean } = useInAppNotificationStore()
 
   const handleNavigate = async () => {
     if (!notification.is_read) await markRead(notification.id)

@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
 import { addListener, removeListener } from '../api/websocket'
-import { useNotificationStore } from '../store/notificationStore'
+import { useInAppNotificationStore } from '../store/inAppNotificationStore.ts'
 
 export function useInAppNotificationListener(): void {
-  const handleNew = useNotificationStore(s => s.handleNewNotification)
-  const handleUpdated = useNotificationStore(s => s.handleUpdatedNotification)
+  const handleNew = useInAppNotificationStore(s => s.handleNewNotification)
+  const handleUpdated = useInAppNotificationStore(s => s.handleUpdatedNotification)
 
   useEffect(() => {
     const listener = (event: Record<string, unknown>) => {

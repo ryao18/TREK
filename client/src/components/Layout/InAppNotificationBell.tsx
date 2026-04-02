@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Bell, Trash2, CheckCheck } from 'lucide-react'
 import { useTranslation } from '../../i18n'
-import { useNotificationStore } from '../../store/notificationStore'
+import { useInAppNotificationStore } from '../../store/inAppNotificationStore.ts'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useAuthStore } from '../../store/authStore'
 import InAppNotificationItem from '../Notifications/InAppNotificationItem.tsx'
@@ -16,7 +16,7 @@ export default function InAppNotificationBell(): React.ReactElement {
   const dark = darkMode === true || darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
   const isAuthenticated = useAuthStore(s => s.isAuthenticated)
-  const { notifications, unreadCount, isLoading, fetchNotifications, fetchUnreadCount, markAllRead, deleteAll } = useNotificationStore()
+  const { notifications, unreadCount, isLoading, fetchNotifications, fetchUnreadCount, markAllRead, deleteAll } = useInAppNotificationStore()
 
   const [open, setOpen] = useState(false)
 

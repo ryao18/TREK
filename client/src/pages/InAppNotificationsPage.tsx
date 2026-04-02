@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Bell, CheckCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from '../i18n'
-import { useNotificationStore } from '../store/notificationStore'
+import { useInAppNotificationStore } from '../store/inAppNotificationStore.ts'
 import { useSettingsStore } from '../store/settingsStore'
 import Navbar from '../components/Layout/Navbar'
 import InAppNotificationItem from '../components/Notifications/InAppNotificationItem.tsx'
@@ -12,7 +12,7 @@ export default function InAppNotificationsPage(): React.ReactElement {
   const darkMode = settings.dark_mode
   const dark = darkMode === true || darkMode === 'dark' || (darkMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  const { notifications, unreadCount, total, isLoading, hasMore, fetchNotifications, markAllRead, deleteAll } = useNotificationStore()
+  const { notifications, unreadCount, total, isLoading, hasMore, fetchNotifications, markAllRead, deleteAll } = useInAppNotificationStore()
   const [unreadOnly, setUnreadOnly] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
 

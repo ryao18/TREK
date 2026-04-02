@@ -60,7 +60,7 @@ interface NotificationState {
 
 const PAGE_SIZE = 20
 
-export const useNotificationStore = create<NotificationState>((set, get) => ({
+export const useInAppNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   total: 0,

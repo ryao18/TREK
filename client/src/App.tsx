@@ -11,12 +11,12 @@ import SettingsPage from './pages/SettingsPage'
 import VacayPage from './pages/VacayPage'
 import AtlasPage from './pages/AtlasPage'
 import SharedTripPage from './pages/SharedTripPage'
-import NotificationsPage from './pages/NotificationsPage'
+import InAppNotificationsPage from './pages/InAppNotificationsPage.tsx'
 import { ToastContainer } from './components/shared/Toast'
 import { TranslationProvider, useTranslation } from './i18n'
 import { authApi } from './api/client'
 import { usePermissionsStore, PermissionLevel } from './store/permissionsStore'
-import { useNotificationListener } from './hooks/useNotificationListener'
+import { useInAppNotificationListener } from './hooks/useInAppNotificationListener.ts'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -117,7 +117,7 @@ export default function App() {
 
   const { settings } = useSettingsStore()
 
-  useNotificationListener()
+  useInAppNotificationListener()
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -222,7 +222,7 @@ export default function App() {
           path="/notifications"
           element={
             <ProtectedRoute>
-              <NotificationsPage />
+              <InAppNotificationsPage />
             </ProtectedRoute>
           }
         />

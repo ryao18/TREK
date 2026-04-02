@@ -6,7 +6,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import Navbar from '../components/Layout/Navbar'
 import InAppNotificationItem from '../components/Notifications/InAppNotificationItem.tsx'
 
-export default function NotificationsPage(): React.ReactElement {
+export default function InAppNotificationsPage(): React.ReactElement {
   const { t } = useTranslation()
   const { settings } = useSettingsStore()
   const darkMode = settings.dark_mode

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { addListener, removeListener } from '../api/websocket'
 import { useNotificationStore } from '../store/notificationStore'
 
-export function useNotificationListener(): void {
+export function useInAppNotificationListener(): void {
   const handleNew = useNotificationStore(s => s.handleNewNotification)
   const handleUpdated = useNotificationStore(s => s.handleUpdatedNotification)
 

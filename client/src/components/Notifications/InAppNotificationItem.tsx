@@ -21,7 +21,7 @@ interface NotificationItemProps {
   onClose?: () => void
 }
 
-export default function NotificationItem({ notification, onClose }: NotificationItemProps): React.ReactElement {
+export default function InAppNotificationItem({ notification, onClose }: NotificationItemProps): React.ReactElement {
   const { t, locale } = useTranslation()
   const navigate = useNavigate()
   const { settings } = useSettingsStore()

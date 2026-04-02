@@ -6,9 +6,9 @@ import { useTranslation } from '../../i18n'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useAuthStore } from '../../store/authStore'
-import NotificationItem from '../Notifications/NotificationItem'
+import InAppNotificationItem from '../Notifications/InAppNotificationItem.tsx'
 
-export default function NotificationBell(): React.ReactElement {
+export default function InAppNotificationBell(): React.ReactElement {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { settings } = useSettingsStore()
@@ -143,7 +143,7 @@ export default function NotificationBell(): React.ReactElement {
                 </div>
               ) : (
                 notifications.slice(0, 10).map(n => (
-                  <NotificationItem key={n.id} notification={n} onClose={() => setOpen(false)} />
+                  <InAppNotificationItem key={n.id} notification={n} onClose={() => setOpen(false)} />
                 ))
               )}
             </div>

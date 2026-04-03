@@ -229,6 +229,7 @@ export const useVacayStore = create<VacayState>((set, get) => ({
         : new Date().getFullYear()
     }
     set(updates)
+    await get().loadStats()
   },
 
   loadEntries: async (year?: number) => {
@@ -246,6 +247,7 @@ export const useVacayStore = create<VacayState>((set, get) => ({
   toggleCompanyHoliday: async (date: string) => {
     await api.toggleCompanyHoliday(date)
     await get().loadEntries()
+    await get().loadStats()
   },
 
   loadStats: async (year?: number) => {

@@ -4,7 +4,7 @@ Thanks for your interest in contributing! Please read these guidelines before op
 
 ## Ground Rules
 
-1. **Ask in Discord first** — Before writing any code, pitch your idea in the `#dev-discussion` channel on our [Discord server](https://discord.gg/P7TUxHJs). We'll let you know if the PR is wanted and give direction. PRs that show up without prior discussion will be closed
+1. **Ask in Discord first** — Before writing any code, pitch your idea in the `#github-pr` channel on our [Discord server](https://discord.gg/P7TUxHJs). We'll let you know if the PR is wanted and give direction. PRs that show up without prior discussion will be closed
 2. **One change per PR** — Keep it focused. Don't bundle unrelated fixes or refactors
 3. **No breaking changes** — Backwards compatibility is non-negotiable
 4. **Target the `dev` branch** — All PRs must be opened against `dev`, not `main`
@@ -20,7 +20,7 @@ Thanks for your interest in contributing! Please read these guidelines before op
 
 ### Your PR will be closed if it:
 
-- Wasn't discussed and approved in `#dev-discussion` on Discord first
+- Wasn't discussed and approved in `#github-pr` on Discord first
 - Introduces breaking changes
 - Adds unnecessary complexity or features beyond scope
 - Reformats or refactors unrelated code

@@ -29,6 +29,8 @@ env:
   # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik).
   # OIDC_SCOPE: "openid email profile groups"
   # Space-separated OIDC scopes to request. Must include scopes for any claim used by OIDC_ADMIN_CLAIM.
+  # MCP_RATE_LIMIT: "60"
+  # Max MCP API requests per user per minute. Defaults to 60.
 
 
 # Secret environment variables stored in a Kubernetes Secret.

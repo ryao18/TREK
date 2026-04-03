@@ -22,3 +22,6 @@ data:
   {{- if .Values.env.OIDC_DISCOVERY_URL }}
   OIDC_DISCOVERY_URL: {{ .Values.env.OIDC_DISCOVERY_URL | quote }}
   {{- end }}
+  {{- if .Values.env.MCP_RATE_LIMIT }}
+  MCP_RATE_LIMIT: {{ .Values.env.MCP_RATE_LIMIT | quote }}
+  {{- end }}

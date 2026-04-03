@@ -394,7 +394,7 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreviewResult> 
   const fallback: LinkPreviewResult = { title: null, description: null, image: null, url };
 
   const parsed = new URL(url);
-  const ssrf = await checkSsrf(url);
+  const ssrf = await checkSsrf(url, true);
   if (!ssrf.allowed) {
     return { ...fallback, error: ssrf.error } as LinkPreviewResult & { error?: string };
   }

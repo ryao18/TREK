@@ -53,7 +53,7 @@ function isInternalHostname(hostname: string): boolean {
   return h.endsWith('.local') || h.endsWith('.internal') || h === 'localhost';
 }
 
-export async function checkSsrf(rawUrl: string): Promise<SsrfResult> {
+export async function checkSsrf(rawUrl: string, bypassInternalIpAllowed: boolean = false): Promise<SsrfResult> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -91,7 +91,7 @@ export async function checkSsrf(rawUrl: string): Promise<SsrfResult> {
   }
 
   if (isPrivateNetwork(resolvedIp) || isInternalHostname(hostname)) {
-    if (!ALLOW_INTERNAL_NETWORK) {
+    if (!ALLOW_INTERNAL_NETWORK || bypassInternalIpAllowed) {
       return {
         allowed: false,
         isPrivate: true,

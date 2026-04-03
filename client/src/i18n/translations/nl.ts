@@ -242,6 +242,7 @@ const nl: Record<string, string> = {
   'settings.mcp.toast.deleted': 'Token verwijderd',
   'settings.mcp.toast.deleteError': 'Token verwijderen mislukt',
   'settings.account': 'Account',
+  'settings.about': 'Over',
   'settings.username': 'Gebruikersnaam',
   'settings.email': 'E-mail',
   'settings.role': 'Rol',

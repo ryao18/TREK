@@ -195,6 +195,7 @@ const cs: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.toast.deleted': 'Token smazán',
   'settings.mcp.toast.deleteError': 'Nepodařilo se smazat token',
   'settings.account': 'Účet',
+  'settings.about': 'O aplikaci',
   'settings.username': 'Uživatelské jméno',
   'settings.email': 'E-mail',
   'settings.role': 'Role',

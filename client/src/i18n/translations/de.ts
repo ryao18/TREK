@@ -242,6 +242,7 @@ const de: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.toast.deleted': 'Token gelöscht',
   'settings.mcp.toast.deleteError': 'Token konnte nicht gelöscht werden',
   'settings.account': 'Konto',
+  'settings.about': 'Über',
   'settings.username': 'Benutzername',
   'settings.email': 'E-Mail',
   'settings.role': 'Rolle',

@@ -242,6 +242,7 @@ const ru: Record<string, string> = {
   'settings.mcp.toast.deleted': 'Токен удалён',
   'settings.mcp.toast.deleteError': 'Не удалось удалить токен',
   'settings.account': 'Аккаунт',
+  'settings.about': 'О приложении',
   'settings.username': 'Имя пользователя',
   'settings.email': 'Эл. почта',
   'settings.role': 'Роль',

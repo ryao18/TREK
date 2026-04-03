@@ -194,6 +194,7 @@ const hu: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.toast.deleted': 'Token törölve',
   'settings.mcp.toast.deleteError': 'Nem sikerült törölni a tokent',
   'settings.account': 'Fiók',
+  'settings.about': 'Névjegy',
   'settings.username': 'Felhasználónév',
   'settings.email': 'E-mail',
   'settings.role': 'Szerepkör',

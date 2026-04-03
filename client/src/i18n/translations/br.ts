@@ -217,6 +217,7 @@ const br: Record<string, string | { name: string; category: string }[]> = {
   'settings.on': 'Ligado',
   'settings.off': 'Desligado',
   'settings.account': 'Conta',
+  'settings.about': 'Sobre',
   'settings.username': 'Nome de usuário',
   'settings.email': 'E-mail',
   'settings.role': 'Função',

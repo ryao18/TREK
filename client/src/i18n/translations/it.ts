@@ -194,6 +194,7 @@ const it: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.toast.deleted': 'Token eliminato',
   'settings.mcp.toast.deleteError': 'Impossibile eliminare il token',
   'settings.account': 'Account',
+  'settings.about': 'Informazioni',
   'settings.username': 'Username',
   'settings.email': 'Email',
   'settings.role': 'Ruolo',

@@ -243,6 +243,7 @@ const es: Record<string, string> = {
   'settings.mcp.toast.deleted': 'Token eliminado',
   'settings.mcp.toast.deleteError': 'Error al eliminar el token',
   'settings.account': 'Cuenta',
+  'settings.about': 'Acerca de',
   'settings.username': 'Usuario',
   'settings.email': 'Correo',
   'settings.role': 'Rol',

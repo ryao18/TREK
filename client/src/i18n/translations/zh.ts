@@ -242,6 +242,7 @@ const zh: Record<string, string> = {
   'settings.mcp.toast.deleted': '令牌已删除',
   'settings.mcp.toast.deleteError': '删除令牌失败',
   'settings.account': '账户',
+  'settings.about': '关于',
   'settings.username': '用户名',
   'settings.email': '邮箱',
   'settings.role': '角色',

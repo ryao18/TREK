@@ -247,6 +247,7 @@ const ar: Record<string, string | { name: string; category: string }[]> = {
   'settings.mcp.toast.deleted': 'تم حذف الرمز',
   'settings.mcp.toast.deleteError': 'فشل حذف الرمز',
   'settings.account': 'الحساب',
+  'settings.about': 'حول',
   'settings.username': 'اسم المستخدم',
   'settings.email': 'البريد الإلكتروني',
   'settings.role': 'الدور',

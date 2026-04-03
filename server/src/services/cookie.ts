@@ -7,7 +7,7 @@ export function cookieOptions(clear = false) {
   return {
     httpOnly: true,
     secure,
-    sameSite: 'strict' as const,
+    sameSite: 'lax' as const,
     path: '/',
     ...(clear ? {} : { maxAge: 24 * 60 * 60 * 1000 }), // 24h — matches JWT expiry
   };

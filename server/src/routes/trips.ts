@@ -3,10 +3,10 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { canAccessTrip } from '../db/database';
+import { db, canAccessTrip } from '../db/database';
 import { authenticate, demoUploadBlock } from '../middleware/auth';
 import { broadcast } from '../websocket';
-import { AuthRequest } from '../types';
+import { AuthRequest, Trip } from '../types';
 import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 import { checkPermission } from '../services/permissions';
 import {
@@ -26,6 +26,7 @@ import {
   verifyTripAccess,
   NotFoundError,
   ValidationError,
+  TRIP_SELECT,
 } from '../services/tripService';
 
 const router = express.Router();

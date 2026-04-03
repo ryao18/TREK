@@ -6,7 +6,7 @@ import { Trip, User } from '../types';
 export const MS_PER_DAY = 86400000;
 export const MAX_TRIP_DAYS = 365;
 
-const TRIP_SELECT = `
+export const TRIP_SELECT = `
   SELECT t.*,
     (SELECT COUNT(*) FROM days d WHERE d.trip_id = t.id) as day_count,
     (SELECT COUNT(*) FROM places p WHERE p.trip_id = t.id) as place_count,

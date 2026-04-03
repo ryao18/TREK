@@ -1518,6 +1518,27 @@ const it: Record<string, string | { name: string; category: string }[]> = {
   'notifications.markUnread': 'Segna come non letto',
   'notifications.delete': 'Elimina',
   'notifications.system': 'Sistema',
+  'memories.error.loadAlbums': 'Caricamento album non riuscito',
+  'memories.error.linkAlbum': 'Collegamento album non riuscito',
+  'memories.error.unlinkAlbum': 'Scollegamento album non riuscito',
+  'memories.error.syncAlbum': 'Sincronizzazione album non riuscita',
+  'memories.error.loadPhotos': 'Caricamento foto non riuscito',
+  'memories.error.addPhotos': 'Aggiunta foto non riuscita',
+  'memories.error.removePhoto': 'Rimozione foto non riuscita',
+  'memories.error.toggleSharing': 'Aggiornamento condivisione non riuscito',
+  'notifications.test.title': 'Notifica di test da {actor}',
+  'notifications.test.text': 'Questa è una semplice notifica di test.',
+  'notifications.test.booleanTitle': '{actor} richiede la tua approvazione',
+  'notifications.test.booleanText': 'Notifica di test con risposta.',
+  'notifications.test.accept': 'Approva',
+  'notifications.test.decline': 'Rifiuta',
+  'notifications.test.navigateTitle': 'Dai un\'occhiata',
+  'notifications.test.navigateText': 'Notifica di test con navigazione.',
+  'notifications.test.goThere': 'Vai',
+  'notifications.test.adminTitle': 'Comunicazione admin',
+  'notifications.test.adminText': '{actor} ha inviato una notifica di test a tutti gli amministratori.',
+  'notifications.test.tripTitle': '{actor} ha pubblicato nel tuo viaggio',
+  'notifications.test.tripText': 'Notifica di test per il viaggio "{trip}".',
 }
 
-export default it
+export default it

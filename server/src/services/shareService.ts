@@ -175,7 +175,7 @@ export function getSharedTripData(token: string): Record<string, any> | null {
 
   // Collab messages (only if owner chose to share)
   const collabMessages = permissions.share_collab
-    ? db.prepare('SELECT m.*, u.username, u.avatar FROM collab_messages m JOIN users u ON m.user_id = u.id WHERE m.trip_id = ? ORDER BY m.created_at ASC').all(tripId)
+    ? db.prepare('SELECT m.*, u.username, u.avatar FROM collab_messages m JOIN users u ON m.user_id = u.id WHERE m.trip_id = ? AND m.deleted = 0 ORDER BY m.created_at').all(tripId)
     : [];
 
   return {

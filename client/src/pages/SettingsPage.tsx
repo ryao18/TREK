@@ -176,7 +176,12 @@ export default function SettingsPage(): React.ReactElement {
     try {
       const res = await apiClient.post('/integrations/immich/test', { immich_url: immichUrl, immich_api_key: immichApiKey })
       if (res.data.connected) {
-        toast.success(`${t('memories.connectionSuccess')} — ${res.data.user?.name || ''}`)
+        if (res.data.canonicalUrl) {
+          setImmichUrl(res.data.canonicalUrl)
+          toast.success(`${t('memories.connectionSuccess')} — ${res.data.user?.name || ''} (URL updated to ${res.data.canonicalUrl})`)
+        } else {
+          toast.success(`${t('memories.connectionSuccess')} — ${res.data.user?.name || ''}`)
+        }
         setImmichTestPassed(true)
       } else {
         toast.error(`${t('memories.connectionError')}: ${res.data.error}`)

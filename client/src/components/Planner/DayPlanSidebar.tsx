@@ -879,7 +879,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
           const placeItems = merged.filter(i => i.type === 'place')
 
           return (
-            <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)', contentVisibility: 'auto', containIntrinsicSize: '0 64px' }}>
+            <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)' }}>
               {/* Tages-Header — akzeptiert Drops aus der PlacesSidebar */}
               <div
                 onClick={() => { onSelectDay(day.id); if (onDayDetail) onDayDetail(day) }}
@@ -896,6 +896,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                   outline: isDragTarget ? '2px dashed rgba(17,24,39,0.25)' : 'none',
                   outlineOffset: -2,
                   borderRadius: isDragTarget ? 8 : 0,
+                  touchAction: 'manipulation',
                 }}
                 onMouseEnter={e => { if (!isSelected && !isDragTarget) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
                 onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isDragTarget ? 'rgba(17,24,39,0.07)' : 'transparent' }}

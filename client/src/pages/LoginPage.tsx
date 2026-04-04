@@ -87,7 +87,9 @@ export default function LoginPage(): React.ReactElement {
       if (config) {
         setAppConfig(config)
         if (config.local_auth_bypass) {
-          navigate('/dashboard', { replace: true })
+          loadUser({ silent: true })
+            .then(() => navigate('/dashboard', { replace: true }))
+            .catch(() => setError('Local auth bypass failed'))
           return
         }
         if (!config.has_users) setMode('register')

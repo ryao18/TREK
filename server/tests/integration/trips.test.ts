@@ -89,9 +89,10 @@ describe('Create trip', () => {
     expect(days[4].date).toBe('2026-06-05');
   });
 
-  it('TRIP-002 — POST /api/trips without dates returns 201 and no date-specific days', async () => {
+  it('TRIP-002 — POST /api/trips without dates returns 201 and defaults to a 7-day window from tomorrow', async () => {
     const { user } = createUser(testDb);
 
+    const before = new Date();
     const res = await request(app)
       .post('/api/trips')
       .set('Cookie', authCookie(user.id))
@@ -99,12 +100,16 @@ describe('Create trip', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.trip).toBeDefined();
-    expect(res.body.trip.start_date).toBeNull();
-    expect(res.body.trip.end_date).toBeNull();
 
-    // Days with explicit dates should not be present
-    const daysWithDate = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date IS NOT NULL').all(res.body.trip.id) as any[];
-    expect(daysWithDate).toHaveLength(0);
+    // Dates should be auto-populated: tomorrow through tomorrow + 7 days
+    const tomorrow = new Date(before);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const expectedStart = tomorrow.toISOString().slice(0, 10);
+    expect(res.body.trip.start_date).toBe(expectedStart);
+
+    // 8 days should be generated (start inclusive through start + 7)
+    const days = testDb.prepare('SELECT * FROM days WHERE trip_id = ? AND date IS NOT NULL').all(res.body.trip.id) as any[];
+    expect(days).toHaveLength(8);
   });
 
   it('TRIP-001 — POST /api/trips requires a title, returns 400 without one', async () => {

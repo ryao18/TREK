@@ -12,6 +12,7 @@ interface AppConfig {
   allow_registration: boolean
   setup_complete: boolean
   demo_mode: boolean
+  local_auth_bypass?: boolean
   oidc_configured: boolean
   oidc_display_name?: string
   oidc_only_mode: boolean
@@ -85,6 +86,10 @@ export default function LoginPage(): React.ReactElement {
     authApi.getAppConfig?.().catch(() => null).then((config: AppConfig | null) => {
       if (config) {
         setAppConfig(config)
+        if (config.local_auth_bypass) {
+          navigate('/dashboard', { replace: true })
+          return
+        }
         if (!config.has_users) setMode('register')
         if (config.oidc_only_mode && config.oidc_configured && config.has_users && !invite) {
           window.location.href = '/api/auth/oidc/login'

@@ -288,6 +288,7 @@ export interface AppConfig {
   has_users: boolean
   allow_registration: boolean
   demo_mode: boolean
+  local_auth_bypass?: boolean
   oidc_configured: boolean
   oidc_display_name?: string
   has_maps_key?: boolean

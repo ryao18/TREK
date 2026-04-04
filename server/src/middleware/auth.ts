@@ -12,7 +12,42 @@ export function extractToken(req: Request): string | null {
   return (authHeader && authHeader.split(' ')[1]) || null;
 }
 
+function isLocalAuthBypassEnabled(): boolean {
+  return process.env.LOCAL_AUTH_BYPASS === 'true';
+}
+
+function getOrCreateBypassUser(): User {
+  let user = db.prepare(
+    "SELECT id, username, email, role FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1"
+  ).get() as User | undefined;
+
+  if (!user) {
+    user = db.prepare(
+      'SELECT id, username, email, role FROM users ORDER BY id ASC LIMIT 1'
+    ).get() as User | undefined;
+  }
+
+  if (user) return user;
+
+  const result = db.prepare(
+    'INSERT INTO users (username, email, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, 0)'
+  ).run('local-admin', 'local-admin@trek.local', '__LOCAL_AUTH_BYPASS__', 'admin');
+
+  return {
+    id: Number(result.lastInsertRowid),
+    username: 'local-admin',
+    email: 'local-admin@trek.local',
+    role: 'admin',
+  };
+}
+
 const authenticate = (req: Request, res: Response, next: NextFunction): void => {
+  if (isLocalAuthBypassEnabled()) {
+    (req as AuthRequest).user = getOrCreateBypassUser();
+    next();
+    return;
+  }
+
   const token = extractToken(req);
 
   if (!token) {
@@ -37,6 +72,12 @@ const authenticate = (req: Request, res: Response, next: NextFunction): void => 
 };
 
 const optionalAuth = (req: Request, res: Response, next: NextFunction): void => {
+  if (isLocalAuthBypassEnabled()) {
+    (req as OptionalAuthRequest).user = getOrCreateBypassUser();
+    next();
+    return;
+  }
+
   const token = extractToken(req);
 
   if (!token) {

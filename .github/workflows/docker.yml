@@ -145,8 +145,6 @@ jobs:
           docker buildx imagetools create \
             -t mauriceboe/trek:latest \
             -t mauriceboe/trek:$VERSION \
-            -t mauriceboe/nomad:latest \
-            -t mauriceboe/nomad:$VERSION \
             "${digests[@]}"
 
       - name: Inspect manifest

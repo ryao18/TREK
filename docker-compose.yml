@@ -26,6 +26,7 @@ services:
       - COOKIE_SECURE=${COOKIE_SECURE:-false} # Set to true when serving behind HTTPS so auth cookies are marked Secure
       - ALLOW_INTERNAL_NETWORK=${ALLOW_INTERNAL_NETWORK:-false} # Set to true if Immich or other services are hosted on your local network (RFC-1918 IPs). Loopback and link-local addresses remain blocked regardless.
       - APP_URL=${APP_URL:-http://localhost:3000} # Public base URL — required when OIDC is enabled (must match the redirect URI registered with your IdP); also used as base URL for links in email notifications
+      - LOCAL_AUTH_BYPASS=${LOCAL_AUTH_BYPASS:-false} # Local-only shortcut: treat requests as an authenticated admin without login
 #      - OIDC_ISSUER=https://auth.example.com # OpenID Connect provider URL
 #      - OIDC_CLIENT_ID=trek # OpenID Connect client ID
 #      - OIDC_CLIENT_SECRET=supersecret # OpenID Connect client secret

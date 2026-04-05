@@ -1,5 +1,4 @@
 import { actions, always, eventually, extract, next, now, weighted } from "@antithesishq/bombadil";
-export * from "@antithesishq/bombadil/defaults";
 
 type Point = { x: number; y: number };
 
@@ -39,6 +38,22 @@ function pickPointByText(
 
 function visibleBodyText(state: { document: Document }): string {
   return (state.document.body?.innerText || "").replace(/\s+/g, " ").trim();
+}
+
+function findVisiblePlaceRowByName(state: { document: Document }, name: string): Element | null {
+  if (!name.trim()) return null;
+  const labels = Array.from(state.document.querySelectorAll("span, div"));
+  for (const label of labels) {
+    if (!isVisible(label)) continue;
+    if (textOf(label) !== name) continue;
+    let current: Element | null = label;
+    while (current) {
+      const buttons = Array.from(current.querySelectorAll("button"));
+      if (buttons.length > 0) return current;
+      current = current.parentElement;
+    }
+  }
+  return null;
 }
 
 const route = extract((state) => state.window.location.pathname);
@@ -381,6 +396,62 @@ const collabState = extract((state) => {
   };
 });
 
+const planningState = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
+  const buttons = Array.from(state.document.querySelectorAll("button"));
+  const nameInput = state.document.querySelector("input[placeholder='e.g. Eiffel Tower']");
+  const descriptionInput = state.document.querySelector("textarea[placeholder='Short description...']");
+  const addressInput = state.document.querySelector("input[placeholder='Street, City, Country']");
+  const modalForm = nameInput?.closest("form") || null;
+  const placeName = nameInput instanceof HTMLInputElement ? nameInput.value : "";
+  const placeRow = findVisiblePlaceRowByName(state, placeName);
+  const rowButtons = placeRow ? Array.from(placeRow.querySelectorAll("button")) : [];
+  const plannerRow = placeName ? findVisiblePlaceRowByName(state, placeName) : null;
+  const plannerButtons = plannerRow ? Array.from(plannerRow.querySelectorAll("button")) : [];
+  const reorderButtons = plannerButtons.filter((button) => {
+    if (!isVisible(button)) return false;
+    return button.querySelector("svg") !== null;
+  });
+
+  return {
+    addPlacePoint: pickPointByText(buttons, ["Add Place/Activity"], { title: true }),
+    modalOpen: !!nameInput,
+    namePoint: centerOf(nameInput),
+    nameValue: placeName,
+    descriptionPoint: centerOf(descriptionInput),
+    addressPoint: centerOf(addressInput),
+    submitPoint: centerOf(modalForm?.querySelector("button[type='submit']") || null),
+    submitDisabled: (() => {
+      const submit = modalForm?.querySelector("button[type='submit']");
+      return submit instanceof HTMLButtonElement ? submit.disabled : false;
+    })(),
+    addToDayPoint: (() => {
+      const button = rowButtons.find((btn) => {
+        if (!isVisible(btn)) return false;
+        if (!(btn instanceof HTMLButtonElement) || btn.disabled) return false;
+        const rect = btn.getBoundingClientRect();
+        return rect.width <= 28 && rect.height <= 28 && btn.querySelector("svg") !== null;
+      });
+      return centerOf(button || null);
+    })(),
+    morningPoint: pickPointByText(plannerButtons, ["Morning"], { title: true }),
+    afternoonPoint: pickPointByText(plannerButtons, ["Afternoon"], { title: true }),
+    nightPoint: pickPointByText(plannerButtons, ["Night"], { title: true }),
+    moveUpPoint: centerOf(reorderButtons[reorderButtons.length >= 2 ? reorderButtons.length - 2 : 0] || null),
+    moveDownPoint: centerOf(reorderButtons[reorderButtons.length - 1] || null),
+    activeField: (() => {
+      const active = state.document.activeElement;
+      if (active instanceof HTMLInputElement) {
+        if (active.placeholder === "e.g. Eiffel Tower") return "planner-name";
+        if (active.placeholder === "Street, City, Country") return "planner-address";
+      }
+      if (active instanceof HTMLTextAreaElement && active.placeholder === "Short description...") return "planner-description";
+      return "other";
+    })(),
+    visibleText: visibleBodyText(state),
+  };
+});
+
 export const bypassDoesNotLeaveYouOnLogin = always(
   now(() => route.current === "/login" && loginFormVisible.current).implies(
     eventually(() => route.current !== "/login").within(5, "seconds"),
@@ -476,6 +547,15 @@ export const pollsEventuallyAppear = always(() => {
     );
 });
 
+export const plannerPlacesEventuallyAppear = always(() => {
+  const name = (planningState.current?.nameValue || "").trim();
+  return now(() => name.length > 2)
+    .and(next(() => planningState.current?.modalOpen === false))
+    .implies(
+      eventually(() => planningState.current?.visibleText.includes(name) || false).within(20, "seconds"),
+    );
+});
+
 const tripTitles = [
   "Bombadil Tokyo Sprint",
   "Bombadil Alpine Weekend",
@@ -544,19 +624,36 @@ const pollOptions = [
   ["Sushi", "Tapas"],
 ];
 
-export const openCreateTripModal = actions(() => {
+const plannerPlaceNames = [
+  "Bombadil coffee stop",
+  "Bombadil museum visit",
+  "Bombadil sunset walk",
+];
+
+const plannerPlaceDescriptions = [
+  "Planner event created by Bombadil for day scheduling coverage.",
+  "Exercise assignment and section changes inside the trip planner.",
+];
+
+const plannerAddresses = [
+  "1 Testing Square",
+  "99 Planner Avenue",
+  "500 Local Route",
+];
+
+const openCreateTripModal = actions(() => {
   if (route.current !== "/dashboard") return [];
   if (visibleTripTitles.current.length > 0) return [];
   const point = createTripButtonPoint.current;
   return point ? [{ Click: { name: "open create trip modal", point } }] : [];
 });
 
-export const focusTripTitle = actions(() => {
+const focusTripTitle = actions(() => {
   const point = tripModalState.current?.titlePoint;
   return point ? [{ Click: { name: "focus trip title", point } }] : [];
 });
 
-export const typeTripTitle = actions(() => {
+const typeTripTitle = actions(() => {
   if (activeField.current !== "title") return [];
   if ((tripModalState.current?.title || "").length > 0) return [];
   return tripTitles.map((title) => ({
@@ -564,103 +661,188 @@ export const typeTripTitle = actions(() => {
   }));
 });
 
-export const focusTripDescription = actions(() => {
+const focusTripDescription = actions(() => {
   if (!tripModalState.current?.title) return [];
   const point = tripModalState.current.descriptionPoint;
   return point ? [{ Click: { name: "focus trip description", point } }] : [];
 });
 
-export const typeTripDescription = actions(() => {
+const typeTripDescription = actions(() => {
   if (activeField.current !== "description") return [];
   return tripDescriptions.map((text) => ({
     TypeText: { text, delayMillis: 10 },
   }));
 });
 
-export const openStartDatePicker = actions(() => {
+const openStartDatePicker = actions(() => {
   if (datePickerOpen.current) return [];
   const point = tripModalState.current?.startDatePoint;
   return point ? [{ Click: { name: "open start date picker", point } }] : [];
 });
 
-export const pickStartDate = actions(() => {
+const pickStartDate = actions(() => {
   if (!datePickerOpen.current) return [];
   return dateCellPoints.current.map((entry) => ({
     Click: { name: `pick ${entry.name} for start`, point: entry.point },
   }));
 });
 
-export const openEndDatePicker = actions(() => {
+const openEndDatePicker = actions(() => {
   if (datePickerOpen.current) return [];
   if (!tripModalState.current?.title) return [];
   const point = tripModalState.current.endDatePoint;
   return point ? [{ Click: { name: "open end date picker", point } }] : [];
 });
 
-export const pickEndDate = actions(() => {
+const pickEndDate = actions(() => {
   if (!datePickerOpen.current) return [];
   return dateCellPoints.current.map((entry) => ({
     Click: { name: `pick ${entry.name} for end`, point: entry.point },
   }));
 });
 
-export const submitTripModal = actions(() => {
+const submitTripModal = actions(() => {
   const modal = tripModalState.current;
   if (!modal?.submitPoint) return [];
   if (!modal.title || modal.submitDisabled || modal.saving) return [];
   return [{ Click: { name: "submit trip modal", point: modal.submitPoint } }];
 });
 
-export const openTripFromDashboard = actions(() => {
+const openTripFromDashboard = actions(() => {
   if (route.current !== "/dashboard") return [];
   return tripCardHeadingPoints.current.map((entry) => ({
     Click: { name: `open trip ${entry.name}`, point: entry.point },
   }));
 });
 
-export const returnToDashboard = actions(() => {
+const returnToDashboard = actions(() => {
   if (!/^\/trips\/\d+/.test(route.current)) return [];
   const point = dashboardLinkPoint.current;
   return point ? [{ Click: { name: "return to dashboard", point } }] : [];
 });
 
-export const openBookingsTab = actions(() => {
+const openBookingsTab = actions(() => {
   const point = plannerState.current?.bookingsTabPoint;
   return point ? [{ Click: { name: "open bookings tab", point } }] : [];
 });
 
-export const openPackingTab = actions(() => {
+const openPackingTab = actions(() => {
   const point = plannerState.current?.packingTabPoint;
   return point ? [{ Click: { name: "open packing tab", point } }] : [];
 });
 
-export const openBudgetTab = actions(() => {
+const openBudgetTab = actions(() => {
   const point = plannerState.current?.budgetTabPoint;
   return point ? [{ Click: { name: "open budget tab", point } }] : [];
 });
 
-export const openCollabTab = actions(() => {
+const openCollabTab = actions(() => {
   const point = plannerState.current?.collabTabPoint;
   return point ? [{ Click: { name: "open collab tab", point } }] : [];
 });
 
-export const openPlanTab = actions(() => {
+const openPlanTab = actions(() => {
   const point = plannerState.current?.planTabPoint;
   return point ? [{ Click: { name: "open plan tab", point } }] : [];
 });
 
-export const openReservationModal = actions(() => {
+const openAddPlaceModal = actions(() => {
+  if (planningState.current?.modalOpen) return [];
+  const point = planningState.current?.addPlacePoint;
+  return point ? [{ Click: { name: "open add place modal", point } }] : [];
+});
+
+const focusPlannerPlaceName = actions(() => {
+  const point = planningState.current?.namePoint;
+  return point ? [{ Click: { name: "focus planner place name", point } }] : [];
+});
+
+const typePlannerPlaceName = actions(() => {
+  if (planningState.current?.activeField !== "planner-name") return [];
+  if ((planningState.current?.nameValue || "").length > 0) return [];
+  return plannerPlaceNames.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+const focusPlannerPlaceDescription = actions(() => {
+  if (!(planningState.current?.nameValue || "").trim()) return [];
+  const point = planningState.current?.descriptionPoint;
+  return point ? [{ Click: { name: "focus planner place description", point } }] : [];
+});
+
+const typePlannerPlaceDescription = actions(() => {
+  if (planningState.current?.activeField !== "planner-description") return [];
+  return plannerPlaceDescriptions.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+const focusPlannerPlaceAddress = actions(() => {
+  if (!(planningState.current?.nameValue || "").trim()) return [];
+  const point = planningState.current?.addressPoint;
+  return point ? [{ Click: { name: "focus planner place address", point } }] : [];
+});
+
+const typePlannerPlaceAddress = actions(() => {
+  if (planningState.current?.activeField !== "planner-address") return [];
+  return plannerAddresses.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+const submitPlannerPlace = actions(() => {
+  const state = planningState.current;
+  if (!state?.submitPoint || state.submitDisabled) return [];
+  if (!(state.nameValue || "").trim()) return [];
+  return [{ Click: { name: "submit planner place", point: state.submitPoint } }];
+});
+
+const assignPlannerPlaceToDay = actions(() => {
+  const state = planningState.current;
+  if (!state?.addToDayPoint) return [];
+  if (!(state.nameValue || "").trim()) return [];
+  if (state.morningPoint || state.afternoonPoint || state.nightPoint) return [];
+  return [{ Click: { name: "assign planner place to day", point: state.addToDayPoint } }];
+});
+
+const movePlannerPlaceToMorning = actions(() => {
+  const point = planningState.current?.morningPoint;
+  return point ? [{ Click: { name: "move planner place to morning", point } }] : [];
+});
+
+const movePlannerPlaceToAfternoon = actions(() => {
+  const point = planningState.current?.afternoonPoint;
+  return point ? [{ Click: { name: "move planner place to afternoon", point } }] : [];
+});
+
+const movePlannerPlaceToNight = actions(() => {
+  const point = planningState.current?.nightPoint;
+  return point ? [{ Click: { name: "move planner place to night", point } }] : [];
+});
+
+const reorderPlannerPlaceUp = actions(() => {
+  const point = planningState.current?.moveUpPoint;
+  return point ? [{ Click: { name: "reorder planner place up", point } }] : [];
+});
+
+const reorderPlannerPlaceDown = actions(() => {
+  const point = planningState.current?.moveDownPoint;
+  return point ? [{ Click: { name: "reorder planner place down", point } }] : [];
+});
+
+const openReservationModal = actions(() => {
   if (reservationsState.current?.modalOpen) return [];
   const point = reservationsState.current?.addPoint;
   return point ? [{ Click: { name: "open reservation modal", point } }] : [];
 });
 
-export const focusReservationTitle = actions(() => {
+const focusReservationTitle = actions(() => {
   const point = reservationsState.current?.titlePoint;
   return point ? [{ Click: { name: "focus reservation title", point } }] : [];
 });
 
-export const typeReservationTitle = actions(() => {
+const typeReservationTitle = actions(() => {
   if (reservationsState.current?.activeField !== "reservation-title") return [];
   if ((reservationsState.current?.titleValue || "").length > 0) return [];
   return bookingTitles.map((text) => ({
@@ -668,50 +850,50 @@ export const typeReservationTitle = actions(() => {
   }));
 });
 
-export const focusReservationLocation = actions(() => {
+const focusReservationLocation = actions(() => {
   if (!(reservationsState.current?.titleValue || "").trim()) return [];
   const point = reservationsState.current?.locationPoint;
   return point ? [{ Click: { name: "focus reservation location", point } }] : [];
 });
 
-export const typeReservationLocation = actions(() => {
+const typeReservationLocation = actions(() => {
   if (reservationsState.current?.activeField !== "reservation-location") return [];
   return locations.map((text) => ({
     TypeText: { text, delayMillis: 10 },
   }));
 });
 
-export const focusReservationNotes = actions(() => {
+const focusReservationNotes = actions(() => {
   if (!(reservationsState.current?.titleValue || "").trim()) return [];
   const point = reservationsState.current?.notesPoint;
   return point ? [{ Click: { name: "focus reservation notes", point } }] : [];
 });
 
-export const typeReservationNotes = actions(() => {
+const typeReservationNotes = actions(() => {
   if (reservationsState.current?.activeField !== "reservation-notes") return [];
   return notes.map((text) => ({
     TypeText: { text, delayMillis: 10 },
   }));
 });
 
-export const submitReservation = actions(() => {
+const submitReservation = actions(() => {
   const state = reservationsState.current;
   if (!state?.submitPoint || state.submitDisabled) return [];
   if (!(state.titleValue || "").trim()) return [];
   return [{ Click: { name: "submit reservation", point: state.submitPoint } }];
 });
 
-export const openPackingAdd = actions(() => {
+const openPackingAdd = actions(() => {
   const point = packingState.current?.addPoint;
   return point ? [{ Click: { name: "open packing add item", point } }] : [];
 });
 
-export const focusPackingItem = actions(() => {
+const focusPackingItem = actions(() => {
   const point = packingState.current?.itemPoint;
   return point ? [{ Click: { name: "focus packing item", point } }] : [];
 });
 
-export const typePackingItem = actions(() => {
+const typePackingItem = actions(() => {
   if (packingState.current?.activeField !== "packing-item") return [];
   if ((packingState.current?.itemValue || "").length > 0) return [];
   return packingItems.map((text) => ({
@@ -719,19 +901,19 @@ export const typePackingItem = actions(() => {
   }));
 });
 
-export const submitPackingItem = actions(() => {
+const submitPackingItem = actions(() => {
   const state = packingState.current;
   if (!state?.submitPoint) return [];
   if (!(state.itemValue || "").trim()) return [];
   return [{ Click: { name: "submit packing item", point: state.submitPoint } }];
 });
 
-export const focusBudgetName = actions(() => {
+const focusBudgetName = actions(() => {
   const point = budgetState.current?.namePoint;
   return point ? [{ Click: { name: "focus budget name", point } }] : [];
 });
 
-export const typeBudgetName = actions(() => {
+const typeBudgetName = actions(() => {
   if (budgetState.current?.activeField !== "budget-name") return [];
   if ((budgetState.current?.nameValue || "").length > 0) return [];
   return budgetEntries.map((text) => ({
@@ -739,13 +921,13 @@ export const typeBudgetName = actions(() => {
   }));
 });
 
-export const focusBudgetPrice = actions(() => {
+const focusBudgetPrice = actions(() => {
   if (!(budgetState.current?.nameValue || "").trim()) return [];
   const point = budgetState.current?.pricePoint;
   return point ? [{ Click: { name: "focus budget price", point } }] : [];
 });
 
-export const typeBudgetPrice = actions(() => {
+const typeBudgetPrice = actions(() => {
   if (budgetState.current?.activeField !== "budget-price") return [];
   return [
     { TypeText: { text: "19.50", delayMillis: 10 } },
@@ -753,32 +935,32 @@ export const typeBudgetPrice = actions(() => {
   ];
 });
 
-export const focusBudgetNote = actions(() => {
+const focusBudgetNote = actions(() => {
   if (!(budgetState.current?.nameValue || "").trim()) return [];
   const point = budgetState.current?.notePoint;
   return point ? [{ Click: { name: "focus budget note", point } }] : [];
 });
 
-export const typeBudgetNote = actions(() => {
+const typeBudgetNote = actions(() => {
   if (budgetState.current?.activeField !== "budget-note") return [];
   return notes.map((text) => ({
     TypeText: { text, delayMillis: 10 },
   }));
 });
 
-export const submitBudgetItem = actions(() => {
+const submitBudgetItem = actions(() => {
   const state = budgetState.current;
   if (!state?.submitPoint) return [];
   if (!(state.nameValue || "").trim()) return [];
   return [{ Click: { name: "submit budget item", point: state.submitPoint } }];
 });
 
-export const focusChatComposer = actions(() => {
+const focusChatComposer = actions(() => {
   const point = collabState.current?.chatPoint;
   return point ? [{ Click: { name: "focus chat composer", point } }] : [];
 });
 
-export const typeChatMessage = actions(() => {
+const typeChatMessage = actions(() => {
   if (collabState.current?.activeField !== "chat") return [];
   if ((collabState.current?.chatValue || "").length > 0) return [];
   return chatMessages.map((text) => ({
@@ -786,25 +968,25 @@ export const typeChatMessage = actions(() => {
   }));
 });
 
-export const sendChatMessage = actions(() => {
+const sendChatMessage = actions(() => {
   const state = collabState.current;
   if (!state?.chatSendPoint) return [];
   if (!(state.chatValue || "").trim()) return [];
   return [{ Click: { name: "send chat message", point: state.chatSendPoint } }];
 });
 
-export const openNewNote = actions(() => {
+const openNewNote = actions(() => {
   if (collabState.current?.noteModalOpen) return [];
   const point = collabState.current?.newNotePoint;
   return point ? [{ Click: { name: "open new note", point } }] : [];
 });
 
-export const focusNoteTitle = actions(() => {
+const focusNoteTitle = actions(() => {
   const point = collabState.current?.noteTitlePoint;
   return point ? [{ Click: { name: "focus note title", point } }] : [];
 });
 
-export const typeNoteTitle = actions(() => {
+const typeNoteTitle = actions(() => {
   if (collabState.current?.activeField !== "note-title") return [];
   if ((collabState.current?.noteTitleValue || "").length > 0) return [];
   return noteTitles.map((text) => ({
@@ -812,38 +994,38 @@ export const typeNoteTitle = actions(() => {
   }));
 });
 
-export const focusNoteContent = actions(() => {
+const focusNoteContent = actions(() => {
   if (!(collabState.current?.noteTitleValue || "").trim()) return [];
   const point = collabState.current?.noteContentPoint;
   return point ? [{ Click: { name: "focus note content", point } }] : [];
 });
 
-export const typeNoteContent = actions(() => {
+const typeNoteContent = actions(() => {
   if (collabState.current?.activeField !== "note-content") return [];
   return noteBodies.map((text) => ({
     TypeText: { text, delayMillis: 10 },
   }));
 });
 
-export const submitNote = actions(() => {
+const submitNote = actions(() => {
   const state = collabState.current;
   if (!state?.noteSubmitPoint || state.noteSubmitDisabled) return [];
   if (!(state.noteTitleValue || "").trim()) return [];
   return [{ Click: { name: "submit note", point: state.noteSubmitPoint } }];
 });
 
-export const openNewPoll = actions(() => {
+const openNewPoll = actions(() => {
   if (collabState.current?.pollModalOpen) return [];
   const point = collabState.current?.newPollPoint;
   return point ? [{ Click: { name: "open new poll", point } }] : [];
 });
 
-export const focusPollQuestion = actions(() => {
+const focusPollQuestion = actions(() => {
   const point = collabState.current?.pollQuestionPoint;
   return point ? [{ Click: { name: "focus poll question", point } }] : [];
 });
 
-export const typePollQuestion = actions(() => {
+const typePollQuestion = actions(() => {
   if (collabState.current?.activeField !== "poll-question") return [];
   if ((collabState.current?.pollQuestionValue || "").length > 0) return [];
   return pollQuestions.map((text) => ({
@@ -851,13 +1033,13 @@ export const typePollQuestion = actions(() => {
   }));
 });
 
-export const focusPollOptionOne = actions(() => {
+const focusPollOptionOne = actions(() => {
   if (!(collabState.current?.pollQuestionValue || "").trim()) return [];
   const point = collabState.current?.pollOptionOnePoint;
   return point ? [{ Click: { name: "focus poll option one", point } }] : [];
 });
 
-export const typePollOptionOne = actions(() => {
+const typePollOptionOne = actions(() => {
   if (collabState.current?.activeField !== "poll-option-1") return [];
   if ((collabState.current?.pollOptionValues[0] || "").trim()) return [];
   return pollOptions.map((options) => ({
@@ -865,13 +1047,13 @@ export const typePollOptionOne = actions(() => {
   }));
 });
 
-export const focusPollOptionTwo = actions(() => {
+const focusPollOptionTwo = actions(() => {
   if (!(collabState.current?.pollQuestionValue || "").trim()) return [];
   const point = collabState.current?.pollOptionTwoPoint;
   return point ? [{ Click: { name: "focus poll option two", point } }] : [];
 });
 
-export const typePollOptionTwo = actions(() => {
+const typePollOptionTwo = actions(() => {
   if (collabState.current?.activeField !== "poll-option-2") return [];
   if ((collabState.current?.pollOptionValues[1] || "").trim()) return [];
   return pollOptions.map((options) => ({
@@ -879,33 +1061,47 @@ export const typePollOptionTwo = actions(() => {
   }));
 });
 
-export const submitPoll = actions(() => {
+const submitPoll = actions(() => {
   const state = collabState.current;
   if (!state?.pollSubmitPoint || state.pollSubmitDisabled) return [];
   if (!(state.pollQuestionValue || "").trim()) return [];
   return [{ Click: { name: "submit poll", point: state.pollSubmitPoint } }];
 });
 
-export const voteOnPoll = actions(() =>
+const voteOnPoll = actions(() =>
   collabState.current?.votePoints.map((entry) => ({
     Click: { name: `vote ${entry.name}`, point: entry.point },
   })) || [],
 );
 
 export const tripFocusedExploration = weighted([
-  [2, openCreateTripModal],
-  [4, focusTripTitle],
-  [8, typeTripTitle],
-  [2, openStartDatePicker],
-  [2, pickStartDate],
-  [2, openEndDatePicker],
-  [2, pickEndDate],
-  [3, focusTripDescription],
-  [4, typeTripDescription],
-  [4, submitTripModal],
-  [14, openTripFromDashboard],
-  [2, returnToDashboard],
-  [10, openBookingsTab],
+  [1, openCreateTripModal],
+  [2, focusTripTitle],
+  [4, typeTripTitle],
+  [1, openStartDatePicker],
+  [1, pickStartDate],
+  [1, openEndDatePicker],
+  [1, pickEndDate],
+  [2, focusTripDescription],
+  [2, typeTripDescription],
+  [2, submitTripModal],
+  [28, openTripFromDashboard],
+  [12, openPlanTab],
+  [16, openAddPlaceModal],
+  [10, focusPlannerPlaceName],
+  [14, typePlannerPlaceName],
+  [7, focusPlannerPlaceDescription],
+  [8, typePlannerPlaceDescription],
+  [7, focusPlannerPlaceAddress],
+  [8, typePlannerPlaceAddress],
+  [14, submitPlannerPlace],
+  [18, assignPlannerPlaceToDay],
+  [12, movePlannerPlaceToMorning],
+  [12, movePlannerPlaceToAfternoon],
+  [12, movePlannerPlaceToNight],
+  [8, reorderPlannerPlaceUp],
+  [8, reorderPlannerPlaceDown],
+  [12, openBookingsTab],
   [8, openReservationModal],
   [6, focusReservationTitle],
   [8, typeReservationTitle],
@@ -946,5 +1142,4 @@ export const tripFocusedExploration = weighted([
   [4, typePollOptionTwo],
   [7, submitPoll],
   [5, voteOnPoll],
-  [3, openPlanTab],
 ]);

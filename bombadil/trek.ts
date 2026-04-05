@@ -49,6 +49,37 @@ function findClickableAncestor(el: Element | null): Element | null {
   return null;
 }
 
+function findDashboardTripCards(state: { document: Document }): HTMLElement[] {
+  return Array.from(state.document.querySelectorAll("div"))
+    .filter((node): node is HTMLElement => node instanceof HTMLElement)
+    .filter((node) => {
+      if (!isVisible(node)) return false;
+      if (node.closest("nav")) return false;
+      if (node.closest(".modal-backdrop")) return false;
+      if (node.style.cursor !== "pointer") return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 220 && rect.height >= 120;
+    });
+}
+
+function findDashboardTripTitle(card: HTMLElement): string | null {
+  const candidates = Array.from(card.querySelectorAll("h2, h3, span"))
+    .filter((node): node is HTMLElement => node instanceof HTMLElement)
+    .filter((node) => {
+      if (!isVisible(node)) return false;
+      const text = textOf(node);
+      if (!text || text === "TREK") return false;
+      if (/^(days|places|members|shared|today|tomorrow|ongoing|past|future)$/i.test(text)) return false;
+      if (/^\d+$/.test(text)) return false;
+      const weight = Number(node.style.fontWeight || "0");
+      return weight >= 600 || node.tagName === "H2" || node.tagName === "H3";
+    })
+    .map((node) => textOf(node));
+
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => b.length - a.length)[0] || null;
+}
+
 function findVisiblePlaceRowByName(state: { document: Document }, name: string): Element | null {
   if (!name.trim()) return null;
   const labels = Array.from(state.document.querySelectorAll("span, div"));
@@ -108,15 +139,9 @@ const visibleText = extract((state) => visibleBodyText(state));
 const visibleTripTitles = extract((state) => {
   if (state.window.location.pathname !== "/dashboard") return [];
 
-  return Array.from(state.document.querySelectorAll("h2, h3"))
-    .filter((heading) => {
-      if (!isVisible(heading)) return false;
-      if (heading.closest("nav")) return false;
-      if (heading.closest(".modal-backdrop")) return false;
-      const text = textOf(heading);
-      return text.length > 0 && text !== "TREK";
-    })
-    .map((heading) => textOf(heading));
+  return findDashboardTripCards(state)
+    .map((card) => findDashboardTripTitle(card))
+    .filter((title): title is string => !!title);
 });
 
 const tripModalState = extract((state) => {
@@ -209,19 +234,11 @@ const dashboardLinkPoint = extract((state) => {
 const tripCardHeadingPoints = extract((state) => {
   if (state.window.location.pathname !== "/dashboard") return [];
 
-  return Array.from(state.document.querySelectorAll("h2, h3, span"))
-    .filter((heading) => {
-      if (!isVisible(heading)) return false;
-      if (heading.closest("nav")) return false;
-      if (heading.closest(".modal-backdrop")) return false;
-      const text = textOf(heading);
-      if (!text || text === "TREK") return false;
-      return !!findClickableAncestor(heading);
-    })
+  return findDashboardTripCards(state)
     .slice(0, 8)
-    .map((heading) => ({
-      name: textOf(heading),
-      point: centerOf(findClickableAncestor(heading) || heading),
+    .map((card) => ({
+      name: findDashboardTripTitle(card) || "dashboard trip",
+      point: centerOf(card),
     }))
     .filter((entry): entry is { name: string; point: Point } => !!entry.point);
 });

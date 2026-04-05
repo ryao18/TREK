@@ -1,6 +1,6 @@
 # Bombadil
 
-This spec is tuned for local TREK testing with Docker and `LOCAL_AUTH_BYPASS=true`.
+This spec is tuned for local TREK testing with Docker, but the Bombadil-only auth and cookie relaxations should stay in a local override rather than your baseline tracked env.
 
 Run it against your local app:
 
@@ -8,12 +8,23 @@ Run it against your local app:
 bombadil test http://localhost:3000/dashboard bombadil/trek.ts
 ```
 
-Recommended local env for Bombadil:
+Recommended local-only override for Bombadil:
 
 ```dotenv
+# copy .env.bombadil.local.example into your ignored local env override
 FORCE_HTTPS=false
 COOKIE_SECURE=false
 LOCAL_AUTH_BYPASS=true
+```
+
+Keep the tracked root [`.env`](/C:/Users/yaori/Documents/trek-trip-planner/TREK/.env) on secure defaults and only use the override above for local Bombadil sessions.
+
+Pinned Bombadil version: `0.4.2`
+
+Verify your local CLI before running the spec:
+
+```bash
+npm --prefix client run bombadil:verify-version
 ```
 
 What this spec emphasizes:

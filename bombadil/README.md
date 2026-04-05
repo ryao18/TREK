@@ -21,6 +21,8 @@ What this spec emphasizes:
 - staying out of the login page while local auth bypass is enabled
 - opening the trip creation modal
 - typing trip titles and descriptions
+- opening the start/end date pickers and selecting calendar days
 - submitting new trips
 - asserting that a submitted trip title eventually appears on the dashboard
 - opening trip cards after creation
+- checking that trip planner routes load with tabs and sequential day badges

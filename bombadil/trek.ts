@@ -235,7 +235,7 @@ const tripCardHeadingPoints = extract((state) => {
   if (state.window.location.pathname !== "/dashboard") return [];
 
   return findDashboardTripCards(state)
-    .slice(0, 8)
+    .slice(0, 1)
     .map((card) => ({
       name: findDashboardTripTitle(card) || "dashboard trip",
       point: centerOf(card),
@@ -769,6 +769,10 @@ const submitTripModal = actions(() => {
 
 const openTripFromDashboard = actions(() => {
   if (route.current !== "/dashboard") return [];
+  if (spinnerCount.current > 0) return [];
+  if (tripModalState.current) return [];
+  if (datePickerOpen.current) return [];
+  if (planningState.current?.modalOpen) return [];
   return tripCardHeadingPoints.current.map((entry) => ({
     Click: { name: `open trip ${entry.name}`, point: entry.point },
   }));

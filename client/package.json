@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "bombadil:verify-version": "node ../bombadil/verify-version.mjs",
     "prebuild": "node scripts/generate-icons.mjs",
     "build": "vite build",
     "preview": "vite preview"

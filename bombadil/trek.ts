@@ -21,6 +21,10 @@ function textOf(el: Element | null): string {
   return (el?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function queryHook(state: { document: Document }, hook: string): Element | null {
+  return state.document.querySelector(`[data-bombadil="${hook}"]`);
+}
+
 function pickPointByText(
   nodes: Element[],
   patterns: string[],
@@ -291,35 +295,31 @@ const plannerState = extract((state) => {
 const reservationsState = extract((state) => {
   if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
   const buttons = Array.from(state.document.querySelectorAll("button"));
+  const titleInput = queryHook(state, "reservation-title") || state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']");
+  const locationInput = queryHook(state, "reservation-location") || state.document.querySelector("input[placeholder*='address'], input[placeholder*='Address']");
+  const notesInput = queryHook(state, "reservation-notes") || state.document.querySelector("textarea[placeholder*='notes'], textarea[placeholder*='Notes']");
+  const submitButton = queryHook(state, "reservation-submit");
   return {
     addPoint: pickPointByText(buttons, ["Manual Booking", "Rezerwacja ręczna", "Reserva manual"], { title: true }),
     visibleTitles: Array.from(state.document.querySelectorAll("span, h2, h3, h4"))
       .map((node) => textOf(node))
       .filter((text) => text.length > 3),
-    modalOpen: !!state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']"),
-    titleValue: (() => {
-      const input = state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']");
-      return input instanceof HTMLInputElement ? input.value : "";
-    })(),
-    titlePoint: centerOf(state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']")),
-    locationPoint: centerOf(state.document.querySelector("input[placeholder*='address'], input[placeholder*='Address']")),
-    notesPoint: centerOf(state.document.querySelector("textarea[placeholder*='notes'], textarea[placeholder*='Notes']")),
-    submitPoint: (() => {
-      const form = Array.from(state.document.querySelectorAll("form")).find((node) =>
-        !!node.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']"),
-      );
-      const submit = form?.querySelector("button[type='submit']");
-      return centerOf(submit || null);
-    })(),
-    submitDisabled: (() => {
-      const form = Array.from(state.document.querySelectorAll("form")).find((node) =>
-        !!node.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']"),
-      );
-      const submit = form?.querySelector("button[type='submit']");
-      return submit instanceof HTMLButtonElement ? submit.disabled : false;
-    })(),
+    modalOpen: !!titleInput,
+    titleValue: titleInput instanceof HTMLInputElement ? titleInput.value : "",
+    locationValue: locationInput instanceof HTMLInputElement ? locationInput.value : "",
+    titlePoint: centerOf(titleInput),
+    locationPoint: centerOf(locationInput),
+    notesPoint: centerOf(notesInput),
+    submitPoint: centerOf(submitButton),
+    submitDisabled: submitButton instanceof HTMLButtonElement ? submitButton.disabled : false,
     activeField: (() => {
       const active = state.document.activeElement;
+      if (active instanceof HTMLElement) {
+        const hook = active.getAttribute("data-bombadil");
+        if (hook === "reservation-title") return "reservation-title";
+        if (hook === "reservation-location") return "reservation-location";
+        if (hook === "reservation-notes") return "reservation-notes";
+      }
       if (active instanceof HTMLInputElement) {
         const placeholder = (active.placeholder || "").toLowerCase();
         if (placeholder.includes("lufthansa") || placeholder.includes("hotel adlon")) return "reservation-title";
@@ -334,23 +334,19 @@ const reservationsState = extract((state) => {
 const packingState = extract((state) => {
   if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
   const buttons = Array.from(state.document.querySelectorAll("button"));
-  const itemInput = state.document.querySelector("input[placeholder='Item name...']");
-  const inputParent = itemInput?.parentElement || null;
-  const addButton = inputParent
-    ? Array.from(inputParent.querySelectorAll("button")).find((button) => {
-        if (!isVisible(button)) return false;
-        return button.querySelector("svg") !== null && button.disabled === false;
-      })
-    : null;
+  const itemInput = queryHook(state, "packing-item-input") || state.document.querySelector("input[placeholder='Item name...']");
+  const addButton = queryHook(state, "packing-item-submit");
+  const openAddButton = queryHook(state, "packing-open-add");
 
   return {
-    addPoint: pickPointByText(buttons, ["Add item"], { title: true }),
+    addPoint: centerOf(openAddButton) || pickPointByText(buttons, ["Add item"], { title: true }),
     itemPoint: centerOf(itemInput),
     itemValue: itemInput instanceof HTMLInputElement ? itemInput.value : "",
     submitPoint: centerOf(addButton || null),
     visibleText: visibleBodyText(state),
     activeField: (() => {
       const active = state.document.activeElement;
+      if (active instanceof HTMLElement && active.getAttribute("data-bombadil") === "packing-item-input") return "packing-item";
       if (active instanceof HTMLInputElement && active.placeholder === "Item name...") return "packing-item";
       return "other";
     })(),
@@ -387,46 +383,42 @@ const budgetState = extract((state) => {
 const collabState = extract((state) => {
   if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
   const buttons = Array.from(state.document.querySelectorAll("button"));
-  const chatBox = state.document.querySelector("textarea[placeholder='Type a message...']");
-  const noteTitle = state.document.querySelector("input[placeholder='Note title']");
-  const noteContent = state.document.querySelector("textarea[placeholder='Write something...']");
+  const chatBox = queryHook(state, "collab-chat-input") || state.document.querySelector("textarea[placeholder='Type a message...']");
+  const noteTitle = queryHook(state, "collab-note-title") || state.document.querySelector("input[placeholder='Note title']");
+  const noteContent = queryHook(state, "collab-note-content") || state.document.querySelector("textarea[placeholder='Write something...']");
   const noteForm = noteTitle?.closest("form") || noteContent?.closest("form") || null;
-  const pollQuestion = state.document.querySelector("input[placeholder='What should we do?']");
+  const pollQuestion = queryHook(state, "collab-poll-question") || state.document.querySelector("input[placeholder='What should we do?']");
   const pollForm = pollQuestion?.closest("form") || null;
-  const optionInputs = pollForm ? Array.from(pollForm.querySelectorAll("input")) : [];
-  const sendButton = chatBox?.parentElement
-    ? Array.from(chatBox.parentElement.parentElement?.querySelectorAll("button") || []).reverse().find((button) => {
-        if (!isVisible(button)) return false;
-        return button.querySelector("svg") !== null && button instanceof HTMLButtonElement && !button.disabled;
-      })
-    : null;
+  const optionInputs = [
+    queryHook(state, "collab-poll-option-1"),
+    queryHook(state, "collab-poll-option-2"),
+  ].filter((input): input is HTMLInputElement => input instanceof HTMLInputElement);
+  const sendButton = queryHook(state, "collab-chat-send");
+  const newNoteButton = queryHook(state, "collab-new-note");
+  const noteSubmitButton = queryHook(state, "collab-note-submit");
+  const newPollButton = queryHook(state, "collab-new-poll");
+  const pollSubmitButton = queryHook(state, "collab-poll-submit");
 
   return {
     chatPoint: centerOf(chatBox),
     chatValue: chatBox instanceof HTMLTextAreaElement ? chatBox.value : "",
     chatSendPoint: centerOf(sendButton || null),
-    newNotePoint: pickPointByText(buttons, ["New Note"], { title: true }),
+    newNotePoint: centerOf(newNoteButton) || pickPointByText(buttons, ["New Note"], { title: true }),
     noteModalOpen: !!noteTitle,
     noteTitlePoint: centerOf(noteTitle),
     noteTitleValue: noteTitle instanceof HTMLInputElement ? noteTitle.value : "",
     noteContentPoint: centerOf(noteContent),
-    noteSubmitPoint: centerOf(noteForm?.querySelector("button[type='submit']") || null),
-    noteSubmitDisabled: (() => {
-      const submit = noteForm?.querySelector("button[type='submit']");
-      return submit instanceof HTMLButtonElement ? submit.disabled : false;
-    })(),
-    newPollPoint: pickPointByText(buttons, ["New Poll"], { title: true }),
+    noteSubmitPoint: centerOf(noteSubmitButton || noteForm?.querySelector("button[type='submit']") || null),
+    noteSubmitDisabled: noteSubmitButton instanceof HTMLButtonElement ? noteSubmitButton.disabled : false,
+    newPollPoint: centerOf(newPollButton) || pickPointByText(buttons, ["New Poll"], { title: true }),
     pollModalOpen: !!pollQuestion,
     pollQuestionPoint: centerOf(pollQuestion),
     pollQuestionValue: pollQuestion instanceof HTMLInputElement ? pollQuestion.value : "",
-    pollOptionOnePoint: centerOf(optionInputs[1] || null),
-    pollOptionTwoPoint: centerOf(optionInputs[2] || null),
-    pollOptionValues: optionInputs.slice(1).map((input) => (input instanceof HTMLInputElement ? input.value : "")),
-    pollSubmitPoint: centerOf(pollForm?.querySelector("button[type='submit']") || null),
-    pollSubmitDisabled: (() => {
-      const submit = pollForm?.querySelector("button[type='submit']");
-      return submit instanceof HTMLButtonElement ? submit.disabled : false;
-    })(),
+    pollOptionOnePoint: centerOf(optionInputs[0] || null),
+    pollOptionTwoPoint: centerOf(optionInputs[1] || null),
+    pollOptionValues: optionInputs.map((input) => input.value),
+    pollSubmitPoint: centerOf(pollSubmitButton || pollForm?.querySelector("button[type='submit']") || null),
+    pollSubmitDisabled: pollSubmitButton instanceof HTMLButtonElement ? pollSubmitButton.disabled : false,
     votePoints: buttons
       .filter((button) => {
         if (!isVisible(button)) return false;
@@ -443,6 +435,15 @@ const collabState = extract((state) => {
     visibleText: visibleBodyText(state),
     activeField: (() => {
       const active = state.document.activeElement;
+      if (active instanceof HTMLElement) {
+        const hook = active.getAttribute("data-bombadil");
+        if (hook === "collab-chat-input") return "chat";
+        if (hook === "collab-note-title") return "note-title";
+        if (hook === "collab-note-content") return "note-content";
+        if (hook === "collab-poll-question") return "poll-question";
+        if (hook === "collab-poll-option-1") return "poll-option-1";
+        if (hook === "collab-poll-option-2") return "poll-option-2";
+      }
       if (active instanceof HTMLTextAreaElement && active.placeholder === "Type a message...") return "chat";
       if (active instanceof HTMLInputElement && active.placeholder === "Note title") return "note-title";
       if (active instanceof HTMLTextAreaElement && active.placeholder === "Write something...") return "note-content";
@@ -457,10 +458,11 @@ const collabState = extract((state) => {
 const planningState = extract((state) => {
   if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
   const buttons = Array.from(state.document.querySelectorAll("button"));
-  const nameInput = state.document.querySelector("input[placeholder='e.g. Eiffel Tower']");
-  const descriptionInput = state.document.querySelector("textarea[placeholder='Short description...']");
-  const addressInput = state.document.querySelector("input[placeholder='Street, City, Country']");
+  const nameInput = queryHook(state, "planner-place-name") || state.document.querySelector("input[placeholder='e.g. Eiffel Tower']");
+  const descriptionInput = queryHook(state, "planner-place-description") || state.document.querySelector("textarea[placeholder='Short description...']");
+  const addressInput = queryHook(state, "planner-place-address") || state.document.querySelector("input[placeholder='Street, City, Country']");
   const modalForm = nameInput?.closest("form") || null;
+  const submitButton = queryHook(state, "planner-place-submit") || modalForm?.querySelector("button[type='submit']");
   const placeName = nameInput instanceof HTMLInputElement ? nameInput.value : "";
   const placeRow = findPlacesSidebarRowByName(state, placeName);
   const rowButtons = placeRow ? Array.from(placeRow.querySelectorAll("button")) : [];
@@ -478,11 +480,8 @@ const planningState = extract((state) => {
     nameValue: placeName,
     descriptionPoint: centerOf(descriptionInput),
     addressPoint: centerOf(addressInput),
-    submitPoint: centerOf(modalForm?.querySelector("button[type='submit']") || null),
-    submitDisabled: (() => {
-      const submit = modalForm?.querySelector("button[type='submit']");
-      return submit instanceof HTMLButtonElement ? submit.disabled : false;
-    })(),
+    submitPoint: centerOf(submitButton || null),
+    submitDisabled: submitButton instanceof HTMLButtonElement ? submitButton.disabled : false,
     addToDayPoint: (() => {
       const button = rowButtons.find((btn) => {
         if (!isVisible(btn)) return false;
@@ -499,6 +498,12 @@ const planningState = extract((state) => {
     moveDownPoint: centerOf(reorderButtons[reorderButtons.length - 1] || null),
     activeField: (() => {
       const active = state.document.activeElement;
+      if (active instanceof HTMLElement) {
+        const hook = active.getAttribute("data-bombadil");
+        if (hook === "planner-place-name") return "planner-name";
+        if (hook === "planner-place-address") return "planner-address";
+        if (hook === "planner-place-description") return "planner-description";
+      }
       if (active instanceof HTMLInputElement) {
         if (active.placeholder === "e.g. Eiffel Tower") return "planner-name";
         if (active.placeholder === "Street, City, Country") return "planner-address";
@@ -561,6 +566,16 @@ export const bookingTitlesEventuallyAppear = always(() => {
     );
 });
 
+export const reservationLocationsEventuallyAppear = always(() => {
+  const title = (reservationsState.current?.titleValue || "").trim();
+  const location = (reservationsState.current?.locationValue || "").trim();
+  return now(() => title.length > 3 && location.length > 2)
+    .and(next(() => reservationsState.current?.modalOpen === false))
+    .implies(
+      eventually(() => visibleText.current.includes(location)).within(20, "seconds"),
+    );
+});
+
 export const packingItemsEventuallyAppear = always(() => {
   const item = (packingState.current?.itemValue || "").trim();
   return now(() => item.length > 2)
@@ -612,6 +627,25 @@ export const plannerPlacesEventuallyAppear = always(() => {
     .and(next(() => planningState.current?.modalOpen === false))
     .implies(
       eventually(() => planningState.current?.visibleText.includes(name) || false).within(20, "seconds"),
+    );
+});
+
+export const plannerSectionsEventuallyAppear = always(
+  now(() => /^\/trips\/\d+/.test(route.current) && !!plannerState.current?.shellReady).implies(
+    eventually(() =>
+      visibleText.current.includes("Morning") &&
+      visibleText.current.includes("Afternoon") &&
+      visibleText.current.includes("Night")
+    ).within(10, "seconds"),
+  ),
+);
+
+export const pollOptionsEventuallyAppear = always(() => {
+  const [optionOne, optionTwo] = collabState.current?.pollOptionValues || [];
+  return now(() => (optionOne || "").trim().length > 1 && (optionTwo || "").trim().length > 1)
+    .and(next(() => collabState.current?.pollModalOpen === false))
+    .implies(
+      eventually(() => visibleText.current.includes(optionOne || "") && visibleText.current.includes(optionTwo || "")).within(20, "seconds"),
     );
 });
 

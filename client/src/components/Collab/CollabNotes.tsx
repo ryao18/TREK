@@ -396,6 +396,7 @@ function NoteFormModal({ onClose, onSubmit, onDeleteFile, existingCategories, ca
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('collab.notes.titlePlaceholder')}
+              data-bombadil="collab-note-title"
               style={{
                 width: '100%',
                 border: '1px solid var(--border-primary)',
@@ -428,6 +429,7 @@ function NoteFormModal({ onClose, onSubmit, onDeleteFile, existingCategories, ca
               value={content}
               onChange={e => setContent(e.target.value)}
               placeholder={t('collab.notes.contentPlaceholder')}
+              data-bombadil="collab-note-content"
               style={{
                 width: '100%',
                 border: '1px solid var(--border-primary)',
@@ -515,6 +517,7 @@ function NoteFormModal({ onClose, onSubmit, onDeleteFile, existingCategories, ca
           <button
             type="submit"
             disabled={!canSubmit}
+            data-bombadil="collab-note-submit"
             style={{
               width: '100%',
               borderRadius: 99,
@@ -1161,6 +1164,7 @@ export default function CollabNotes({ tripId, currentUser }: CollabNotesProps) {
             <Settings size={14} />
           </button>}
           {canEdit && <button onClick={() => setShowNewModal(true)}
+            data-bombadil="collab-new-note"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 99, padding: '6px 12px', background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 11, fontWeight: 600, fontFamily: FONT, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <Plus size={12} />
             {t('collab.notes.new')}

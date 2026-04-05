@@ -180,7 +180,6 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
   const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'allow_registration'").get() as { value: string } | undefined;
   const allowRegistration = userCount === 0 || (setting?.value ?? 'true') === 'true';
   const isDemo = process.env.DEMO_MODE === 'true';
-  const localAuthBypass = process.env.LOCAL_AUTH_BYPASS === 'true';
   const { version } = require('../../package.json');
   const hasGoogleKey = !!db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
   const oidcDisplayName = process.env.OIDC_DISPLAY_NAME ||
@@ -215,7 +214,6 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
     demo_mode: isDemo,
     demo_email: isDemo ? 'demo@trek.app' : undefined,
     demo_password: isDemo ? 'demo12345' : undefined,
-    local_auth_bypass: localAuthBypass,
     timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     notification_channel: notifChannel,
     trip_reminders_enabled: tripRemindersEnabled,

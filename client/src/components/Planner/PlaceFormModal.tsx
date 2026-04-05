@@ -273,7 +273,6 @@ export default function PlaceFormModal({
             onChange={e => handleChange('name', e.target.value)}
             required
             placeholder={t('places.formNamePlaceholder')}
-            data-bombadil="planner-place-name"
             className="form-input"
           />
         </div>
@@ -286,7 +285,6 @@ export default function PlaceFormModal({
             onChange={e => handleChange('description', e.target.value)}
             rows={2}
             placeholder={t('places.formDescriptionPlaceholder')}
-            data-bombadil="planner-place-description"
             className="form-input" style={{ resize: 'none' }}
           />
         </div>
@@ -299,7 +297,6 @@ export default function PlaceFormModal({
             value={form.address}
             onChange={e => handleChange('address', e.target.value)}
             placeholder={t('places.formAddressPlaceholder')}
-            data-bombadil="planner-place-address"
             className="form-input"
           />
           <div className="grid grid-cols-2 gap-2 mt-2">
@@ -436,7 +433,6 @@ export default function PlaceFormModal({
           <button
             type="submit"
             disabled={isSaving || hasTimeError}
-            data-bombadil="planner-place-submit"
             className="px-6 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-60 font-medium"
           >
             {isSaving ? t('common.saving') : place ? t('common.update') : t('common.add')}

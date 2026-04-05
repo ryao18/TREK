@@ -800,7 +800,6 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
             ref={textareaRef}
             rows={1}
             disabled={!canEdit}
-            data-bombadil="collab-chat-input"
             style={{
               flex: 1, resize: 'none', border: '1px solid var(--border-primary)', borderRadius: 20,
               padding: '8px 14px', fontSize: 14, lineHeight: 1.4, fontFamily: 'inherit',
@@ -816,7 +815,7 @@ export default function CollabChat({ tripId, currentUser }: CollabChatProps) {
 
           {/* Send */}
           {canEdit && (
-            <button onClick={handleSend} disabled={!text.trim() || sending} data-bombadil="collab-chat-send" style={{
+            <button onClick={handleSend} disabled={!text.trim() || sending} style={{
               width: 34, height: 34, borderRadius: '50%', border: 'none',
               background: text.trim() ? '#007AFF' : 'var(--border-primary)',
               color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',

@@ -94,7 +94,7 @@ function CreatePollModal({ onClose, onCreate, t }: CreatePollModalProps) {
           {/* Question */}
           <div>
             <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{t('collab.polls.question')}</div>
-            <input autoFocus value={question} onChange={e => setQuestion(e.target.value)} placeholder={t('collab.polls.questionPlaceholder') || 'Ask a question...'} data-bombadil="collab-poll-question" style={{ width: '100%', border: '1px solid var(--border-primary)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+            <input autoFocus value={question} onChange={e => setQuestion(e.target.value)} placeholder={t('collab.polls.questionPlaceholder') || 'Ask a question...'} style={{ width: '100%', border: '1px solid var(--border-primary)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
           </div>
 
           {/* Options */}
@@ -104,7 +104,6 @@ function CreatePollModal({ onClose, onCreate, t }: CreatePollModalProps) {
               {options.map((opt, i) => (
                 <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <input value={opt} onChange={e => updateOption(i, e.target.value)} placeholder={`${t('collab.polls.option')} ${i + 1}`}
-                    data-bombadil={i === 0 ? 'collab-poll-option-1' : i === 1 ? 'collab-poll-option-2' : undefined}
                     style={{ flex: 1, border: '1px solid var(--border-primary)', borderRadius: 10, padding: '8px 12px', fontSize: 13, background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none' }} />
                   {options.length > 2 && (
                     <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 2 }}><X size={14} /></button>
@@ -130,7 +129,7 @@ function CreatePollModal({ onClose, onCreate, t }: CreatePollModalProps) {
           </label>
 
           {/* Submit */}
-          <button type="submit" disabled={!canSubmit} data-bombadil="collab-poll-submit" style={{
+          <button type="submit" disabled={!canSubmit} style={{
             width: '100%', borderRadius: 99, padding: '9px 14px', background: canSubmit ? 'var(--accent)' : 'var(--border-primary)',
             color: canSubmit ? 'var(--accent-text)' : 'var(--text-faint)', fontSize: 13, fontWeight: 600, border: 'none', cursor: canSubmit ? 'pointer' : 'default', fontFamily: FONT,
           }}>
@@ -436,7 +435,7 @@ export default function CollabPolls({ tripId, currentUser }: CollabPollsProps) {
           {t('collab.polls.title')}
         </h3>
         {canEdit && (
-          <button onClick={() => setShowForm(true)} data-bombadil="collab-new-poll" style={{
+          <button onClick={() => setShowForm(true)} style={{
             display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 99, padding: '6px 12px',
             background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 11, fontWeight: 600,
             fontFamily: FONT, border: 'none', cursor: 'pointer',

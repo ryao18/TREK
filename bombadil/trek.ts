@@ -197,6 +197,7 @@ const plannerState = extract((state) => {
   if (!/^\/trips\/\d+/.test(path)) return null;
 
   const buttons = Array.from(state.document.querySelectorAll("button"));
+  const bodyText = visibleBodyText(state);
   const dayBadges = Array.from(state.document.querySelectorAll("div"))
     .filter((div) => {
       if (!isVisible(div)) return false;
@@ -227,6 +228,12 @@ const plannerState = extract((state) => {
     budgetTabPoint: pickPointByText(tabButtons, ["Budget", "Finanzplan"], { title: true }),
     collabTabPoint: pickPointByText(tabButtons, ["Collab", "Zusammenarbeit"], { title: true }),
     planTabPoint: pickPointByText(tabButtons, ["Plan"], { title: true }),
+    shellReady:
+      plannerTabs > 0 ||
+      dayBadges.length > 0 ||
+      bodyText.includes("Add Place/Activity") ||
+      bodyText.includes("Morning") ||
+      bodyText.includes("Bookings"),
   };
 });
 
@@ -483,6 +490,7 @@ export const createdTripEventuallyAppearsOnDashboard = always(() => {
 
 export const plannerLoadsWithNavigation = always(() => {
   if (!plannerState.current) return true;
+  if (!plannerState.current.shellReady) return true;
   return plannerState.current.plannerTabs > 0;
 });
 

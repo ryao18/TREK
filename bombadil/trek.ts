@@ -57,6 +57,15 @@ const tripModalState = extract((state) => {
 
   const titleInput = modal.querySelector("input[type='text']");
   const descriptionInput = modal.querySelector("textarea");
+  const dateButtons = Array.from(modal.querySelectorAll("button")).filter((button) => {
+    if (!isVisible(button)) return false;
+    if (button.closest("nav")) return false;
+    const text = textOf(button);
+    const rect = button.getBoundingClientRect();
+    if (rect.width < 100) return false;
+    if (text === "" || /cancel|create|update|change|upload/i.test(text)) return false;
+    return !button.querySelector(".animate-spin");
+  });
   const footerButtons = Array.from(modal.querySelectorAll("button")).filter((button) => isVisible(button));
   const submitButton = footerButtons.length > 0 ? footerButtons[footerButtons.length - 1] : null;
   const errorBox = Array.from(modal.querySelectorAll("div")).find((div) =>
@@ -67,11 +76,36 @@ const tripModalState = extract((state) => {
     title: titleInput instanceof HTMLInputElement ? titleInput.value : "",
     titlePoint: centerOf(titleInput),
     descriptionPoint: centerOf(descriptionInput),
+    startDatePoint: centerOf(dateButtons[0] || null),
+    endDatePoint: centerOf(dateButtons[1] || null),
     submitPoint: centerOf(submitButton),
     submitDisabled: submitButton instanceof HTMLButtonElement ? submitButton.disabled : false,
     saving: !!submitButton?.querySelector(".animate-spin"),
     hasError: !!errorBox && isVisible(errorBox),
   };
+});
+
+const datePickerOpen = extract((state) => {
+  const clearButton = Array.from(state.document.querySelectorAll("button")).find((button) => {
+    if (!isVisible(button)) return false;
+    return textOf(button) === "✕";
+  });
+  return !!clearButton;
+});
+
+const dateCellPoints = extract((state) => {
+  return Array.from(state.document.querySelectorAll("button"))
+    .filter((button) => {
+      if (!isVisible(button)) return false;
+      const text = textOf(button);
+      return /^\d{1,2}$/.test(text) && button.getBoundingClientRect().width <= 40;
+    })
+    .slice(0, 10)
+    .map((button) => ({
+      name: `day ${textOf(button)}`,
+      point: centerOf(button),
+    }))
+    .filter((entry): entry is { name: string; point: Point } => !!entry.point);
 });
 
 const activeField = extract((state) => {
@@ -122,6 +156,35 @@ const tripCardHeadingPoints = extract((state) => {
     .filter((entry): entry is { name: string; point: Point } => !!entry.point);
 });
 
+const plannerState = extract((state) => {
+  const path = state.window.location.pathname;
+  if (!/^\/trips\/\d+/.test(path)) return null;
+
+  const dayBadges = Array.from(state.document.querySelectorAll("div"))
+    .filter((div) => {
+      if (!isVisible(div)) return false;
+      const text = textOf(div);
+      const rect = div.getBoundingClientRect();
+      return /^\d+$/.test(text) && rect.width >= 20 && rect.width <= 40 && rect.height >= 20 && rect.height <= 40;
+    })
+    .map((div) => Number(textOf(div)));
+
+  const plannerTabs = Array.from(state.document.querySelectorAll("button"))
+    .filter((button) => {
+      if (!isVisible(button)) return false;
+      const rect = button.getBoundingClientRect();
+      return rect.top < 120 && rect.width > 40;
+    }).length;
+
+  const tripTitle = textOf(state.document.querySelector("title")) || textOf(state.document.querySelector("nav + div div"));
+
+  return {
+    dayBadges,
+    plannerTabs,
+    tripTitle,
+  };
+});
+
 export const bypassDoesNotLeaveYouOnLogin = always(
   now(() => route.current === "/login" && loginFormVisible.current).implies(
     eventually(() => route.current !== "/login").within(5, "seconds"),
@@ -150,6 +213,18 @@ export const loadingDoesNotHangForever = always(
     eventually(() => spinnerCount.current === 0).within(20, "seconds"),
   ),
 );
+
+export const plannerLoadsWithNavigation = always(() => {
+  if (!plannerState.current) return true;
+  return plannerState.current.plannerTabs > 0;
+});
+
+export const plannerHasSequentialDayBadges = always(() => {
+  if (!plannerState.current) return true;
+  const badges = plannerState.current.dayBadges.slice().sort((a, b) => a - b);
+  if (badges.length === 0) return true;
+  return badges.every((value, index) => value === index + 1);
+});
 
 const tripTitles = [
   "Bombadil Tokyo Sprint",
@@ -189,6 +264,33 @@ export const focusTripDescription = actions(() => {
   return point ? [{ Click: { name: "focus trip description", point } }] : [];
 });
 
+export const openStartDatePicker = actions(() => {
+  if (datePickerOpen.current) return [];
+  const point = tripModalState.current?.startDatePoint;
+  return point ? [{ Click: { name: "open start date picker", point } }] : [];
+});
+
+export const pickStartDate = actions(() => {
+  if (!datePickerOpen.current) return [];
+  return dateCellPoints.current.map((entry) => ({
+    Click: { name: `pick ${entry.name} for start`, point: entry.point },
+  }));
+});
+
+export const openEndDatePicker = actions(() => {
+  if (datePickerOpen.current) return [];
+  if (!tripModalState.current?.title) return [];
+  const point = tripModalState.current?.endDatePoint;
+  return point ? [{ Click: { name: "open end date picker", point } }] : [];
+});
+
+export const pickEndDate = actions(() => {
+  if (!datePickerOpen.current) return [];
+  return dateCellPoints.current.map((entry) => ({
+    Click: { name: `pick ${entry.name} for end`, point: entry.point },
+  }));
+});
+
 export const typeTripDescription = actions(() => {
   if (activeField.current !== "description") return [];
   return tripDescriptions.map((text) => ({
@@ -219,6 +321,10 @@ export const tripFocusedExploration = weighted([
   [10, openCreateTripModal],
   [12, focusTripTitle],
   [20, typeTripTitle],
+  [6, openStartDatePicker],
+  [6, pickStartDate],
+  [6, openEndDatePicker],
+  [6, pickEndDate],
   [6, focusTripDescription],
   [8, typeTripDescription],
   [14, submitTripModal],

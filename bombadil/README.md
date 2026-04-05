@@ -19,10 +19,16 @@ LOCAL_AUTH_BYPASS=true
 What this spec emphasizes:
 
 - staying out of the login page while local auth bypass is enabled
-- opening the trip creation modal
-- typing trip titles and descriptions
-- opening the start/end date pickers and selecting calendar days
-- submitting new trips
-- asserting that a submitted trip title eventually appears on the dashboard
-- opening trip cards after creation
+- creating a trip only when none exist, then spending most of the run inside one trip
+- opening an existing trip from the dashboard and switching among planner tabs
+- adding manual bookings without touching any file-upload controls
+- adding packing-list items through the inline item flow
+- adding budget entries through the inline budget row
+- exercising collab chat, notes, polls, and poll voting
+- checking that submitted booking titles, packing items, budget entries, chat messages, note titles, and poll questions eventually appear
 - checking that trip planner routes load with tabs and sequential day badges
+
+Intentionally excluded:
+
+- any workflow that requires file upload
+- logout coverage

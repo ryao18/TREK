@@ -443,16 +443,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
 
   const fontStyle = { fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif" }
 
-  // Splash screen — show for initial load + a brief moment for photos to start loading
-  const [splashDone, setSplashDone] = useState(false)
-  useEffect(() => {
-    if (!isLoading && trip) {
-      const timer = setTimeout(() => setSplashDone(true), 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [isLoading, trip])
-
-  if (isLoading || !splashDone) {
+  // Keep the blocking splash only for real data loading. An extra post-load delay
+  // leaves the route with no actionable UI, which breaks Bombadil-style exploration.
+  if (isLoading) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -520,6 +513,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               title={tab.label}
+              data-bombadil={`trip-tab-${tab.id}`}
               style={{
                 flexShrink: 0,
                 padding: '5px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',

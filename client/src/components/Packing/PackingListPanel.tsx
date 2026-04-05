@@ -532,6 +532,7 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
               <input
                 ref={addItemRef}
                 autoFocus
+                data-bombadil="packing-item-input"
                 value={newItemName}
                 onChange={e => setNewItemName(e.target.value)}
                 onKeyDown={e => {
@@ -546,6 +547,7 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
                 style={{ flex: 1, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-primary)', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', color: 'var(--text-primary)', background: 'var(--bg-input)' }}
               />
               <button onClick={() => { if (newItemName.trim()) { onAddItem(kategorie, newItemName.trim()); setNewItemName(''); setTimeout(() => addItemRef.current?.focus(), 30) } }}
+                data-bombadil="packing-item-submit"
                 disabled={!newItemName.trim()}
                 style={{ padding: '5px 8px', borderRadius: 8, border: 'none', background: newItemName.trim() ? 'var(--text-primary)' : 'var(--border-primary)', color: 'var(--bg-primary)', cursor: newItemName.trim() ? 'pointer' : 'default', display: 'flex' }}>
                 <Plus size={14} />
@@ -557,6 +559,7 @@ function KategorieGruppe({ kategorie, items, tripId, allCategories, onRename, on
             </div>
           ) : (
             <button onClick={() => { setShowAddItem(true); setTimeout(() => addItemRef.current?.focus(), 30) }}
+              data-bombadil="packing-open-add"
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', margin: '2px 4px', borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-faint)', fontFamily: 'inherit' }}
               onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
               onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>

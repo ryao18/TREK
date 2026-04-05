@@ -135,6 +135,7 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
       <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border-faint)', flexShrink: 0 }}>
         {canEditPlaces && <button
           onClick={onAddPlace}
+          data-bombadil="planner-open-add-place"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             width: '100%', padding: '8px 12px', borderRadius: 12, border: 'none',
@@ -356,6 +357,7 @@ const PlacesSidebar = React.memo(function PlacesSidebar({
                   {!inDay && selectedDayId && (
                     <button
                       onClick={e => { e.stopPropagation(); onAssignToDay(place.id) }}
+                      data-bombadil="planner-assign-to-day"
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         width: 20, height: 20, borderRadius: 6,

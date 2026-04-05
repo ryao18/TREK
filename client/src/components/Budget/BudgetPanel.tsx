@@ -127,10 +127,12 @@ function AddItemRow({ onAdd, t }: AddItemRowProps) {
     <tr style={{ background: 'var(--bg-secondary)' }}>
       <td style={{ padding: '4px 6px' }}>
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          data-bombadil="budget-name"
           placeholder={t('budget.newEntry')} style={inp} />
       </td>
       <td style={{ padding: '4px 6px' }}>
         <input value={price} onChange={e => setPrice(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          data-bombadil="budget-price"
           placeholder="0,00" inputMode="decimal" style={{ ...inp, textAlign: 'center' }} />
       </td>
       <td className="hidden sm:table-cell" style={{ padding: '4px 6px', textAlign: 'center' }}>
@@ -150,10 +152,10 @@ function AddItemRow({ onAdd, t }: AddItemRowProps) {
         </div>
       </td>
       <td className="hidden sm:table-cell" style={{ padding: '4px 6px' }}>
-        <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder={t('budget.table.note')} style={inp} />
+        <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} data-bombadil="budget-note" placeholder={t('budget.table.note')} style={inp} />
       </td>
       <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-        <button onClick={handleAdd} disabled={!name.trim()} title={t('reservations.add')}
+        <button onClick={handleAdd} data-bombadil="budget-submit" disabled={!name.trim()} title={t('reservations.add')}
           style={{ background: name.trim() ? 'var(--text-primary)' : 'var(--border-primary)', border: 'none', borderRadius: 4, color: 'var(--bg-primary)',
             cursor: name.trim() ? 'pointer' : 'default', padding: '4px 8px', display: 'inline-flex', alignItems: 'center' }}>
           <Plus size={14} />

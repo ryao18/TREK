@@ -1609,11 +1609,28 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                               )}
                             </div>
                             {canEditDays && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, opacity: isHovered ? 1 : 0.65, transition: 'opacity 0.15s' }}>
+                              <button
+                                data-bombadil="planner-edit-assignment"
+                                onClick={e => { e.stopPropagation(); onEditPlace(place, assignment.id) }}
+                                title={t('common.edit')}
+                                style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', lineHeight: 1 }}
+                              >
+                                <Pencil size={12} strokeWidth={2} />
+                              </button>
                               <div style={{ display: 'flex', gap: 2 }}>
                                 {SECTION_ORDER.map(section => (
                                   <button
                                     key={section}
                                     onClick={e => { e.stopPropagation(); updateItemSection(day.id, item, section).catch((err: unknown) => toast.error(err instanceof Error ? err.message : 'Unknown error')) }}
+                                    data-bombadil={
+                                      section === 'morning'
+                                        ? 'planner-move-morning'
+                                        : section === 'afternoon'
+                                          ? 'planner-move-afternoon'
+                                          : section === 'night'
+                                            ? 'planner-move-night'
+                                            : 'planner-move-unscheduled'
+                                    }
                                     title={SECTION_LABELS[section]}
                                     style={{
                                       border: '1px solid var(--border-faint)',
@@ -1631,10 +1648,10 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                                 ))}
                               </div>
                               <div className="reorder-buttons" style={{ display: 'flex', gap: 1 }}>
-                              <button onClick={moveUp} disabled={idx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
+                              <button data-bombadil="planner-reorder-up" onClick={moveUp} disabled={idx === 0} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
                                 <ChevronUp size={12} strokeWidth={2} />
                               </button>
-                              <button onClick={moveDown} disabled={idx === merged.length - 1} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === merged.length - 1 ? 'default' : 'pointer', color: idx === merged.length - 1 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
+                              <button data-bombadil="planner-reorder-down" onClick={moveDown} disabled={idx === merged.length - 1} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === merged.length - 1 ? 'default' : 'pointer', color: idx === merged.length - 1 ? 'var(--border-primary)' : 'var(--text-faint)', display: 'flex', lineHeight: 1 }}>
                                 <ChevronDown size={12} strokeWidth={2} />
                               </button>
                               </div>

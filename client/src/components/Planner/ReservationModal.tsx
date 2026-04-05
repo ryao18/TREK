@@ -254,6 +254,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         <div>
           <label style={labelStyle}>{t('reservations.titleLabel')} *</label>
           <input type="text" value={form.title} onChange={e => set('title', e.target.value)} required
+            data-bombadil="reservation-title"
             placeholder={t('reservations.titlePlaceholder')} style={inputStyle} />
         </div>
 
@@ -341,6 +342,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
           <div>
             <label style={labelStyle}>{t('reservations.locationAddress')}</label>
             <input type="text" value={form.location} onChange={e => set('location', e.target.value)}
+              data-bombadil="reservation-location"
               placeholder={t('reservations.locationPlaceholder')} style={inputStyle} />
           </div>
           <div>
@@ -460,6 +462,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         <div>
           <label style={labelStyle}>{t('reservations.notes')}</label>
           <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
+            data-bombadil="reservation-notes"
             placeholder={t('reservations.notesPlaceholder')}
             style={{ ...inputStyle, resize: 'none', lineHeight: 1.5 }} />
         </div>
@@ -561,7 +564,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
           <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-muted)' }}>
             {t('common.cancel')}
           </button>
-          <button type="submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
+          <button type="submit" data-bombadil="reservation-submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
             {isSaving ? t('common.saving') : reservation ? t('common.update') : t('common.add')}
           </button>
         </div>

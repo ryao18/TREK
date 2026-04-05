@@ -54,6 +54,12 @@ function findClickableAncestor(el: Element | null): Element | null {
 }
 
 function findDashboardTripCards(state: { document: Document }): HTMLElement[] {
+  const hooked = Array.from(state.document.querySelectorAll('[data-bombadil="dashboard-trip-card"]'))
+    .filter((node): node is HTMLElement => node instanceof HTMLElement)
+    .filter((node) => isVisible(node));
+
+  if (hooked.length > 0) return hooked;
+
   return Array.from(state.document.querySelectorAll("div"))
     .filter((node): node is HTMLElement => node instanceof HTMLElement)
     .filter((node) => {
@@ -146,6 +152,11 @@ const visibleTripTitles = extract((state) => {
   return findDashboardTripCards(state)
     .map((card) => findDashboardTripTitle(card))
     .filter((title): title is string => !!title);
+});
+
+const dashboardTripCardCount = extract((state) => {
+  if (state.window.location.pathname !== "/dashboard") return 0;
+  return findDashboardTripCards(state).length;
 });
 
 const tripModalState = extract((state) => {
@@ -278,11 +289,11 @@ const plannerState = extract((state) => {
     dayBadges,
     plannerTabs,
     tripTitle: textOf(state.document.querySelector("title")) || textOf(state.document.querySelector("nav + div div")),
-    bookingsTabPoint: pickPointByText(tabButtons, ["Bookings", "Book", "Buchungen"], { title: true }),
-    packingTabPoint: pickPointByText(tabButtons, ["Packing", "Packing List", "Packliste"], { title: true }),
-    budgetTabPoint: pickPointByText(tabButtons, ["Budget", "Finanzplan"], { title: true }),
-    collabTabPoint: pickPointByText(tabButtons, ["Collab", "Zusammenarbeit"], { title: true }),
-    planTabPoint: pickPointByText(tabButtons, ["Plan"], { title: true }),
+    bookingsTabPoint: centerOf(queryHook(state, "trip-tab-buchungen")) || pickPointByText(tabButtons, ["Bookings", "Book", "Buchungen"], { title: true }),
+    packingTabPoint: centerOf(queryHook(state, "trip-tab-packliste")) || pickPointByText(tabButtons, ["Packing", "Packing List", "Packliste"], { title: true }),
+    budgetTabPoint: centerOf(queryHook(state, "trip-tab-finanzplan")) || pickPointByText(tabButtons, ["Budget", "Finanzplan"], { title: true }),
+    collabTabPoint: centerOf(queryHook(state, "trip-tab-collab")) || pickPointByText(tabButtons, ["Collab", "Zusammenarbeit"], { title: true }),
+    planTabPoint: centerOf(queryHook(state, "trip-tab-plan")) || pickPointByText(tabButtons, ["Plan"], { title: true }),
     shellReady:
       plannerTabs > 0 ||
       dayBadges.length > 0 ||
@@ -355,11 +366,11 @@ const packingState = extract((state) => {
 
 const budgetState = extract((state) => {
   if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
-  const nameInput = state.document.querySelector("input[placeholder='New Entry']");
+  const nameInput = queryHook(state, "budget-name") || state.document.querySelector("input[placeholder='New Entry']");
   const row = nameInput?.closest("tr") || null;
-  const priceInput = row?.querySelector("input[placeholder='0,00']") || null;
-  const noteInput = row?.querySelector("input[placeholder='Note']") || null;
-  const submit = row?.querySelector("button[title='Add']") || null;
+  const priceInput = queryHook(state, "budget-price") || row?.querySelector("input[placeholder='0,00']") || null;
+  const noteInput = queryHook(state, "budget-note") || row?.querySelector("input[placeholder='Note']") || null;
+  const submit = queryHook(state, "budget-submit") || row?.querySelector("button[title='Add']") || null;
 
   return {
     namePoint: centerOf(nameInput),
@@ -370,6 +381,12 @@ const budgetState = extract((state) => {
     visibleText: visibleBodyText(state),
     activeField: (() => {
       const active = state.document.activeElement;
+      if (active instanceof HTMLElement) {
+        const hook = active.getAttribute("data-bombadil");
+        if (hook === "budget-name") return "budget-name";
+        if (hook === "budget-price") return "budget-price";
+        if (hook === "budget-note") return "budget-note";
+      }
       if (active instanceof HTMLInputElement) {
         if (active.placeholder === "New Entry") return "budget-name";
         if (active.placeholder === "0,00") return "budget-price";
@@ -392,7 +409,11 @@ const collabState = extract((state) => {
   const optionInputs = [
     queryHook(state, "collab-poll-option-1"),
     queryHook(state, "collab-poll-option-2"),
-  ].filter((input): input is HTMLInputElement => input instanceof HTMLInputElement);
+    state.document.querySelector("input[placeholder='Option 1']"),
+    state.document.querySelector("input[placeholder='Option 2']"),
+  ]
+    .filter((input): input is HTMLInputElement => input instanceof HTMLInputElement)
+    .filter((input, index, all) => all.indexOf(input) === index);
   const sendButton = queryHook(state, "collab-chat-send");
   const newNoteButton = queryHook(state, "collab-new-note");
   const noteSubmitButton = queryHook(state, "collab-note-submit");
@@ -472,9 +493,18 @@ const planningState = extract((state) => {
     if (!isVisible(button)) return false;
     return button.querySelector("svg") !== null;
   });
+  const addToDayButton = placeRow?.querySelector('[data-bombadil="planner-assign-to-day"]') || null;
+  const morningButton = plannerRow?.querySelector('[data-bombadil="planner-move-morning"]') || null;
+  const afternoonButton = plannerRow?.querySelector('[data-bombadil="planner-move-afternoon"]') || null;
+  const nightButton = plannerRow?.querySelector('[data-bombadil="planner-move-night"]') || null;
+  const moveUpButton = plannerRow?.querySelector('[data-bombadil="planner-reorder-up"]') || null;
+  const moveDownButton = plannerRow?.querySelector('[data-bombadil="planner-reorder-down"]') || null;
+  const editAssignmentButton = plannerRow?.querySelector('[data-bombadil="planner-edit-assignment"]') || null;
+  const startTimeInput = queryHook(state, "planner-place-start-time");
+  const endTimeInput = queryHook(state, "planner-place-end-time");
 
   return {
-    addPlacePoint: pickPointByText(buttons, ["Add Place/Activity"], { title: true }),
+    addPlacePoint: centerOf(queryHook(state, "planner-open-add-place")) || pickPointByText(buttons, ["Add Place/Activity"], { title: true }),
     modalOpen: !!nameInput,
     namePoint: centerOf(nameInput),
     nameValue: placeName,
@@ -482,7 +512,7 @@ const planningState = extract((state) => {
     addressPoint: centerOf(addressInput),
     submitPoint: centerOf(submitButton || null),
     submitDisabled: submitButton instanceof HTMLButtonElement ? submitButton.disabled : false,
-    addToDayPoint: (() => {
+    addToDayPoint: centerOf(addToDayButton) || (() => {
       const button = rowButtons.find((btn) => {
         if (!isVisible(btn)) return false;
         if (!(btn instanceof HTMLButtonElement) || btn.disabled) return false;
@@ -491,11 +521,16 @@ const planningState = extract((state) => {
       });
       return centerOf(button || null);
     })(),
-    morningPoint: pickPointByText(plannerButtons, ["Morning"], { title: true }),
-    afternoonPoint: pickPointByText(plannerButtons, ["Afternoon"], { title: true }),
-    nightPoint: pickPointByText(plannerButtons, ["Night"], { title: true }),
-    moveUpPoint: centerOf(reorderButtons[reorderButtons.length >= 2 ? reorderButtons.length - 2 : 0] || null),
-    moveDownPoint: centerOf(reorderButtons[reorderButtons.length - 1] || null),
+    morningPoint: centerOf(morningButton) || pickPointByText(plannerButtons, ["Morning"], { title: true }),
+    afternoonPoint: centerOf(afternoonButton) || pickPointByText(plannerButtons, ["Afternoon"], { title: true }),
+    nightPoint: centerOf(nightButton) || pickPointByText(plannerButtons, ["Night"], { title: true }),
+    moveUpPoint: centerOf(moveUpButton) || centerOf(reorderButtons[reorderButtons.length >= 2 ? reorderButtons.length - 2 : 0] || null),
+    moveDownPoint: centerOf(moveDownButton) || centerOf(reorderButtons[reorderButtons.length - 1] || null),
+    editAssignmentPoint: centerOf(editAssignmentButton),
+    startTimePoint: centerOf(startTimeInput),
+    endTimePoint: centerOf(endTimeInput),
+    startTimeValue: startTimeInput instanceof HTMLInputElement ? startTimeInput.value : "",
+    endTimeValue: endTimeInput instanceof HTMLInputElement ? endTimeInput.value : "",
     activeField: (() => {
       const active = state.document.activeElement;
       if (active instanceof HTMLElement) {
@@ -503,6 +538,8 @@ const planningState = extract((state) => {
         if (hook === "planner-place-name") return "planner-name";
         if (hook === "planner-place-address") return "planner-address";
         if (hook === "planner-place-description") return "planner-description";
+        if (hook === "planner-place-start-time") return "planner-start-time";
+        if (hook === "planner-place-end-time") return "planner-end-time";
       }
       if (active instanceof HTMLInputElement) {
         if (active.placeholder === "e.g. Eiffel Tower") return "planner-name";
@@ -514,12 +551,6 @@ const planningState = extract((state) => {
     visibleText: visibleBodyText(state),
   };
 });
-
-export const bypassDoesNotLeaveYouOnLogin = always(
-  now(() => route.current === "/login" && loginFormVisible.current).implies(
-    eventually(() => route.current !== "/login").within(5, "seconds"),
-  ),
-);
 
 export const errorsDoNotPileUp = always(() => toastCount.current <= 5);
 
@@ -630,16 +661,6 @@ export const plannerPlacesEventuallyAppear = always(() => {
     );
 });
 
-export const plannerSectionsEventuallyAppear = always(
-  now(() => /^\/trips\/\d+/.test(route.current) && !!plannerState.current?.shellReady).implies(
-    eventually(() =>
-      visibleText.current.includes("Morning") &&
-      visibleText.current.includes("Afternoon") &&
-      visibleText.current.includes("Night")
-    ).within(10, "seconds"),
-  ),
-);
-
 export const pollOptionsEventuallyAppear = always(() => {
   const [optionOne, optionTwo] = collabState.current?.pollOptionValues || [];
   return now(() => (optionOne || "").trim().length > 1 && (optionTwo || "").trim().length > 1)
@@ -736,12 +757,14 @@ const plannerAddresses = [
 
 const openCreateTripModal = actions(() => {
   if (route.current !== "/dashboard") return [];
-  if (visibleTripTitles.current.length > 0) return [];
+  if (dashboardTripCardCount.current > 0) return [];
   const point = createTripButtonPoint.current;
   return point ? [{ Click: { name: "open create trip modal", point } }] : [];
 });
 
 const focusTripTitle = actions(() => {
+  if (datePickerOpen.current) return [];
+  if ((tripModalState.current?.title || "").trim().length > 0) return [];
   const point = tripModalState.current?.titlePoint;
   return point ? [{ Click: { name: "focus trip title", point } }] : [];
 });
@@ -769,6 +792,7 @@ const typeTripDescription = actions(() => {
 
 const openStartDatePicker = actions(() => {
   if (datePickerOpen.current) return [];
+  if (!(tripModalState.current?.title || "").trim()) return [];
   const point = tripModalState.current?.startDatePoint;
   return point ? [{ Click: { name: "open start date picker", point } }] : [];
 });
@@ -812,33 +836,147 @@ const openTripFromDashboard = actions(() => {
   }));
 });
 
+const planSurfaceReady = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return false;
+  return !!(
+    queryHook(state, "planner-open-add-place") ||
+    queryHook(state, "planner-place-name") ||
+    queryHook(state, "planner-assign-to-day") ||
+    queryHook(state, "planner-move-morning") ||
+    queryHook(state, "planner-move-afternoon") ||
+    queryHook(state, "planner-move-night")
+  );
+});
+
+const bookingsSurfaceReady = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return false;
+  return !!(
+    queryHook(state, "reservation-title") ||
+    queryHook(state, "reservation-location") ||
+    queryHook(state, "reservation-notes") ||
+    queryHook(state, "reservation-submit") ||
+    pickPointByText(Array.from(state.document.querySelectorAll("button")), ["Manual Booking", "Manual Reservation"], { title: true })
+  );
+});
+
+const packingSurfaceReady = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return false;
+  const input = queryHook(state, "packing-item-input");
+  const open = queryHook(state, "packing-open-add");
+  const submit = queryHook(state, "packing-item-submit");
+  return !!(input || open || submit);
+});
+
+const budgetSurfaceReady = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return false;
+  return !!(
+    queryHook(state, "budget-name") ||
+    queryHook(state, "budget-price") ||
+    queryHook(state, "budget-note") ||
+    queryHook(state, "budget-submit")
+  );
+});
+
+const collabSurfaceReady = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return false;
+  return !!(
+    queryHook(state, "collab-chat-input") ||
+    queryHook(state, "collab-chat-send") ||
+    queryHook(state, "collab-new-note") ||
+    queryHook(state, "collab-new-poll") ||
+    queryHook(state, "collab-note-title") ||
+    queryHook(state, "collab-poll-question")
+  );
+});
+
+const tripShellPending = extract((state) => {
+  const path = state.window.location.pathname;
+  if (!/^\/trips\/\d+/.test(path)) return false;
+
+  const hasPlannerSurface = !!(
+    queryHook(state, "planner-open-add-place") ||
+    queryHook(state, "planner-place-name") ||
+    queryHook(state, "planner-assign-to-day") ||
+    queryHook(state, "planner-move-morning") ||
+    queryHook(state, "reservation-title") ||
+    queryHook(state, "packing-item-input") ||
+    queryHook(state, "budget-name") ||
+    queryHook(state, "collab-chat-input")
+  );
+
+  if (hasPlannerSurface) return false;
+
+  const tabHooks = [
+    queryHook(state, "trip-tab-plan"),
+    queryHook(state, "trip-tab-buchungen"),
+    queryHook(state, "trip-tab-packliste"),
+    queryHook(state, "trip-tab-finanzplan"),
+    queryHook(state, "trip-tab-collab"),
+  ].filter((node): node is Element => !!node && isVisible(node));
+
+  return tabHooks.length === 0;
+});
+
 const returnToDashboard = actions(() => {
   if (!/^\/trips\/\d+/.test(route.current)) return [];
   const point = dashboardLinkPoint.current;
   return point ? [{ Click: { name: "return to dashboard", point } }] : [];
 });
 
+const recoverTripShell = actions(() => {
+  if (!tripShellPending.current) return [];
+  const point = dashboardLinkPoint.current;
+  return point ? [{ Click: { name: "recover from trip shell loading state", point } }] : [];
+});
+
+function hasWorkInProgress(): boolean {
+  if (datePickerOpen.current) return true;
+  if (tripModalState.current) return true;
+  if (planningState.current?.modalOpen) return true;
+  if (reservationsState.current?.modalOpen) return true;
+  if (collabState.current?.noteModalOpen) return true;
+  if (collabState.current?.pollModalOpen) return true;
+  if ((packingState.current?.itemValue || "").trim().length > 0) return true;
+  if ((budgetState.current?.nameValue || "").trim().length > 0) return true;
+  if ((reservationsState.current?.titleValue || "").trim().length > 0) return true;
+  if ((planningState.current?.nameValue || "").trim().length > 0) return true;
+  if ((collabState.current?.chatValue || "").trim().length > 0) return true;
+  if ((collabState.current?.noteTitleValue || "").trim().length > 0) return true;
+  if ((collabState.current?.pollQuestionValue || "").trim().length > 0) return true;
+  return false;
+}
+
 const openBookingsTab = actions(() => {
+  if (hasWorkInProgress()) return [];
+  if (bookingsSurfaceReady.current) return [];
   const point = plannerState.current?.bookingsTabPoint;
   return point ? [{ Click: { name: "open bookings tab", point } }] : [];
 });
 
 const openPackingTab = actions(() => {
+  if (hasWorkInProgress()) return [];
+  if (packingSurfaceReady.current) return [];
   const point = plannerState.current?.packingTabPoint;
   return point ? [{ Click: { name: "open packing tab", point } }] : [];
 });
 
 const openBudgetTab = actions(() => {
+  if (hasWorkInProgress()) return [];
+  if (budgetSurfaceReady.current) return [];
   const point = plannerState.current?.budgetTabPoint;
   return point ? [{ Click: { name: "open budget tab", point } }] : [];
 });
 
 const openCollabTab = actions(() => {
+  if (hasWorkInProgress()) return [];
+  if (collabSurfaceReady.current) return [];
   const point = plannerState.current?.collabTabPoint;
   return point ? [{ Click: { name: "open collab tab", point } }] : [];
 });
 
 const openPlanTab = actions(() => {
+  if (hasWorkInProgress()) return [];
+  if (planSurfaceReady.current) return [];
   const point = plannerState.current?.planTabPoint;
   return point ? [{ Click: { name: "open plan tab", point } }] : [];
 });
@@ -898,9 +1036,44 @@ const submitPlannerPlace = actions(() => {
 const assignPlannerPlaceToDay = actions(() => {
   const state = planningState.current;
   if (!state?.addToDayPoint) return [];
-  if (!(state.nameValue || "").trim()) return [];
   if (state.morningPoint || state.afternoonPoint || state.nightPoint) return [];
   return [{ Click: { name: "assign planner place to day", point: state.addToDayPoint } }];
+});
+
+const openAssignedPlannerPlaceEditor = actions(() => {
+  const state = planningState.current;
+  if (!state?.editAssignmentPoint) return [];
+  if (state.modalOpen) return [];
+  return [{ Click: { name: "open assigned planner place editor", point: state.editAssignmentPoint } }];
+});
+
+const focusPlannerStartTime = actions(() => {
+  const point = planningState.current?.startTimePoint;
+  return point ? [{ Click: { name: "focus planner start time", point } }] : [];
+});
+
+const typePlannerStartTime = actions(() => {
+  if (planningState.current?.activeField !== "planner-start-time") return [];
+  if ((planningState.current?.startTimeValue || "").length > 0) return [];
+  return [
+    { TypeText: { text: "09:00", delayMillis: 10 } },
+    { TypeText: { text: "14:00", delayMillis: 10 } },
+  ];
+});
+
+const focusPlannerEndTime = actions(() => {
+  if (!(planningState.current?.startTimeValue || "").trim()) return [];
+  const point = planningState.current?.endTimePoint;
+  return point ? [{ Click: { name: "focus planner end time", point } }] : [];
+});
+
+const typePlannerEndTime = actions(() => {
+  if (planningState.current?.activeField !== "planner-end-time") return [];
+  if ((planningState.current?.endTimeValue || "").length > 0) return [];
+  return [
+    { TypeText: { text: "10:30", delayMillis: 10 } },
+    { TypeText: { text: "16:00", delayMillis: 10 } },
+  ];
 });
 
 const movePlannerPlaceToMorning = actions(() => {
@@ -1183,60 +1356,66 @@ export const tripFocusedExploration = weighted([
   [2, typeTripDescription],
   [2, submitTripModal],
   [28, openTripFromDashboard],
-  [12, openPlanTab],
-  [16, openAddPlaceModal],
-  [10, focusPlannerPlaceName],
-  [14, typePlannerPlaceName],
-  [7, focusPlannerPlaceDescription],
-  [8, typePlannerPlaceDescription],
-  [7, focusPlannerPlaceAddress],
-  [8, typePlannerPlaceAddress],
-  [14, submitPlannerPlace],
+  [3, recoverTripShell],
+  [1, openPlanTab],
+  [10, openAddPlaceModal],
+  [14, focusPlannerPlaceName],
+  [20, typePlannerPlaceName],
+  [8, focusPlannerPlaceDescription],
+  [10, typePlannerPlaceDescription],
+  [8, focusPlannerPlaceAddress],
+  [10, typePlannerPlaceAddress],
+  [20, submitPlannerPlace],
   [18, assignPlannerPlaceToDay],
+  [10, openAssignedPlannerPlaceEditor],
+  [8, focusPlannerStartTime],
+  [12, typePlannerStartTime],
+  [6, focusPlannerEndTime],
+  [10, typePlannerEndTime],
   [12, movePlannerPlaceToMorning],
   [12, movePlannerPlaceToAfternoon],
   [12, movePlannerPlaceToNight],
   [8, reorderPlannerPlaceUp],
   [8, reorderPlannerPlaceDown],
-  [12, openBookingsTab],
-  [8, openReservationModal],
-  [6, focusReservationTitle],
-  [8, typeReservationTitle],
-  [4, focusReservationLocation],
-  [4, typeReservationLocation],
-  [4, focusReservationNotes],
-  [4, typeReservationNotes],
-  [8, submitReservation],
-  [10, openPackingTab],
-  [8, openPackingAdd],
-  [6, focusPackingItem],
-  [8, typePackingItem],
-  [8, submitPackingItem],
-  [10, openBudgetTab],
-  [6, focusBudgetName],
-  [8, typeBudgetName],
-  [4, focusBudgetPrice],
-  [4, typeBudgetPrice],
-  [3, focusBudgetNote],
-  [3, typeBudgetNote],
-  [8, submitBudgetItem],
-  [12, openCollabTab],
+  [1, openBookingsTab],
+  [6, openReservationModal],
+  [8, focusReservationTitle],
+  [14, typeReservationTitle],
+  [6, focusReservationLocation],
+  [8, typeReservationLocation],
+  [5, focusReservationNotes],
+  [6, typeReservationNotes],
+  [16, submitReservation],
+  [1, openPackingTab],
+  [6, openPackingAdd],
+  [8, focusPackingItem],
+  [14, typePackingItem],
+  [16, submitPackingItem],
+  [1, openBudgetTab],
+  [8, focusBudgetName],
+  [14, typeBudgetName],
+  [6, focusBudgetPrice],
+  [10, typeBudgetPrice],
+  [4, focusBudgetNote],
+  [5, typeBudgetNote],
+  [16, submitBudgetItem],
+  [1, openCollabTab],
   [8, focusChatComposer],
-  [8, typeChatMessage],
-  [8, sendChatMessage],
-  [7, openNewNote],
-  [6, focusNoteTitle],
-  [8, typeNoteTitle],
+  [14, typeChatMessage],
+  [16, sendChatMessage],
+  [5, openNewNote],
+  [7, focusNoteTitle],
+  [12, typeNoteTitle],
   [5, focusNoteContent],
-  [6, typeNoteContent],
-  [8, submitNote],
-  [7, openNewPoll],
-  [6, focusPollQuestion],
-  [8, typePollQuestion],
-  [4, focusPollOptionOne],
-  [4, typePollOptionOne],
-  [4, focusPollOptionTwo],
-  [4, typePollOptionTwo],
-  [7, submitPoll],
+  [8, typeNoteContent],
+  [14, submitNote],
+  [5, openNewPoll],
+  [7, focusPollQuestion],
+  [12, typePollQuestion],
+  [6, focusPollOptionOne],
+  [10, typePollOptionOne],
+  [6, focusPollOptionTwo],
+  [10, typePollOptionTwo],
+  [14, submitPoll],
   [5, voteOnPoll],
 ]);

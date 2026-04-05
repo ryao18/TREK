@@ -17,19 +17,19 @@ COOKIE_SECURE=false
 LOCAL_AUTH_BYPASS=true
 ```
 
-Keep the tracked root [`.env`](/C:/Users/yaori/Documents/trek-trip-planner/TREK/.env) on secure defaults and only use the override above for local Bombadil sessions.
+Keep the tracked root `.env` on secure defaults and only use the override above for local Bombadil sessions.
 
 Pinned Bombadil version: `0.4.2`
 
 Verify your local CLI before running the spec:
 
 ```bash
-npm --prefix client run bombadil:verify-version
+bombadil --version
 ```
 
 What this spec emphasizes:
 
-- staying out of the login page while local auth bypass is enabled
+- using local auth bypass when it is enabled, without requiring it for every run
 - creating a trip only when none exist, then spending most of the run inside one trip
 - keeping Bombadil on app-specific actions instead of Bombadil's generic default click pool
 - opening an existing trip from the dashboard and switching among planner tabs

@@ -103,9 +103,10 @@ interface LiquidGlassProps {
   style?: React.CSSProperties
   className?: string
   onClick?: () => void
+  dataBombadil?: string
 }
 
-function LiquidGlass({ children, dark, style, className = '', onClick }: LiquidGlassProps): React.ReactElement {
+function LiquidGlass({ children, dark, style, className = '', onClick, dataBombadil }: LiquidGlassProps): React.ReactElement {
   const ref = useRef<HTMLDivElement>(null)
   const glareRef = useRef<HTMLDivElement>(null)
   const borderRef = useRef<HTMLDivElement>(null)
@@ -127,7 +128,7 @@ function LiquidGlass({ children, dark, style, className = '', onClick }: LiquidG
   }
 
   return (
-    <div ref={ref} onMouseMove={onMove} onMouseLeave={onLeave} onClick={onClick} className={className}
+    <div ref={ref} onMouseMove={onMove} onMouseLeave={onLeave} onClick={onClick} className={className} data-bombadil={dataBombadil}
       style={{ position: 'relative', overflow: 'hidden', ...style }}>
       <div ref={glareRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0, transition: 'opacity 0.3s', borderRadius: 'inherit', zIndex: 1 }} />
       <div ref={borderRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0, transition: 'opacity 0.3s', borderRadius: 'inherit', zIndex: 1,
@@ -160,6 +161,8 @@ function SpotlightCard({ trip, onEdit, onCopy, onDelete, onArchive, onClick, t, 
 
   return (
     <LiquidGlass dark={dark} style={{ marginBottom: 32, borderRadius: 20, boxShadow: '0 8px 40px rgba(0,0,0,0.13)', cursor: 'pointer' }}
+      className="bombadil-dashboard-trip-card"
+      dataBombadil="dashboard-trip-card"
       onClick={() => onClick(trip)}>
       {/* Cover / Background */}
       <div style={{ height: 300, background: coverBg, position: 'relative' }}>
@@ -248,6 +251,7 @@ function TripCard({ trip, onEdit, onCopy, onDelete, onArchive, onClick, t, local
 
   return (
     <div
+      data-bombadil="dashboard-trip-card"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={() => onClick(trip)}
@@ -341,6 +345,7 @@ function TripListItem({ trip, onEdit, onCopy, onDelete, onArchive, onClick, t, l
 
   return (
     <div
+      data-bombadil="dashboard-trip-card"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={() => onClick(trip)}
@@ -446,7 +451,7 @@ interface ArchivedRowProps {
 
 function ArchivedRow({ trip, onEdit, onCopy, onUnarchive, onDelete, onClick, t, locale }: ArchivedRowProps): React.ReactElement {
   return (
-    <div onClick={() => onClick(trip)} style={{
+    <div data-bombadil="dashboard-trip-card" onClick={() => onClick(trip)} style={{
       display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
       borderRadius: 12, border: '1px solid var(--border-faint)', background: 'var(--bg-card)', cursor: 'pointer',
       transition: 'border-color 0.12s',

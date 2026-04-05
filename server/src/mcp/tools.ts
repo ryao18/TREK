@@ -340,8 +340,8 @@ export function registerTools(server: McpServer, userId: number): void {
       const maxOrder = db.prepare('SELECT MAX(order_index) as max FROM day_assignments WHERE day_id = ?').get(dayId) as { max: number | null };
       const orderIndex = (maxOrder.max !== null ? maxOrder.max : -1) + 1;
       const result = db.prepare(
-        'INSERT INTO day_assignments (day_id, place_id, order_index, notes) VALUES (?, ?, ?, ?)'
-      ).run(dayId, placeId, orderIndex, notes || null);
+        'INSERT INTO day_assignments (day_id, place_id, order_index, day_section, notes) VALUES (?, ?, ?, ?, ?)'
+      ).run(dayId, placeId, orderIndex, null, notes || null);
       const assignment = db.prepare(`
         SELECT da.*, p.name as place_name, p.address, p.lat, p.lng
         FROM day_assignments da JOIN places p ON da.place_id = p.id
@@ -441,8 +441,8 @@ export function registerTools(server: McpServer, userId: number): void {
       const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM packing_items WHERE trip_id = ?').get(tripId) as { max: number | null };
       const sortOrder = (maxOrder.max !== null ? maxOrder.max : -1) + 1;
       const result = db.prepare(
-        'INSERT INTO packing_items (trip_id, name, checked, category, sort_order) VALUES (?, ?, ?, ?, ?)'
-      ).run(tripId, name, 0, category || 'General', sortOrder);
+        'INSERT INTO packing_items (trip_id, user_id, name, checked, category, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(tripId, userId, name, 0, category || 'General', sortOrder);
       const item = db.prepare('SELECT * FROM packing_items WHERE id = ?').get(result.lastInsertRowid);
       broadcast(tripId, 'packing:created', { item });
       return ok({ item });
@@ -1163,8 +1163,8 @@ export function registerTools(server: McpServer, userId: number): void {
       const day = db.prepare('SELECT id FROM days WHERE id = ? AND trip_id = ?').get(dayId, tripId);
       if (!day) return { content: [{ type: 'text' as const, text: 'Day not found.' }], isError: true };
       const result = db.prepare(
-        'INSERT INTO day_notes (day_id, trip_id, text, time, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(dayId, tripId, text.trim(), time || null, icon || '📝', 9999);
+        'INSERT INTO day_notes (day_id, trip_id, text, time, day_section, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(dayId, tripId, text.trim(), time || null, null, icon || '📝', 9999);
       const note = db.prepare('SELECT * FROM day_notes WHERE id = ?').get(result.lastInsertRowid);
       broadcast(tripId, 'dayNote:created', { dayId, note });
       return ok({ note });

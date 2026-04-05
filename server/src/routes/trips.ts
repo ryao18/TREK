@@ -255,8 +255,8 @@ router.post('/:id/copy', authenticate, (req: Request, res: Response) => {
     `).all(req.params.id) as any[];
     const assignmentMap = new Map<number, number | bigint>();
     const insertAssignment = db.prepare(`
-      INSERT INTO day_assignments (day_id, place_id, order_index, notes, reservation_status, reservation_notes, reservation_datetime, assignment_time, assignment_end_time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO day_assignments (day_id, place_id, order_index, notes, reservation_status, reservation_notes, reservation_datetime, assignment_time, assignment_end_time, day_section)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const a of oldAssignments) {
       const newDayId = dayMap.get(a.day_id);
@@ -264,7 +264,7 @@ router.post('/:id/copy', authenticate, (req: Request, res: Response) => {
       if (newDayId && newPlaceId) {
         const r = insertAssignment.run(newDayId, newPlaceId, a.order_index, a.notes,
           a.reservation_status, a.reservation_notes, a.reservation_datetime,
-          a.assignment_time, a.assignment_end_time);
+          a.assignment_time, a.assignment_end_time, a.day_section ?? null);
         assignmentMap.set(a.id, r.lastInsertRowid);
       }
     }
@@ -318,34 +318,34 @@ router.post('/:id/copy', authenticate, (req: Request, res: Response) => {
     const oldBags = db.prepare('SELECT * FROM packing_bags WHERE trip_id = ?').all(req.params.id) as any[];
     const bagMap = new Map<number, number | bigint>();
     const insertBag = db.prepare(`
-      INSERT INTO packing_bags (trip_id, name, color, weight_limit_grams, sort_order)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO packing_bags (trip_id, user_id, name, color, weight_limit_grams, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
     for (const bag of oldBags) {
-      const r = insertBag.run(newTripId, bag.name, bag.color, bag.weight_limit_grams, bag.sort_order);
+      const r = insertBag.run(newTripId, authReq.user.id, bag.name, bag.color, bag.weight_limit_grams, bag.sort_order);
       bagMap.set(bag.id, r.lastInsertRowid);
     }
 
     // 10. Copy packing_items (checked reset to 0)
     const oldPacking = db.prepare('SELECT * FROM packing_items WHERE trip_id = ?').all(req.params.id) as any[];
     const insertPacking = db.prepare(`
-      INSERT INTO packing_items (trip_id, name, checked, category, sort_order, weight_grams, bag_id)
-      VALUES (?, ?, 0, ?, ?, ?, ?)
+      INSERT INTO packing_items (trip_id, user_id, name, checked, category, sort_order, weight_grams, bag_id)
+      VALUES (?, ?, ?, 0, ?, ?, ?, ?)
     `);
     for (const p of oldPacking) {
-      insertPacking.run(newTripId, p.name, p.category, p.sort_order, p.weight_grams,
+      insertPacking.run(newTripId, authReq.user.id, p.name, p.category, p.sort_order, p.weight_grams,
         p.bag_id ? (bagMap.get(p.bag_id) ?? null) : null);
     }
 
     // 11. Copy day_notes
     const oldNotes = db.prepare('SELECT * FROM day_notes WHERE trip_id = ?').all(req.params.id) as any[];
     const insertNote = db.prepare(`
-      INSERT INTO day_notes (day_id, trip_id, text, time, icon, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO day_notes (day_id, trip_id, text, time, icon, day_section, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const n of oldNotes) {
       const newDayId = dayMap.get(n.day_id);
-      if (newDayId) insertNote.run(newDayId, newTripId, n.text, n.time, n.icon, n.sort_order);
+      if (newDayId) insertNote.run(newDayId, newTripId, n.text, n.time, n.icon, n.day_section ?? null, n.sort_order);
     }
 
     return newTripId;

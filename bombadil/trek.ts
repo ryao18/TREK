@@ -22,6 +22,25 @@ function textOf(el: Element | null): string {
   return (el?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+function pickPointByText(
+  nodes: Element[],
+  patterns: string[],
+  options: { title?: boolean; topMax?: number } = {},
+): Point | null {
+  const matched = nodes.find((node) => {
+    if (!isVisible(node)) return false;
+    const rect = node.getBoundingClientRect();
+    if (options.topMax != null && rect.top > options.topMax) return false;
+    const haystack = `${textOf(node)} ${options.title ? (node.getAttribute("title") || "") : ""}`.toLowerCase();
+    return patterns.some((pattern) => haystack.includes(pattern.toLowerCase()));
+  });
+  return centerOf(matched || null);
+}
+
+function visibleBodyText(state: { document: Document }): string {
+  return (state.document.body?.innerText || "").replace(/\s+/g, " ").trim();
+}
+
 const route = extract((state) => state.window.location.pathname);
 
 const loginFormVisible = extract((state) => {
@@ -36,6 +55,8 @@ const spinnerCount = extract((state) =>
 const toastCount = extract((state) =>
   state.document.querySelectorAll(".nomad-toast").length,
 );
+
+const visibleText = extract((state) => visibleBodyText(state));
 
 const visibleTripTitles = extract((state) => {
   if (state.window.location.pathname !== "/dashboard") return [];
@@ -93,8 +114,8 @@ const datePickerOpen = extract((state) => {
   return !!clearButton;
 });
 
-const dateCellPoints = extract((state) => {
-  return Array.from(state.document.querySelectorAll("button"))
+const dateCellPoints = extract((state) =>
+  Array.from(state.document.querySelectorAll("button"))
     .filter((button) => {
       if (!isVisible(button)) return false;
       const text = textOf(button);
@@ -105,8 +126,8 @@ const dateCellPoints = extract((state) => {
       name: `day ${textOf(button)}`,
       point: centerOf(button),
     }))
-    .filter((entry): entry is { name: string; point: Point } => !!entry.point);
-});
+    .filter((entry): entry is { name: string; point: Point } => !!entry.point),
+);
 
 const activeField = extract((state) => {
   const active = state.document.activeElement;
@@ -160,6 +181,7 @@ const plannerState = extract((state) => {
   const path = state.window.location.pathname;
   if (!/^\/trips\/\d+/.test(path)) return null;
 
+  const buttons = Array.from(state.document.querySelectorAll("button"));
   const dayBadges = Array.from(state.document.querySelectorAll("div"))
     .filter((div) => {
       if (!isVisible(div)) return false;
@@ -169,19 +191,193 @@ const plannerState = extract((state) => {
     })
     .map((div) => Number(textOf(div)));
 
-  const plannerTabs = Array.from(state.document.querySelectorAll("button"))
-    .filter((button) => {
-      if (!isVisible(button)) return false;
-      const rect = button.getBoundingClientRect();
-      return rect.top < 120 && rect.width > 40;
-    }).length;
+  const plannerTabs = buttons.filter((button) => {
+    if (!isVisible(button)) return false;
+    const rect = button.getBoundingClientRect();
+    return rect.top < 120 && rect.width > 40;
+  }).length;
 
-  const tripTitle = textOf(state.document.querySelector("title")) || textOf(state.document.querySelector("nav + div div"));
+  const tabButtons = buttons.filter((button) => {
+    if (!isVisible(button)) return false;
+    const rect = button.getBoundingClientRect();
+    return rect.top < 120 && rect.width > 40;
+  });
 
   return {
     dayBadges,
     plannerTabs,
-    tripTitle,
+    tripTitle: textOf(state.document.querySelector("title")) || textOf(state.document.querySelector("nav + div div")),
+    bookingsTabPoint: pickPointByText(tabButtons, ["Bookings", "Book", "Buchungen"], { title: true }),
+    packingTabPoint: pickPointByText(tabButtons, ["Packing", "Packing List", "Packliste"], { title: true }),
+    budgetTabPoint: pickPointByText(tabButtons, ["Budget", "Finanzplan"], { title: true }),
+    collabTabPoint: pickPointByText(tabButtons, ["Collab", "Zusammenarbeit"], { title: true }),
+    planTabPoint: pickPointByText(tabButtons, ["Plan"], { title: true }),
+  };
+});
+
+const reservationsState = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
+  const buttons = Array.from(state.document.querySelectorAll("button"));
+  return {
+    addPoint: pickPointByText(buttons, ["Manual Booking", "Rezerwacja ręczna", "Reserva manual"], { title: true }),
+    visibleTitles: Array.from(state.document.querySelectorAll("span, h2, h3, h4"))
+      .map((node) => textOf(node))
+      .filter((text) => text.length > 3),
+    modalOpen: !!state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']"),
+    titleValue: (() => {
+      const input = state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']");
+      return input instanceof HTMLInputElement ? input.value : "";
+    })(),
+    titlePoint: centerOf(state.document.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']")),
+    locationPoint: centerOf(state.document.querySelector("input[placeholder*='address'], input[placeholder*='Address']")),
+    notesPoint: centerOf(state.document.querySelector("textarea[placeholder*='notes'], textarea[placeholder*='Notes']")),
+    submitPoint: (() => {
+      const form = Array.from(state.document.querySelectorAll("form")).find((node) =>
+        !!node.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']"),
+      );
+      const submit = form?.querySelector("button[type='submit']");
+      return centerOf(submit || null);
+    })(),
+    submitDisabled: (() => {
+      const form = Array.from(state.document.querySelectorAll("form")).find((node) =>
+        !!node.querySelector("input[placeholder*='Lufthansa'], input[placeholder*='Hotel Adlon']"),
+      );
+      const submit = form?.querySelector("button[type='submit']");
+      return submit instanceof HTMLButtonElement ? submit.disabled : false;
+    })(),
+    activeField: (() => {
+      const active = state.document.activeElement;
+      if (active instanceof HTMLInputElement) {
+        const placeholder = (active.placeholder || "").toLowerCase();
+        if (placeholder.includes("lufthansa") || placeholder.includes("hotel adlon")) return "reservation-title";
+        if (placeholder.includes("address")) return "reservation-location";
+      }
+      if (active instanceof HTMLTextAreaElement) return "reservation-notes";
+      return "other";
+    })(),
+  };
+});
+
+const packingState = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
+  const buttons = Array.from(state.document.querySelectorAll("button"));
+  const itemInput = state.document.querySelector("input[placeholder='Item name...']");
+  const inputParent = itemInput?.parentElement || null;
+  const addButton = inputParent
+    ? Array.from(inputParent.querySelectorAll("button")).find((button) => {
+        if (!isVisible(button)) return false;
+        return button.querySelector("svg") !== null && button.disabled === false;
+      })
+    : null;
+
+  return {
+    addPoint: pickPointByText(buttons, ["Add item"], { title: true }),
+    itemPoint: centerOf(itemInput),
+    itemValue: itemInput instanceof HTMLInputElement ? itemInput.value : "",
+    submitPoint: centerOf(addButton || null),
+    visibleText: visibleBodyText(state),
+    activeField: (() => {
+      const active = state.document.activeElement;
+      if (active instanceof HTMLInputElement && active.placeholder === "Item name...") return "packing-item";
+      return "other";
+    })(),
+  };
+});
+
+const budgetState = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
+  const nameInput = state.document.querySelector("input[placeholder='New Entry']");
+  const row = nameInput?.closest("tr") || null;
+  const priceInput = row?.querySelector("input[placeholder='0,00']") || null;
+  const noteInput = row?.querySelector("input[placeholder='Note']") || null;
+  const submit = row?.querySelector("button[title='Add']") || null;
+
+  return {
+    namePoint: centerOf(nameInput),
+    pricePoint: centerOf(priceInput),
+    notePoint: centerOf(noteInput),
+    submitPoint: centerOf(submit),
+    nameValue: nameInput instanceof HTMLInputElement ? nameInput.value : "",
+    visibleText: visibleBodyText(state),
+    activeField: (() => {
+      const active = state.document.activeElement;
+      if (active instanceof HTMLInputElement) {
+        if (active.placeholder === "New Entry") return "budget-name";
+        if (active.placeholder === "0,00") return "budget-price";
+        if (active.placeholder === "Note") return "budget-note";
+      }
+      return "other";
+    })(),
+  };
+});
+
+const collabState = extract((state) => {
+  if (!/^\/trips\/\d+/.test(state.window.location.pathname)) return null;
+  const buttons = Array.from(state.document.querySelectorAll("button"));
+  const chatBox = state.document.querySelector("textarea[placeholder='Type a message...']");
+  const noteTitle = state.document.querySelector("input[placeholder='Note title']");
+  const noteContent = state.document.querySelector("textarea[placeholder='Write something...']");
+  const noteForm = noteTitle?.closest("form") || noteContent?.closest("form") || null;
+  const pollQuestion = state.document.querySelector("input[placeholder='What should we do?']");
+  const pollForm = pollQuestion?.closest("form") || null;
+  const optionInputs = pollForm ? Array.from(pollForm.querySelectorAll("input")) : [];
+  const sendButton = chatBox?.parentElement
+    ? Array.from(chatBox.parentElement.parentElement?.querySelectorAll("button") || []).reverse().find((button) => {
+        if (!isVisible(button)) return false;
+        return button.querySelector("svg") !== null && button instanceof HTMLButtonElement && !button.disabled;
+      })
+    : null;
+
+  return {
+    chatPoint: centerOf(chatBox),
+    chatValue: chatBox instanceof HTMLTextAreaElement ? chatBox.value : "",
+    chatSendPoint: centerOf(sendButton || null),
+    newNotePoint: pickPointByText(buttons, ["New Note"], { title: true }),
+    noteModalOpen: !!noteTitle,
+    noteTitlePoint: centerOf(noteTitle),
+    noteTitleValue: noteTitle instanceof HTMLInputElement ? noteTitle.value : "",
+    noteContentPoint: centerOf(noteContent),
+    noteSubmitPoint: centerOf(noteForm?.querySelector("button[type='submit']") || null),
+    noteSubmitDisabled: (() => {
+      const submit = noteForm?.querySelector("button[type='submit']");
+      return submit instanceof HTMLButtonElement ? submit.disabled : false;
+    })(),
+    newPollPoint: pickPointByText(buttons, ["New Poll"], { title: true }),
+    pollModalOpen: !!pollQuestion,
+    pollQuestionPoint: centerOf(pollQuestion),
+    pollQuestionValue: pollQuestion instanceof HTMLInputElement ? pollQuestion.value : "",
+    pollOptionOnePoint: centerOf(optionInputs[1] || null),
+    pollOptionTwoPoint: centerOf(optionInputs[2] || null),
+    pollOptionValues: optionInputs.slice(1).map((input) => (input instanceof HTMLInputElement ? input.value : "")),
+    pollSubmitPoint: centerOf(pollForm?.querySelector("button[type='submit']") || null),
+    pollSubmitDisabled: (() => {
+      const submit = pollForm?.querySelector("button[type='submit']");
+      return submit instanceof HTMLButtonElement ? submit.disabled : false;
+    })(),
+    votePoints: buttons
+      .filter((button) => {
+        if (!isVisible(button)) return false;
+        if (button.closest("form")) return false;
+        const text = textOf(button);
+        return text.length > 0 && text.length < 80 && !/New Poll|New Note|Create Poll|Create/.test(text);
+      })
+      .slice(0, 5)
+      .map((button) => ({
+        name: textOf(button),
+        point: centerOf(button),
+      }))
+      .filter((entry): entry is { name: string; point: Point } => !!entry.point),
+    visibleText: visibleBodyText(state),
+    activeField: (() => {
+      const active = state.document.activeElement;
+      if (active instanceof HTMLTextAreaElement && active.placeholder === "Type a message...") return "chat";
+      if (active instanceof HTMLInputElement && active.placeholder === "Note title") return "note-title";
+      if (active instanceof HTMLTextAreaElement && active.placeholder === "Write something...") return "note-content";
+      if (active instanceof HTMLInputElement && active.placeholder === "What should we do?") return "poll-question";
+      if (active instanceof HTMLInputElement && active.placeholder === "Option 1") return "poll-option-1";
+      if (active instanceof HTMLInputElement && active.placeholder === "Option 2") return "poll-option-2";
+      return "other";
+    })(),
   };
 });
 
@@ -191,7 +387,15 @@ export const bypassDoesNotLeaveYouOnLogin = always(
   ),
 );
 
-export const modalsEventuallySettleAfterSave = always(
+export const errorsDoNotPileUp = always(() => toastCount.current <= 5);
+
+export const loadingDoesNotHangForever = always(
+  now(() => spinnerCount.current > 0).implies(
+    eventually(() => spinnerCount.current === 0).within(20, "seconds"),
+  ),
+);
+
+export const tripCreationSettles = always(
   now(() => !!tripModalState.current?.saving).implies(
     eventually(() => tripModalState.current === null).within(15, "seconds"),
   ),
@@ -206,14 +410,6 @@ export const createdTripEventuallyAppearsOnDashboard = always(() => {
     );
 });
 
-export const errorsDoNotPileUp = always(() => toastCount.current <= 5);
-
-export const loadingDoesNotHangForever = always(
-  now(() => spinnerCount.current > 0).implies(
-    eventually(() => spinnerCount.current === 0).within(20, "seconds"),
-  ),
-);
-
 export const plannerLoadsWithNavigation = always(() => {
   if (!plannerState.current) return true;
   return plannerState.current.plannerTabs > 0;
@@ -224,6 +420,60 @@ export const plannerHasSequentialDayBadges = always(() => {
   const badges = plannerState.current.dayBadges.slice().sort((a, b) => a - b);
   if (badges.length === 0) return true;
   return badges.every((value, index) => value === index + 1);
+});
+
+export const bookingTitlesEventuallyAppear = always(() => {
+  const title = (reservationsState.current?.titleValue || "").trim();
+  return now(() => title.length > 3)
+    .and(next(() => reservationsState.current?.modalOpen === false))
+    .implies(
+      eventually(() => visibleText.current.includes(title)).within(20, "seconds"),
+    );
+});
+
+export const packingItemsEventuallyAppear = always(() => {
+  const item = (packingState.current?.itemValue || "").trim();
+  return now(() => item.length > 2)
+    .and(next(() => (packingState.current?.itemValue || "") === ""))
+    .implies(
+      eventually(() => packingState.current?.visibleText.includes(item) || false).within(15, "seconds"),
+    );
+});
+
+export const budgetEntriesEventuallyAppear = always(() => {
+  const item = (budgetState.current?.nameValue || "").trim();
+  return now(() => item.length > 2)
+    .and(next(() => (budgetState.current?.nameValue || "") === ""))
+    .implies(
+      eventually(() => budgetState.current?.visibleText.includes(item) || false).within(20, "seconds"),
+    );
+});
+
+export const chatMessagesEventuallyAppear = always(() => {
+  const message = (collabState.current?.chatValue || "").trim();
+  return now(() => message.length > 2)
+    .and(next(() => (collabState.current?.chatValue || "") === ""))
+    .implies(
+      eventually(() => collabState.current?.visibleText.includes(message) || false).within(15, "seconds"),
+    );
+});
+
+export const notesEventuallyAppear = always(() => {
+  const title = (collabState.current?.noteTitleValue || "").trim();
+  return now(() => title.length > 2)
+    .and(next(() => collabState.current?.noteModalOpen === false))
+    .implies(
+      eventually(() => collabState.current?.visibleText.includes(title) || false).within(20, "seconds"),
+    );
+});
+
+export const pollsEventuallyAppear = always(() => {
+  const question = (collabState.current?.pollQuestionValue || "").trim();
+  return now(() => question.length > 4)
+    .and(next(() => collabState.current?.pollModalOpen === false))
+    .implies(
+      eventually(() => collabState.current?.visibleText.includes(question) || false).within(20, "seconds"),
+    );
 });
 
 const tripTitles = [
@@ -240,7 +490,63 @@ const tripDescriptions = [
   "Property-based trip data for dashboard and planner validation.",
 ];
 
+const bookingTitles = [
+  "Bombadil Train 204",
+  "Bombadil Harbor Hotel",
+  "Bombadil Dinner Booking",
+];
+
+const locations = [
+  "123 Test Street",
+  "42 Explorer Avenue",
+  "7 Localhost Plaza",
+];
+
+const notes = [
+  "Bombadil booking note for realistic local testing.",
+  "Exercise booking persistence without using uploads.",
+];
+
+const packingItems = [
+  "Bombadil rain jacket",
+  "Bombadil charger",
+  "Bombadil walking shoes",
+];
+
+const budgetEntries = [
+  "Bombadil museum tickets",
+  "Bombadil metro pass",
+  "Bombadil dinner split",
+];
+
+const chatMessages = [
+  "Bombadil check-in looks stable from chat.",
+  "Bombadil added a planning update in collab.",
+];
+
+const noteTitles = [
+  "Bombadil trip note",
+  "Bombadil planning checklist",
+];
+
+const noteBodies = [
+  "Collect confirmations, budget assumptions, and meeting points.",
+  "Keep this trip focused on one itinerary for Bombadil coverage.",
+];
+
+const pollQuestions = [
+  "What should we do on day two?",
+  "Which dinner spot should we reserve?",
+];
+
+const pollOptions = [
+  ["Night market", "River walk"],
+  ["Sushi", "Tapas"],
+];
+
 export const openCreateTripModal = actions(() => {
+  if (route.current !== "/dashboard") return [];
+  if (visibleTripTitles.current.length > 0) return [];
   const point = createTripButtonPoint.current;
   return point ? [{ Click: { name: "open create trip modal", point } }] : [];
 });
@@ -260,8 +566,15 @@ export const typeTripTitle = actions(() => {
 
 export const focusTripDescription = actions(() => {
   if (!tripModalState.current?.title) return [];
-  const point = tripModalState.current?.descriptionPoint;
+  const point = tripModalState.current.descriptionPoint;
   return point ? [{ Click: { name: "focus trip description", point } }] : [];
+});
+
+export const typeTripDescription = actions(() => {
+  if (activeField.current !== "description") return [];
+  return tripDescriptions.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
 });
 
 export const openStartDatePicker = actions(() => {
@@ -280,7 +593,7 @@ export const pickStartDate = actions(() => {
 export const openEndDatePicker = actions(() => {
   if (datePickerOpen.current) return [];
   if (!tripModalState.current?.title) return [];
-  const point = tripModalState.current?.endDatePoint;
+  const point = tripModalState.current.endDatePoint;
   return point ? [{ Click: { name: "open end date picker", point } }] : [];
 });
 
@@ -288,13 +601,6 @@ export const pickEndDate = actions(() => {
   if (!datePickerOpen.current) return [];
   return dateCellPoints.current.map((entry) => ({
     Click: { name: `pick ${entry.name} for end`, point: entry.point },
-  }));
-});
-
-export const typeTripDescription = actions(() => {
-  if (activeField.current !== "description") return [];
-  return tripDescriptions.map((text) => ({
-    TypeText: { text, delayMillis: 10 },
   }));
 });
 
@@ -313,21 +619,332 @@ export const openTripFromDashboard = actions(() => {
 });
 
 export const returnToDashboard = actions(() => {
+  if (!/^\/trips\/\d+/.test(route.current)) return [];
   const point = dashboardLinkPoint.current;
   return point ? [{ Click: { name: "return to dashboard", point } }] : [];
 });
 
+export const openBookingsTab = actions(() => {
+  const point = plannerState.current?.bookingsTabPoint;
+  return point ? [{ Click: { name: "open bookings tab", point } }] : [];
+});
+
+export const openPackingTab = actions(() => {
+  const point = plannerState.current?.packingTabPoint;
+  return point ? [{ Click: { name: "open packing tab", point } }] : [];
+});
+
+export const openBudgetTab = actions(() => {
+  const point = plannerState.current?.budgetTabPoint;
+  return point ? [{ Click: { name: "open budget tab", point } }] : [];
+});
+
+export const openCollabTab = actions(() => {
+  const point = plannerState.current?.collabTabPoint;
+  return point ? [{ Click: { name: "open collab tab", point } }] : [];
+});
+
+export const openPlanTab = actions(() => {
+  const point = plannerState.current?.planTabPoint;
+  return point ? [{ Click: { name: "open plan tab", point } }] : [];
+});
+
+export const openReservationModal = actions(() => {
+  if (reservationsState.current?.modalOpen) return [];
+  const point = reservationsState.current?.addPoint;
+  return point ? [{ Click: { name: "open reservation modal", point } }] : [];
+});
+
+export const focusReservationTitle = actions(() => {
+  const point = reservationsState.current?.titlePoint;
+  return point ? [{ Click: { name: "focus reservation title", point } }] : [];
+});
+
+export const typeReservationTitle = actions(() => {
+  if (reservationsState.current?.activeField !== "reservation-title") return [];
+  if ((reservationsState.current?.titleValue || "").length > 0) return [];
+  return bookingTitles.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const focusReservationLocation = actions(() => {
+  if (!(reservationsState.current?.titleValue || "").trim()) return [];
+  const point = reservationsState.current?.locationPoint;
+  return point ? [{ Click: { name: "focus reservation location", point } }] : [];
+});
+
+export const typeReservationLocation = actions(() => {
+  if (reservationsState.current?.activeField !== "reservation-location") return [];
+  return locations.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const focusReservationNotes = actions(() => {
+  if (!(reservationsState.current?.titleValue || "").trim()) return [];
+  const point = reservationsState.current?.notesPoint;
+  return point ? [{ Click: { name: "focus reservation notes", point } }] : [];
+});
+
+export const typeReservationNotes = actions(() => {
+  if (reservationsState.current?.activeField !== "reservation-notes") return [];
+  return notes.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const submitReservation = actions(() => {
+  const state = reservationsState.current;
+  if (!state?.submitPoint || state.submitDisabled) return [];
+  if (!(state.titleValue || "").trim()) return [];
+  return [{ Click: { name: "submit reservation", point: state.submitPoint } }];
+});
+
+export const openPackingAdd = actions(() => {
+  const point = packingState.current?.addPoint;
+  return point ? [{ Click: { name: "open packing add item", point } }] : [];
+});
+
+export const focusPackingItem = actions(() => {
+  const point = packingState.current?.itemPoint;
+  return point ? [{ Click: { name: "focus packing item", point } }] : [];
+});
+
+export const typePackingItem = actions(() => {
+  if (packingState.current?.activeField !== "packing-item") return [];
+  if ((packingState.current?.itemValue || "").length > 0) return [];
+  return packingItems.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const submitPackingItem = actions(() => {
+  const state = packingState.current;
+  if (!state?.submitPoint) return [];
+  if (!(state.itemValue || "").trim()) return [];
+  return [{ Click: { name: "submit packing item", point: state.submitPoint } }];
+});
+
+export const focusBudgetName = actions(() => {
+  const point = budgetState.current?.namePoint;
+  return point ? [{ Click: { name: "focus budget name", point } }] : [];
+});
+
+export const typeBudgetName = actions(() => {
+  if (budgetState.current?.activeField !== "budget-name") return [];
+  if ((budgetState.current?.nameValue || "").length > 0) return [];
+  return budgetEntries.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const focusBudgetPrice = actions(() => {
+  if (!(budgetState.current?.nameValue || "").trim()) return [];
+  const point = budgetState.current?.pricePoint;
+  return point ? [{ Click: { name: "focus budget price", point } }] : [];
+});
+
+export const typeBudgetPrice = actions(() => {
+  if (budgetState.current?.activeField !== "budget-price") return [];
+  return [
+    { TypeText: { text: "19.50", delayMillis: 10 } },
+    { TypeText: { text: "44.00", delayMillis: 10 } },
+  ];
+});
+
+export const focusBudgetNote = actions(() => {
+  if (!(budgetState.current?.nameValue || "").trim()) return [];
+  const point = budgetState.current?.notePoint;
+  return point ? [{ Click: { name: "focus budget note", point } }] : [];
+});
+
+export const typeBudgetNote = actions(() => {
+  if (budgetState.current?.activeField !== "budget-note") return [];
+  return notes.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const submitBudgetItem = actions(() => {
+  const state = budgetState.current;
+  if (!state?.submitPoint) return [];
+  if (!(state.nameValue || "").trim()) return [];
+  return [{ Click: { name: "submit budget item", point: state.submitPoint } }];
+});
+
+export const focusChatComposer = actions(() => {
+  const point = collabState.current?.chatPoint;
+  return point ? [{ Click: { name: "focus chat composer", point } }] : [];
+});
+
+export const typeChatMessage = actions(() => {
+  if (collabState.current?.activeField !== "chat") return [];
+  if ((collabState.current?.chatValue || "").length > 0) return [];
+  return chatMessages.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const sendChatMessage = actions(() => {
+  const state = collabState.current;
+  if (!state?.chatSendPoint) return [];
+  if (!(state.chatValue || "").trim()) return [];
+  return [{ Click: { name: "send chat message", point: state.chatSendPoint } }];
+});
+
+export const openNewNote = actions(() => {
+  if (collabState.current?.noteModalOpen) return [];
+  const point = collabState.current?.newNotePoint;
+  return point ? [{ Click: { name: "open new note", point } }] : [];
+});
+
+export const focusNoteTitle = actions(() => {
+  const point = collabState.current?.noteTitlePoint;
+  return point ? [{ Click: { name: "focus note title", point } }] : [];
+});
+
+export const typeNoteTitle = actions(() => {
+  if (collabState.current?.activeField !== "note-title") return [];
+  if ((collabState.current?.noteTitleValue || "").length > 0) return [];
+  return noteTitles.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const focusNoteContent = actions(() => {
+  if (!(collabState.current?.noteTitleValue || "").trim()) return [];
+  const point = collabState.current?.noteContentPoint;
+  return point ? [{ Click: { name: "focus note content", point } }] : [];
+});
+
+export const typeNoteContent = actions(() => {
+  if (collabState.current?.activeField !== "note-content") return [];
+  return noteBodies.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const submitNote = actions(() => {
+  const state = collabState.current;
+  if (!state?.noteSubmitPoint || state.noteSubmitDisabled) return [];
+  if (!(state.noteTitleValue || "").trim()) return [];
+  return [{ Click: { name: "submit note", point: state.noteSubmitPoint } }];
+});
+
+export const openNewPoll = actions(() => {
+  if (collabState.current?.pollModalOpen) return [];
+  const point = collabState.current?.newPollPoint;
+  return point ? [{ Click: { name: "open new poll", point } }] : [];
+});
+
+export const focusPollQuestion = actions(() => {
+  const point = collabState.current?.pollQuestionPoint;
+  return point ? [{ Click: { name: "focus poll question", point } }] : [];
+});
+
+export const typePollQuestion = actions(() => {
+  if (collabState.current?.activeField !== "poll-question") return [];
+  if ((collabState.current?.pollQuestionValue || "").length > 0) return [];
+  return pollQuestions.map((text) => ({
+    TypeText: { text, delayMillis: 10 },
+  }));
+});
+
+export const focusPollOptionOne = actions(() => {
+  if (!(collabState.current?.pollQuestionValue || "").trim()) return [];
+  const point = collabState.current?.pollOptionOnePoint;
+  return point ? [{ Click: { name: "focus poll option one", point } }] : [];
+});
+
+export const typePollOptionOne = actions(() => {
+  if (collabState.current?.activeField !== "poll-option-1") return [];
+  if ((collabState.current?.pollOptionValues[0] || "").trim()) return [];
+  return pollOptions.map((options) => ({
+    TypeText: { text: options[0], delayMillis: 10 },
+  }));
+});
+
+export const focusPollOptionTwo = actions(() => {
+  if (!(collabState.current?.pollQuestionValue || "").trim()) return [];
+  const point = collabState.current?.pollOptionTwoPoint;
+  return point ? [{ Click: { name: "focus poll option two", point } }] : [];
+});
+
+export const typePollOptionTwo = actions(() => {
+  if (collabState.current?.activeField !== "poll-option-2") return [];
+  if ((collabState.current?.pollOptionValues[1] || "").trim()) return [];
+  return pollOptions.map((options) => ({
+    TypeText: { text: options[1], delayMillis: 10 },
+  }));
+});
+
+export const submitPoll = actions(() => {
+  const state = collabState.current;
+  if (!state?.pollSubmitPoint || state.pollSubmitDisabled) return [];
+  if (!(state.pollQuestionValue || "").trim()) return [];
+  return [{ Click: { name: "submit poll", point: state.pollSubmitPoint } }];
+});
+
+export const voteOnPoll = actions(() =>
+  collabState.current?.votePoints.map((entry) => ({
+    Click: { name: `vote ${entry.name}`, point: entry.point },
+  })) || [],
+);
+
 export const tripFocusedExploration = weighted([
-  [10, openCreateTripModal],
-  [12, focusTripTitle],
-  [20, typeTripTitle],
-  [6, openStartDatePicker],
-  [6, pickStartDate],
-  [6, openEndDatePicker],
-  [6, pickEndDate],
-  [6, focusTripDescription],
-  [8, typeTripDescription],
-  [14, submitTripModal],
-  [8, openTripFromDashboard],
-  [4, returnToDashboard],
+  [2, openCreateTripModal],
+  [4, focusTripTitle],
+  [8, typeTripTitle],
+  [2, openStartDatePicker],
+  [2, pickStartDate],
+  [2, openEndDatePicker],
+  [2, pickEndDate],
+  [3, focusTripDescription],
+  [4, typeTripDescription],
+  [4, submitTripModal],
+  [14, openTripFromDashboard],
+  [2, returnToDashboard],
+  [10, openBookingsTab],
+  [8, openReservationModal],
+  [6, focusReservationTitle],
+  [8, typeReservationTitle],
+  [4, focusReservationLocation],
+  [4, typeReservationLocation],
+  [4, focusReservationNotes],
+  [4, typeReservationNotes],
+  [8, submitReservation],
+  [10, openPackingTab],
+  [8, openPackingAdd],
+  [6, focusPackingItem],
+  [8, typePackingItem],
+  [8, submitPackingItem],
+  [10, openBudgetTab],
+  [6, focusBudgetName],
+  [8, typeBudgetName],
+  [4, focusBudgetPrice],
+  [4, typeBudgetPrice],
+  [3, focusBudgetNote],
+  [3, typeBudgetNote],
+  [8, submitBudgetItem],
+  [12, openCollabTab],
+  [8, focusChatComposer],
+  [8, typeChatMessage],
+  [8, sendChatMessage],
+  [7, openNewNote],
+  [6, focusNoteTitle],
+  [8, typeNoteTitle],
+  [5, focusNoteContent],
+  [6, typeNoteContent],
+  [8, submitNote],
+  [7, openNewPoll],
+  [6, focusPollQuestion],
+  [8, typePollQuestion],
+  [4, focusPollOptionOne],
+  [4, typePollOptionOne],
+  [4, focusPollOptionTwo],
+  [4, typePollOptionTwo],
+  [7, submitPoll],
+  [5, voteOnPoll],
+  [3, openPlanTab],
 ]);

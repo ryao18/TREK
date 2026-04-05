@@ -1,4 +1,5 @@
 import { actions, always, eventually, extract, next, now, weighted } from "@antithesishq/bombadil";
+export * from "@antithesishq/bombadil/defaults";
 
 type Point = { x: number; y: number };
 
@@ -19,6 +20,12 @@ function centerOf(el: Element | null): Point | null {
 
 function textOf(el: Element | null): string {
   return (el?.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function buttonLooksActive(button: Element | null): boolean {
+  if (!(button instanceof HTMLElement) || !isVisible(button)) return false;
+  const bg = window.getComputedStyle(button).backgroundColor;
+  return bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
 }
 
 function queryHook(state: { document: Document }, hook: string): Element | null {
@@ -502,6 +509,14 @@ const planningState = extract((state) => {
   const editAssignmentButton = plannerRow?.querySelector('[data-bombadil="planner-edit-assignment"]') || null;
   const startTimeInput = queryHook(state, "planner-place-start-time");
   const endTimeInput = queryHook(state, "planner-place-end-time");
+  const activeSectionButton = [morningButton, afternoonButton, nightButton]
+    .find((button) => buttonLooksActive(button)) || null;
+  const currentSection =
+    activeSectionButton === morningButton ? "morning"
+      : activeSectionButton === afternoonButton ? "afternoon"
+        : activeSectionButton === nightButton ? "night"
+          : plannerRow ? "unscheduled" : null;
+  const rowTop = plannerRow?.getBoundingClientRect().top ?? null;
 
   return {
     addPlacePoint: centerOf(queryHook(state, "planner-open-add-place")) || pickPointByText(buttons, ["Add Place/Activity"], { title: true }),
@@ -531,6 +546,12 @@ const planningState = extract((state) => {
     endTimePoint: centerOf(endTimeInput),
     startTimeValue: startTimeInput instanceof HTMLInputElement ? startTimeInput.value : "",
     endTimeValue: endTimeInput instanceof HTMLInputElement ? endTimeInput.value : "",
+    currentSection,
+    rowTop,
+    rowSignature:
+      plannerRow && rowTop != null
+        ? `${textOf(plannerRow)}|${currentSection || "none"}|${Math.round(rowTop)}`
+        : "",
     activeField: (() => {
       const active = state.document.activeElement;
       if (active instanceof HTMLElement) {
@@ -668,6 +689,26 @@ export const pollOptionsEventuallyAppear = always(() => {
     .implies(
       eventually(() => visibleText.current.includes(optionOne || "") && visibleText.current.includes(optionTwo || "")).within(20, "seconds"),
     );
+});
+
+let pendingPlannerMutation: null | { kind: "section" | "order"; before: string } = null;
+
+export const plannerMutationsEventuallyChangeTargetState = always(() => {
+  const pending = pendingPlannerMutation;
+  if (!pending) return true;
+
+  const currentSignature = planningState.current?.rowSignature || "";
+  if (currentSignature && currentSignature !== pending.before) {
+    pendingPlannerMutation = null;
+    return true;
+  }
+
+  return eventually(() => {
+    const signature = planningState.current?.rowSignature || "";
+    const changed = signature !== "" && signature !== pending.before;
+    if (changed) pendingPlannerMutation = null;
+    return changed;
+  }).within(10, "seconds");
 });
 
 const tripTitles = [
@@ -1078,27 +1119,42 @@ const typePlannerEndTime = actions(() => {
 
 const movePlannerPlaceToMorning = actions(() => {
   const point = planningState.current?.morningPoint;
-  return point ? [{ Click: { name: "move planner place to morning", point } }] : [];
+  const before = planningState.current?.rowSignature || "";
+  if (!point) return [];
+  if (before) pendingPlannerMutation = { kind: "section", before };
+  return [{ Click: { name: "move planner place to morning", point } }];
 });
 
 const movePlannerPlaceToAfternoon = actions(() => {
   const point = planningState.current?.afternoonPoint;
-  return point ? [{ Click: { name: "move planner place to afternoon", point } }] : [];
+  const before = planningState.current?.rowSignature || "";
+  if (!point) return [];
+  if (before) pendingPlannerMutation = { kind: "section", before };
+  return [{ Click: { name: "move planner place to afternoon", point } }];
 });
 
 const movePlannerPlaceToNight = actions(() => {
   const point = planningState.current?.nightPoint;
-  return point ? [{ Click: { name: "move planner place to night", point } }] : [];
+  const before = planningState.current?.rowSignature || "";
+  if (!point) return [];
+  if (before) pendingPlannerMutation = { kind: "section", before };
+  return [{ Click: { name: "move planner place to night", point } }];
 });
 
 const reorderPlannerPlaceUp = actions(() => {
   const point = planningState.current?.moveUpPoint;
-  return point ? [{ Click: { name: "reorder planner place up", point } }] : [];
+  const before = planningState.current?.rowSignature || "";
+  if (!point) return [];
+  if (before) pendingPlannerMutation = { kind: "order", before };
+  return [{ Click: { name: "reorder planner place up", point } }];
 });
 
 const reorderPlannerPlaceDown = actions(() => {
   const point = planningState.current?.moveDownPoint;
-  return point ? [{ Click: { name: "reorder planner place down", point } }] : [];
+  const before = planningState.current?.rowSignature || "";
+  if (!point) return [];
+  if (before) pendingPlannerMutation = { kind: "order", before };
+  return [{ Click: { name: "reorder planner place down", point } }];
 });
 
 const openReservationModal = actions(() => {

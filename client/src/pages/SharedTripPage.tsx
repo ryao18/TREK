@@ -21,6 +21,12 @@ const SECTION_LABELS: Record<(typeof SECTION_ORDER)[number], string> = {
   unscheduled: 'Unscheduled',
 }
 
+function normalizeSection(value?: string | null): (typeof SECTION_ORDER)[number] {
+  return SECTION_ORDER.includes(value as (typeof SECTION_ORDER)[number])
+    ? (value as (typeof SECTION_ORDER)[number])
+    : 'unscheduled'
+}
+
 function parseTimeToMinutes(value?: string | null) {
   if (!value) return null
   const match = value.match(/(\d{1,2}):(\d{2})/)
@@ -40,15 +46,15 @@ function inferSectionFromTime(value?: string | null): (typeof SECTION_ORDER)[num
 }
 
 function resolveAssignmentSection(assignment: any): (typeof SECTION_ORDER)[number] {
-  return assignment?.day_section || inferSectionFromTime(assignment?.place?.place_time) || 'unscheduled'
+  return normalizeSection(assignment?.day_section || inferSectionFromTime(assignment?.place?.place_time))
 }
 
 function resolveNoteSection(note: any): (typeof SECTION_ORDER)[number] {
-  return note?.day_section || inferSectionFromTime(note?.time) || 'unscheduled'
+  return normalizeSection(note?.day_section || inferSectionFromTime(note?.time))
 }
 
 function resolveTransportSection(reservation: any): (typeof SECTION_ORDER)[number] {
-  return inferSectionFromTime(reservation?.reservation_time) || 'unscheduled'
+  return normalizeSection(inferSectionFromTime(reservation?.reservation_time))
 }
 
 function createMarkerIcon(place: any) {

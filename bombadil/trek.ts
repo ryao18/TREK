@@ -65,6 +65,29 @@ function findVisiblePlaceRowByName(state: { document: Document }, name: string):
   return null;
 }
 
+function findPlacesSidebarRowByName(state: { document: Document }, name: string): Element | null {
+  if (!name.trim()) return null;
+  const labels = Array.from(state.document.querySelectorAll("span"));
+  for (const label of labels) {
+    if (!isVisible(label)) continue;
+    if (textOf(label) !== name) continue;
+    let current: Element | null = label;
+    while (current) {
+      if (current instanceof HTMLElement && current.style.cursor === "grab") {
+        const plusButton = Array.from(current.querySelectorAll("button")).find((button) => {
+          if (!isVisible(button)) return false;
+          if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+          const rect = button.getBoundingClientRect();
+          return rect.width <= 24 && rect.height <= 24 && button.querySelector("svg") !== null;
+        });
+        if (plusButton) return current;
+      }
+      current = current.parentElement;
+    }
+  }
+  return null;
+}
+
 const route = extract((state) => state.window.location.pathname);
 
 const loginFormVisible = extract((state) => {
@@ -170,9 +193,9 @@ const createTripButtonPoint = extract((state) => {
     if (button.closest(".modal-backdrop")) return false;
     if (button.disabled) return false;
     const text = textOf(button);
-    if (!text) return false;
+    if (!/^new trip$/i.test(text) && !/^create new trip$/i.test(text)) return false;
     const rect = button.getBoundingClientRect();
-    return rect.top < 300 && rect.width >= 110;
+    return rect.top < 300 && rect.width >= 90;
   });
 
   return centerOf(buttons[0] || null);
@@ -422,7 +445,7 @@ const planningState = extract((state) => {
   const addressInput = state.document.querySelector("input[placeholder='Street, City, Country']");
   const modalForm = nameInput?.closest("form") || null;
   const placeName = nameInput instanceof HTMLInputElement ? nameInput.value : "";
-  const placeRow = findVisiblePlaceRowByName(state, placeName);
+  const placeRow = findPlacesSidebarRowByName(state, placeName);
   const rowButtons = placeRow ? Array.from(placeRow.querySelectorAll("button")) : [];
   const plannerRow = placeName ? findVisiblePlaceRowByName(state, placeName) : null;
   const plannerButtons = plannerRow ? Array.from(plannerRow.querySelectorAll("button")) : [];

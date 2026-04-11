@@ -1054,15 +1054,6 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
               <Upload size={12} /> <span className="hidden sm:inline">{t('packing.import')}</span>
             </button>
             )}
-            {viewCanEdit && visibleItems.length > 0 && (
-            <button onClick={handleSaveTemplate} style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
-              border: '1px solid var(--border-primary)', fontSize: 12, fontWeight: 500, cursor: 'pointer',
-              fontFamily: 'inherit', background: 'var(--bg-card)', color: 'var(--text-muted)',
-            }}>
-              <Package size={12} /> <span className="hidden sm:inline">Save template</span><span className="sm:hidden">Save</span>
-            </button>
-            )}
             {viewCanEdit && availableTemplates.length > 0 && (
               <div ref={templateDropdownRef} style={{ position: 'relative' }}>
                 <button onClick={() => setShowTemplateDropdown(v => !v)} disabled={applyingTemplate} style={{

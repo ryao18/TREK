@@ -163,22 +163,23 @@ function startTripReminders(): void {
   try {
     const { db } = require('./db/database');
     const getSetting = (key: string) => (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined)?.value;
-    const channel = getSetting('notification_channel') || 'none';
     const reminderEnabled = getSetting('notify_trip_reminder') !== 'false';
-    const hasSmtp = !!(getSetting('smtp_host') || '').trim();
-    const hasWebhook = !!(getSetting('notification_webhook_url') || '').trim();
-    const channelReady = (channel === 'email' && hasSmtp) || (channel === 'webhook' && hasWebhook);
+    const channelsRaw = getSetting('notification_channels') || getSetting('notification_channel') || 'none';
+    const activeChannels = channelsRaw === 'none' ? [] : channelsRaw.split(',').map((c: string) => c.trim());
+    const hasEmail = activeChannels.includes('email') && !!(getSetting('smtp_host') || '').trim();
+    const hasWebhook = activeChannels.includes('webhook');
+    const channelReady = hasEmail || hasWebhook;
 
     if (!channelReady || !reminderEnabled) {
       const { logInfo: li } = require('./services/auditLog');
-      const reason = !channelReady ? `no ${channel === 'none' ? 'notification channel' : channel} configuration` : 'trip reminders disabled in settings';
+      const reason = !channelReady ? 'no notification channels configured' : 'trip reminders disabled in settings';
       li(`Trip reminders: disabled (${reason})`);
       return;
     }
 
     const tripCount = (db.prepare('SELECT COUNT(*) as c FROM trips WHERE reminder_days > 0 AND start_date IS NOT NULL').get() as { c: number }).c;
     const { logInfo: liSetup } = require('./services/auditLog');
-    liSetup(`Trip reminders: enabled via ${channel}${tripCount > 0 ? `, ${tripCount} trip(s) with active reminders` : ''}`);
+    liSetup(`Trip reminders: enabled via [${activeChannels.join(',')}]${tripCount > 0 ? `, ${tripCount} trip(s) with active reminders` : ''}`);
   } catch {
     return;
   }
@@ -187,7 +188,7 @@ function startTripReminders(): void {
   reminderTask = cron.schedule('0 9 * * *', async () => {
     try {
       const { db } = require('./db/database');
-      const { notifyTripMembers } = require('./services/notifications');
+      const { send } = require('./services/notificationService');
 
       const trips = db.prepare(`
         SELECT t.id, t.title, t.user_id, t.reminder_days FROM trips t
@@ -197,7 +198,7 @@ function startTripReminders(): void {
       `).all() as { id: number; title: string; user_id: number; reminder_days: number }[];
 
       for (const trip of trips) {
-        await notifyTripMembers(trip.id, 0, 'trip_reminder', { trip: trip.title }).catch(() => {});
+        await send({ event: 'trip_reminder', actorId: null, scope: 'trip', targetId: trip.id, params: { trip: trip.title, tripId: String(trip.id) } }).catch(() => {});
       }
 
       const { logInfo: li } = require('./services/auditLog');
@@ -211,10 +212,29 @@ function startTripReminders(): void {
   }, { timezone: tz });
 }
 
+// Version check: daily at 9 AM — notify admins if a new TREK release is available
+let versionCheckTask: ScheduledTask | null = null;
+
+function startVersionCheck(): void {
+  if (versionCheckTask) { versionCheckTask.stop(); versionCheckTask = null; }
+
+  const tz = process.env.TZ || 'UTC';
+  versionCheckTask = cron.schedule('0 9 * * *', async () => {
+    try {
+      const { checkAndNotifyVersion } = require('./services/adminService');
+      await checkAndNotifyVersion();
+    } catch (err: unknown) {
+      const { logError: le } = require('./services/auditLog');
+      le(`Version check: ${err instanceof Error ? err.message : err}`);
+    }
+  }, { timezone: tz });
+}
+
 function stop(): void {
   if (currentTask) { currentTask.stop(); currentTask = null; }
   if (demoTask) { demoTask.stop(); demoTask = null; }
   if (reminderTask) { reminderTask.stop(); reminderTask = null; }
+  if (versionCheckTask) { versionCheckTask.stop(); versionCheckTask = null; }
 }
 
-export { start, stop, startDemoReset, startTripReminders, loadSettings, saveSettings, VALID_INTERVALS };
+export { start, stop, startDemoReset, startTripReminders, startVersionCheck, loadSettings, saveSettings, VALID_INTERVALS };

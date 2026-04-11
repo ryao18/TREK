@@ -3,7 +3,6 @@ import crypto from 'crypto';
 const TTL: Record<string, number> = {
   ws: 30_000,
   download: 60_000,
-  immich: 60_000,
 };
 
 const MAX_STORE_SIZE = 10_000;

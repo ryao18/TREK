@@ -59,3 +59,4 @@ coverage
 *.tgz
 
 .scannerwork
+test-data

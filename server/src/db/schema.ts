@@ -18,6 +18,12 @@ function createTables(db: Database.Database): void {
       mfa_enabled INTEGER DEFAULT 0,
       mfa_secret TEXT,
       mfa_backup_codes TEXT,
+      immich_url TEXT,
+      immich_access_token TEXT,
+      synology_url TEXT,
+      synology_username TEXT,
+      synology_password TEXT,
+      synology_sid TEXT,
       must_change_password INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -166,6 +172,7 @@ function createTables(db: Database.Database): void {
       place_id INTEGER REFERENCES places(id) ON DELETE SET NULL,
       assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
+      accommodation_id TEXT,
       reservation_time TEXT,
       reservation_end_time TEXT,
       location TEXT,
@@ -225,6 +232,30 @@ function createTables(db: Database.Database): void {
       enabled INTEGER DEFAULT 0,
       config TEXT DEFAULT '{}',
       sort_order INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS photo_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      icon TEXT DEFAULT 'Image',
+      enabled INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS photo_provider_fields (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider_id TEXT NOT NULL REFERENCES photo_providers(id) ON DELETE CASCADE,
+      field_key TEXT NOT NULL,
+      label TEXT NOT NULL,
+      input_type TEXT NOT NULL DEFAULT 'text',
+      placeholder TEXT,
+      required INTEGER DEFAULT 0,
+      secret INTEGER DEFAULT 0,
+      settings_key TEXT,
+      payload_key TEXT,
+      sort_order INTEGER DEFAULT 0,
+      UNIQUE(provider_id, field_key)
     );
 
     -- Vacay addon tables
@@ -456,6 +487,15 @@ function createTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, is_read, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_notifications_recipient_created ON notifications(recipient_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS notification_channel_preferences (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (user_id, event_type, channel)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ncp_user ON notification_channel_preferences(user_id);
   `);
 }
 

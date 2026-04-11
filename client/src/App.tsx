@@ -43,7 +43,8 @@ function ProtectedRoute({ children, adminRequired = false }: ProtectedRouteProps
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    const redirectParam = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/login?redirect=${redirectParam}`} replace />
   }
 
   if (
@@ -81,7 +82,7 @@ export default function App() {
   const { loadSettings } = useSettingsStore()
 
   useEffect(() => {
-    if (!location.pathname.startsWith('/shared/')) {
+    if (!location.pathname.startsWith('/shared/') && !location.pathname.startsWith('/login')) {
       loadUser()
     }
     authApi.getAppConfig().then(async (config: { demo_mode?: boolean; dev_mode?: boolean; has_maps_key?: boolean; version?: string; timezone?: string; require_mfa?: boolean; trip_reminders_enabled?: boolean; permissions?: Record<string, PermissionLevel> }) => {

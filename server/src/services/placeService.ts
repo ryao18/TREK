@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+import { XMLParser } from 'fast-xml-parser';
 import { db, getPlaceWithTags } from '../db/database';
 import { loadTagsByPlaceIds } from './queryHelpers';
 import { Place } from '../types';
@@ -12,33 +12,6 @@ interface PlaceWithCategory extends Place {
 interface UnsplashSearchResponse {
   results?: { id: string; urls?: { regular?: string; thumb?: string }; description?: string; alt_description?: string; user?: { name?: string }; links?: { html?: string } }[];
   errors?: string[];
-}
-
-// ---------------------------------------------------------------------------
-// GPX helpers
-// ---------------------------------------------------------------------------
-
-function parseCoords(attrs: string): { lat: number; lng: number } | null {
-  const latMatch = attrs.match(/lat=["']([^"']+)["']/i);
-  const lonMatch = attrs.match(/lon=["']([^"']+)["']/i);
-  if (!latMatch || !lonMatch) return null;
-  const lat = parseFloat(latMatch[1]);
-  const lng = parseFloat(lonMatch[1]);
-  return (!isNaN(lat) && !isNaN(lng)) ? { lat, lng } : null;
-}
-
-function stripCdata(s: string) {
-  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
-}
-
-function extractName(body: string) {
-  const m = body.match(/<name[^>]*>([\s\S]*?)<\/name>/i);
-  return m ? stripCdata(m[1]) : null;
-}
-
-function extractDesc(body: string) {
-  const m = body.match(/<desc[^>]*>([\s\S]*?)<\/desc>/i);
-  return m ? stripCdata(m[1]) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -244,57 +217,62 @@ export function deletePlace(tripId: string, placeId: string): boolean {
 // Import GPX
 // ---------------------------------------------------------------------------
 
-export function importGpx(tripId: string, fileBuffer: Buffer) {
-  const xml = fileBuffer.toString('utf-8');
+const gpxParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  isArray: (name) => ['wpt', 'trkpt', 'rtept', 'trk', 'trkseg', 'rte'].includes(name),
+});
 
-  const waypoints: { name: string; lat: number; lng: number; description: string | null; routeGeometry?: string }[] = [];
+export function importGpx(tripId: string, fileBuffer: Buffer) {
+  const parsed = gpxParser.parse(fileBuffer.toString('utf-8'));
+  const gpx = parsed?.gpx;
+  if (!gpx) return null;
+
+  const str = (v: unknown) => (v != null ? String(v).trim() : null);
+  const num = (v: unknown) => { const n = parseFloat(String(v)); return isNaN(n) ? null : n; };
+
+  type WaypointEntry = { name: string; lat: number; lng: number; description: string | null; routeGeometry?: string };
+  const waypoints: WaypointEntry[] = [];
 
   // 1) Parse <wpt> elements (named waypoints / POIs)
-  const wptRegex = /<wpt\s([^>]+)>([\s\S]*?)<\/wpt>/gi;
-  let match;
-  while ((match = wptRegex.exec(xml)) !== null) {
-    const coords = parseCoords(match[1]);
-    if (!coords) continue;
-    const name = extractName(match[2]) || `Waypoint ${waypoints.length + 1}`;
-    waypoints.push({ ...coords, name, description: extractDesc(match[2]) });
+  for (const wpt of gpx.wpt ?? []) {
+    const lat = num(wpt['@_lat']);
+    const lng = num(wpt['@_lon']);
+    if (lat === null || lng === null) continue;
+    waypoints.push({ lat, lng, name: str(wpt.name) || `Waypoint ${waypoints.length + 1}`, description: str(wpt.desc) });
   }
 
-  // 2) If no <wpt>, try <rtept> (route points)
+  // 2) If no <wpt>, try <rte> route points as individual places
   if (waypoints.length === 0) {
-    const rteptRegex = /<rtept\s([^>]+)>([\s\S]*?)<\/rtept>/gi;
-    while ((match = rteptRegex.exec(xml)) !== null) {
-      const coords = parseCoords(match[1]);
-      if (!coords) continue;
-      const name = extractName(match[2]) || `Route Point ${waypoints.length + 1}`;
-      waypoints.push({ ...coords, name, description: extractDesc(match[2]) });
+    for (const rte of gpx.rte ?? []) {
+      for (const rtept of rte.rtept ?? []) {
+        const lat = num(rtept['@_lat']);
+        const lng = num(rtept['@_lon']);
+        if (lat === null || lng === null) continue;
+        waypoints.push({ lat, lng, name: str(rtept.name) || `Route Point ${waypoints.length + 1}`, description: str(rtept.desc) });
+      }
     }
   }
 
-  // 3) If still nothing, extract full track geometry from <trkpt>
-  if (waypoints.length === 0) {
-    const trackNameMatch = xml.match(/<trk[^>]*>[\s\S]*?<name[^>]*>([\s\S]*?)<\/name>/i);
-    const trackName = trackNameMatch?.[1]?.trim() || 'GPX Track';
-    const trackDesc = (() => { const m = xml.match(/<trk[^>]*>[\s\S]*?<desc[^>]*>([\s\S]*?)<\/desc>/i); return m ? stripCdata(m[1]) : null; })();
-    const trkptRegex = /<trkpt\s([^>]*?)(?:\/>|>([\s\S]*?)<\/trkpt>)/gi;
+  // 3) Extract full track geometry from <trk> (always, even if <wpt> were found)
+  for (const trk of gpx.trk ?? []) {
     const trackPoints: { lat: number; lng: number; ele: number | null }[] = [];
-    while ((match = trkptRegex.exec(xml)) !== null) {
-      const coords = parseCoords(match[1]);
-      if (!coords) continue;
-      const eleMatch = match[2]?.match(/<ele[^>]*>([\s\S]*?)<\/ele>/i);
-      const ele = eleMatch ? parseFloat(eleMatch[1]) : null;
-      trackPoints.push({ ...coords, ele: (ele !== null && !isNaN(ele)) ? ele : null });
+    for (const seg of trk.trkseg ?? []) {
+      for (const pt of seg.trkpt ?? []) {
+        const lat = num(pt['@_lat']);
+        const lng = num(pt['@_lon']);
+        if (lat === null || lng === null) continue;
+        trackPoints.push({ lat, lng, ele: num(pt.ele) });
+      }
     }
-    if (trackPoints.length > 0) {
-      const start = trackPoints[0];
-      const hasAllEle = trackPoints.every(p => p.ele !== null);
-      const routeGeometry = trackPoints.map(p => hasAllEle ? [p.lat, p.lng, p.ele] : [p.lat, p.lng]);
-      waypoints.push({ ...start, name: trackName, description: trackDesc, routeGeometry: JSON.stringify(routeGeometry) });
-    }
+    if (trackPoints.length === 0) continue;
+    const start = trackPoints[0];
+    const hasAllEle = trackPoints.every(p => p.ele !== null);
+    const routeGeometry = trackPoints.map(p => hasAllEle ? [p.lat, p.lng, p.ele] : [p.lat, p.lng]);
+    waypoints.push({ lat: start.lat, lng: start.lng, name: str(trk.name) || 'GPX Track', description: str(trk.desc), routeGeometry: JSON.stringify(routeGeometry) });
   }
 
-  if (waypoints.length === 0) {
-    return null;
-  }
+  if (waypoints.length === 0) return null;
 
   const insertStmt = db.prepare(`
     INSERT INTO places (trip_id, name, description, lat, lng, transport_mode, route_geometry)

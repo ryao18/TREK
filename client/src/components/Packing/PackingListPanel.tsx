@@ -68,6 +68,134 @@ function katColor(kat, allCategories) {
   return KAT_COLORS[Math.abs(h) % KAT_COLORS.length]
 }
 
+interface PackingBag { id: number; trip_id: number; name: string; color: string; weight_limit_grams: number | null; user_id?: number | null; assigned_username?: string | null }
+
+// ── Bag Card ──────────────────────────────────────────────────────────────
+
+interface BagCardProps {
+  bag: PackingBag; bagItems: PackingItem[]; totalWeight: number; pct: number; tripId: number
+  tripMembers: TripMember[]; canEdit: boolean; onDelete: () => void
+  onUpdate: (bagId: number, data: Record<string, any>) => void
+  onSetMembers: (bagId: number, userIds: number[]) => void; t: any; compact?: boolean
+}
+
+function BagCard({ bag, bagItems, totalWeight, pct, tripId, tripMembers, canEdit, onDelete, onUpdate, onSetMembers, t, compact }: BagCardProps) {
+  const [editingName, setEditingName] = useState(false)
+  const [nameVal, setNameVal] = useState(bag.name)
+  const [showUserPicker, setShowUserPicker] = useState(false)
+  useEffect(() => setNameVal(bag.name), [bag.name])
+
+  const saveName = () => {
+    if (nameVal.trim() && nameVal.trim() !== bag.name) onUpdate(bag.id, { name: nameVal.trim() })
+    setEditingName(false)
+  }
+
+  const memberIds = (bag.members || []).map(m => m.user_id)
+  const toggleMember = (userId: number) => {
+    const next = memberIds.includes(userId) ? memberIds.filter(id => id !== userId) : [...memberIds, userId]
+    onSetMembers(bag.id, next)
+  }
+
+  const sz = compact ? { dot: 10, name: 12, weight: 11, bar: 6, count: 10, gap: 6, mb: 14, icon: 11, avatar: 18 } : { dot: 12, name: 14, weight: 13, bar: 8, count: 11, gap: 8, mb: 16, icon: 13, avatar: 22 }
+
+  return (
+    <div style={{ marginBottom: sz.mb }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sz.gap, marginBottom: 4 }}>
+        <span style={{ width: sz.dot, height: sz.dot, borderRadius: '50%', background: bag.color, flexShrink: 0 }} />
+        {editingName && canEdit ? (
+          <input autoFocus value={nameVal} onChange={e => setNameVal(e.target.value)}
+            onBlur={saveName} onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { setEditingName(false); setNameVal(bag.name) } }}
+            style={{ flex: 1, fontSize: sz.name, fontWeight: 600, padding: '1px 4px', borderRadius: 4, border: '1px solid var(--border-primary)', outline: 'none', fontFamily: 'inherit', color: 'var(--text-primary)', background: 'transparent' }} />
+        ) : (
+          <span onClick={() => canEdit && setEditingName(true)} style={{ flex: 1, fontSize: sz.name, fontWeight: 600, color: compact ? 'var(--text-secondary)' : 'var(--text-primary)', cursor: canEdit ? 'text' : 'default' }}>{bag.name}</span>
+        )}
+        <span style={{ fontSize: sz.weight, color: 'var(--text-faint)', fontWeight: 500 }}>
+          {totalWeight >= 1000 ? `${(totalWeight / 1000).toFixed(1)} kg` : `${totalWeight} g`}
+        </span>
+        {canEdit && <button onClick={onDelete} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)', display: 'flex' }}><X size={sz.icon} /></button>}
+      </div>
+      {/* Members */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap', position: 'relative' }}>
+        {(bag.members || []).map(m => (
+          <span key={m.user_id} title={m.username} onClick={() => canEdit && toggleMember(m.user_id)} style={{ cursor: canEdit ? 'pointer' : 'default', display: 'inline-flex' }}>
+            {m.avatar ? (
+              <img src={m.avatar} alt={m.username} style={{ width: sz.avatar, height: sz.avatar, borderRadius: '50%', objectFit: 'cover', border: `1.5px solid ${bag.color}`, boxSizing: 'border-box' }} />
+            ) : (
+              <span style={{ width: sz.avatar, height: sz.avatar, borderRadius: '50%', background: bag.color + '25', color: bag.color, fontSize: sz.avatar * 0.45, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${bag.color}`, boxSizing: 'border-box' }}>
+                {m.username[0].toUpperCase()}
+              </span>
+            )}
+          </span>
+        ))}
+        {canEdit && (
+          <button onClick={() => setShowUserPicker(v => !v)} style={{ width: sz.avatar, height: sz.avatar, borderRadius: '50%', border: '1.5px dashed var(--border-primary)', background: 'none', color: 'var(--text-faint)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, boxSizing: 'border-box' }}>
+            <Plus size={sz.avatar * 0.5} />
+          </button>
+        )}
+        {showUserPicker && (
+          <div style={{ position: 'absolute', left: 0, top: '100%', marginTop: 4, zIndex: 50, background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', padding: 4, minWidth: 160 }}>
+            {tripMembers.map(m => {
+              const isSelected = memberIds.includes(m.id)
+              return (
+                <button key={m.id} onClick={() => { toggleMember(m.id); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 10px', borderRadius: 6, border: 'none', background: isSelected ? 'var(--bg-tertiary)' : 'transparent', cursor: 'pointer', fontSize: 11, color: 'var(--text-primary)', fontFamily: 'inherit' }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-secondary)' }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}>
+                  {m.avatar ? (
+                    <img src={m.avatar} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--bg-tertiary)', fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-faint)' }}>
+                      {m.username[0].toUpperCase()}
+                    </span>
+                  )}
+                  <span style={{ flex: 1, fontWeight: isSelected ? 600 : 400 }}>{m.username}</span>
+                  {isSelected && <Check size={12} style={{ color: '#10b981' }} />}
+                </button>
+              )
+            })}
+            {tripMembers.length === 0 && <div style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text-faint)' }}>{t('packing.noMembers')}</div>}
+            <div style={{ borderTop: '1px solid var(--border-secondary)', marginTop: 4, paddingTop: 4 }}>
+              <button onClick={() => setShowUserPicker(false)} style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: 'var(--text-faint)', fontFamily: 'inherit', textAlign: 'center' }}>
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ height: sz.bar, background: 'var(--bg-tertiary)', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ height: '100%', borderRadius: 99, background: bag.color, width: `${pct}%`, transition: 'width 0.3s' }} />
+      </div>
+      <div style={{ fontSize: sz.count, color: 'var(--text-faint)', marginTop: 2 }}>{bagItems.length} {t('admin.packingTemplates.items')}</div>
+    </div>
+  )
+}
+
+// ── Quantity Input ─────────────────────────────────────────────────────────
+
+function QuantityInput({ value, onSave }: { value: number; onSave: (qty: number) => void }) {
+  const [local, setLocal] = useState(String(value))
+  useEffect(() => setLocal(String(value)), [value])
+
+  const commit = () => {
+    const qty = Math.max(1, Math.min(999, Number(local) || 1))
+    setLocal(String(qty))
+    if (qty !== value) onSave(qty)
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2, border: '1px solid var(--border-primary)', borderRadius: 8, padding: '3px 6px', background: 'transparent', flexShrink: 0 }}>
+      <input
+        type="text" inputMode="numeric"
+        value={local}
+        onChange={e => setLocal(e.target.value.replace(/\D/g, ''))}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur() } }}
+        style={{ width: 24, border: 'none', outline: 'none', background: 'transparent', fontSize: 12, textAlign: 'right', fontFamily: 'inherit', color: 'var(--text-secondary)', padding: 0 }}
+      />
+      <span style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 500 }}>x</span>
+    </div>
+  )
+}
 
 // ── Artikel-Zeile ──────────────────────────────────────────────────────────
 interface ArtikelZeileProps {
@@ -156,6 +284,9 @@ function ArtikelZeile({ item, tripId, categories, onCategoryChange, bagTrackingE
           {item.name}
         </span>
       )}
+
+      {/* Quantity */}
+      {canEdit && <QuantityInput value={item.quantity || 1} onSave={qty => updatePackingItem(tripId, item.id, { quantity: qty })} />}
 
       {/* Weight + Bag (when enabled) */}
       {bagTrackingEnabled && (
@@ -775,10 +906,26 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
     } catch { toast.error(t('packing.toast.deleteError')) }
   }
 
+  const handleUpdateBag = async (bagId: number, data: Record<string, any>) => {
+    try {
+      const result = await packingApi.updateBag(tripId, bagId, data)
+      setBags(prev => prev.map(b => b.id === bagId ? { ...b, ...result.bag } : b))
+    } catch { toast.error(t('common.error')) }
+  }
+
+  const handleSetBagMembers = async (bagId: number, userIds: number[]) => {
+    try {
+      const result = await packingApi.setBagMembers(tripId, bagId, userIds)
+      setBags(prev => prev.map(b => b.id === bagId ? { ...b, members: result.members } : b))
+    } catch { toast.error(t('common.error')) }
+  }
+
   // Templates
   const [availableTemplates, setAvailableTemplates] = useState<PackingTemplateSummary[]>([])
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const [applyingTemplate, setApplyingTemplate] = useState(false)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [saveTemplateName, setSaveTemplateName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [importText, setImportText] = useState('')
   const csvInputRef = useRef<HTMLInputElement>(null)
@@ -812,27 +959,37 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
     }
   }
 
-  const handleSaveTemplate = async () => {
-    const suggested = `${currentUser?.username || 'My'} Template`
-    const name = window.prompt('Template name', suggested)?.trim()
-    if (!name) return
+  const handleSaveAsTemplate = async () => {
+    if (!saveTemplateName.trim()) return
     try {
-      const result = await packingApi.saveTemplate(tripId, name)
-      setAvailableTemplates(prev => [{
-        ...result.template,
-        item_count: visibleItems.length,
-        created_by_name: currentUser?.username || result.template.created_by_name || null,
-      }, ...prev])
-      toast.success('Template saved')
+      await packingApi.saveAsTemplate(tripId, saveTemplateName.trim())
+      toast.success(t('packing.templateSaved'))
+      setShowSaveTemplate(false)
+      setSaveTemplateName('')
+      adminApi.packingTemplates().then(d => setAvailableTemplates(d.templates || [])).catch(() => {})
     } catch {
-      toast.error(t('packing.toast.saveError'))
+      toast.error(t('common.error'))
     }
   }
 
+  // Parse CSV line respecting quoted values (e.g. "Shirt, blue" stays as one field)
+  const parseCsvLine = (line: string): string[] => {
+    const parts: string[] = []
+    let current = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') { inQuotes = !inQuotes; continue }
+      if (!inQuotes && (ch === ',' || ch === ';' || ch === '\t')) { parts.push(current.trim()); current = ''; continue }
+      current += ch
+    }
+    parts.push(current.trim())
+    return parts
+  }
   const parseImportLines = (text: string) => {
     return text.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
       // Format: Category, Name, Weight (optional), Bag (optional), checked/unchecked (optional)
-      const parts = line.split(/[,;\t]/).map(s => s.trim())
+      const parts = parseCsvLine(line)
       if (parts.length >= 2) {
         const category = parts[0]
         const name = parts[1]
@@ -945,6 +1102,32 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
                       </button>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+            {canEdit && items.length > 0 && (
+              <div style={{ position: 'relative' }}>
+                {showSaveTemplate ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="text" autoFocus
+                      value={saveTemplateName}
+                      onChange={e => setSaveTemplateName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveAsTemplate(); if (e.key === 'Escape') { setShowSaveTemplate(false); setSaveTemplateName('') } }}
+                      placeholder={t('packing.templateName')}
+                      style={{ fontSize: 12, padding: '5px 10px', borderRadius: 99, border: '1px solid var(--border-primary)', outline: 'none', fontFamily: 'inherit', width: 140, background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                    />
+                    <button onClick={handleSaveAsTemplate} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#10b981' }}><Check size={14} /></button>
+                    <button onClick={() => { setShowSaveTemplate(false); setSaveTemplateName('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)' }}><X size={14} /></button>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowSaveTemplate(true)} style={{
+                    display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99,
+                    border: '1px solid var(--border-primary)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                    background: 'var(--bg-card)', color: 'var(--text-muted)',
+                  }}>
+                    <FolderPlus size={12} /> <span className="hidden sm:inline">{t('packing.saveAsTemplate')}</span>
+                  </button>
                 )}
               </div>
             )}
@@ -1097,25 +1280,7 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
             const maxWeight = bag.weight_limit_grams || Math.max(...visibleBags.map(b => visibleItems.filter(i => i.bag_id === b.id).reduce((s, i) => s + (i.weight_grams || 0), 0)), 1)
             const pct = Math.min(100, Math.round((totalWeight / maxWeight) * 100))
             return (
-              <div key={bag.id} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: bag.color, flexShrink: 0 }} />
-                  <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{bag.name}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-faint)', fontWeight: 500 }}>
-                    {totalWeight >= 1000 ? `${(totalWeight / 1000).toFixed(1)} kg` : `${totalWeight} g`}
-                  </span>
-                  {viewCanEdit && (
-                  <button onClick={() => handleDeleteBag(bag.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)', display: 'flex' }}>
-                    <X size={11} />
-                  </button>
-                  )}
-                </div>
-                <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: 99, background: bag.color, width: `${pct}%`, transition: 'width 0.3s' }} />
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>{bagItems.length} {t('admin.packingTemplates.items')}</div>
-              </div>
+              <BagCard key={bag.id} bag={bag} bagItems={bagItems} totalWeight={totalWeight} pct={pct} tripId={tripId} tripMembers={tripMembers} canEdit={viewCanEdit} onDelete={() => handleDeleteBag(bag.id)} onUpdate={handleUpdateBag} onSetMembers={handleSetBagMembers} t={t} compact />
             )
           })}
 
@@ -1184,25 +1349,7 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
               const maxWeight = Math.max(...visibleBags.map(b => visibleItems.filter(i => i.bag_id === b.id).reduce((s, i) => s + (i.weight_grams || 0), 0)), 1)
               const pct = Math.min(100, Math.round((totalWeight / maxWeight) * 100))
               return (
-                <div key={bag.id} style={{ marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: bag.color, flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{bag.name}</span>
-                    <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500 }}>
-                      {totalWeight >= 1000 ? `${(totalWeight / 1000).toFixed(1)} kg` : `${totalWeight} g`}
-                    </span>
-                    {viewCanEdit && (
-                    <button onClick={() => handleDeleteBag(bag.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-faint)', display: 'flex' }}>
-                      <Trash2 size={13} />
-                    </button>
-                    )}
-                  </div>
-                  <div style={{ height: 8, background: 'var(--bg-tertiary)', borderRadius: 99, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', borderRadius: 99, background: bag.color, width: `${pct}%`, transition: 'width 0.3s' }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 3 }}>{bagItems.length} {t('admin.packingTemplates.items')}</div>
-                </div>
+                <BagCard key={bag.id} bag={bag} bagItems={bagItems} totalWeight={totalWeight} pct={pct} tripId={tripId} tripMembers={tripMembers} canEdit={viewCanEdit} onDelete={() => handleDeleteBag(bag.id)} onUpdate={handleUpdateBag} onSetMembers={handleSetBagMembers} t={t} />
               )
             })}
 
@@ -1276,18 +1423,29 @@ export default function PackingListPanel({ tripId, items }: PackingListPanelProp
           }} onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{t('packing.importTitle')}</div>
             <div style={{ fontSize: 12, color: 'var(--text-faint)', lineHeight: 1.5 }}>{t('packing.importHint')}</div>
-            <textarea
-              value={importText}
-              onChange={e => setImportText(e.target.value)}
-              rows={10}
-              placeholder={t('packing.importPlaceholder')}
-              style={{
-                width: '100%', border: '1px solid var(--border-primary)', borderRadius: 10,
-                padding: '10px 12px', fontSize: 13, fontFamily: 'monospace',
-                outline: 'none', boxSizing: 'border-box', color: 'var(--text-primary)',
-                background: 'var(--bg-input)', resize: 'vertical', lineHeight: 1.5,
-              }}
-            />
+            <div style={{ display: 'flex', border: '1px solid var(--border-primary)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-input)' }}>
+              <div style={{
+                padding: '10px 0', fontSize: 13, fontFamily: 'monospace', lineHeight: 1.5,
+                color: 'var(--text-faint)', textAlign: 'right', userSelect: 'none',
+                background: 'var(--bg-hover)', borderRight: '1px solid var(--border-faint)',
+                minWidth: 32, flexShrink: 0,
+              }}>
+                {(importText || ' ').split('\n').map((_, i) => (
+                  <div key={i} style={{ padding: '0 6px' }}>{i + 1}</div>
+                ))}
+              </div>
+              <textarea
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                rows={10}
+                placeholder={t('packing.importPlaceholder')}
+                style={{
+                  flex: 1, border: 'none', padding: '10px 12px', fontSize: 13, fontFamily: 'monospace',
+                  outline: 'none', boxSizing: 'border-box', color: 'var(--text-primary)',
+                  background: 'transparent', resize: 'vertical', lineHeight: 1.5,
+                }}
+              />
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <input ref={csvInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={handleCsvFile} />

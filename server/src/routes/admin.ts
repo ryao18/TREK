@@ -3,6 +3,7 @@ import { authenticate, adminOnly } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 import * as svc from '../services/adminService';
+import { getPreferencesMatrix, setAdminPreferences } from '../services/notificationPreferencesService';
 
 const router = express.Router();
 
@@ -130,6 +131,19 @@ router.get('/github-releases', async (req: Request, res: Response) => {
 
 router.get('/version-check', async (_req: Request, res: Response) => {
   res.json(await svc.checkVersion());
+});
+
+// ── Admin notification preferences ────────────────────────────────────────
+
+router.get('/notification-preferences', (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  res.json(getPreferencesMatrix(authReq.user.id, authReq.user.role, 'admin'));
+});
+
+router.put('/notification-preferences', (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  setAdminPreferences(authReq.user.id, req.body);
+  res.json(getPreferencesMatrix(authReq.user.id, authReq.user.role, 'admin'));
 });
 
 // ── Invite Tokens ──────────────────────────────────────────────────────────
@@ -313,38 +327,22 @@ router.post('/rotate-jwt-secret', (req: Request, res: Response) => {
 
 // ── Dev-only: test notification endpoints ──────────────────────────────────────
 if (process.env.NODE_ENV === 'development') {
-  const { createNotification } = require('../services/inAppNotifications');
+  const { send } = require('../services/notificationService');
 
-  router.post('/dev/test-notification', (req: Request, res: Response) => {
+  router.post('/dev/test-notification', async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
-    const { type, scope, target, title_key, text_key, title_params, text_params,
-            positive_text_key, negative_text_key, positive_callback, negative_callback,
-            navigate_text_key, navigate_target } = req.body;
-
-    const input: Record<string, unknown> = {
-      type: type || 'simple',
-      scope: scope || 'user',
-      target: target ?? authReq.user.id,
-      sender_id: authReq.user.id,
-      title_key: title_key || 'notifications.test.title',
-      title_params: title_params || {},
-      text_key: text_key || 'notifications.test.text',
-      text_params: text_params || {},
-    };
-
-    if (type === 'boolean') {
-      input.positive_text_key = positive_text_key || 'notifications.test.accept';
-      input.negative_text_key = negative_text_key || 'notifications.test.decline';
-      input.positive_callback = positive_callback || { action: 'test_approve', payload: {} };
-      input.negative_callback = negative_callback || { action: 'test_deny', payload: {} };
-    } else if (type === 'navigate') {
-      input.navigate_text_key = navigate_text_key || 'notifications.test.goThere';
-      input.navigate_target = navigate_target || '/dashboard';
-    }
+    const { event = 'trip_reminder', scope = 'user', targetId, params = {}, inApp } = req.body;
 
     try {
-      const ids = createNotification(input);
-      res.json({ success: true, notification_ids: ids });
+      await send({
+        event,
+        actorId: authReq.user.id,
+        scope,
+        targetId: targetId ?? authReq.user.id,
+        params: { actor: authReq.user.email, ...params },
+        inApp,
+      });
+      res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }

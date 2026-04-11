@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
 // Prevent the module-level setInterval from running during tests
 vi.useFakeTimers();
 
-// Mock node-fetch to prevent real HTTP requests
-vi.mock('node-fetch', () => ({ default: vi.fn() }));
+// Prevent real HTTP requests
+vi.stubGlobal('fetch', vi.fn());
+
+afterAll(() => vi.unstubAllGlobals());
 
 import { estimateCondition, cacheKey } from '../../../src/services/weatherService';
 

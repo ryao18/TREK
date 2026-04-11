@@ -14,6 +14,7 @@ router.put('/', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { key, value } = req.body;
   if (!key) return res.status(400).json({ error: 'Key is required' });
+  if (value === '••••••••') return res.json({ success: true, key, unchanged: true });
   settingsService.upsertSetting(authReq.user.id, key, value);
   res.json({ success: true, key, value });
 });

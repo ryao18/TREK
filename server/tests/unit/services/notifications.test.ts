@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, afterAll, beforeEach } from 'vitest';
 
 vi.mock('../../../src/db/database', () => ({
   db: { prepare: () => ({ get: vi.fn(() => undefined), all: vi.fn(() => []) }) },
@@ -16,9 +16,17 @@ vi.mock('../../../src/services/auditLog', () => ({
   getClientIp: vi.fn(),
 }));
 vi.mock('nodemailer', () => ({ default: { createTransport: vi.fn(() => ({ sendMail: vi.fn() })) } }));
-vi.mock('node-fetch', () => ({ default: vi.fn() }));
+vi.stubGlobal('fetch', vi.fn());
 
-import { getEventText, buildEmailHtml, buildWebhookBody } from '../../../src/services/notifications';
+// ssrfGuard is mocked per-test in the SSRF describe block; default passes all
+vi.mock('../../../src/utils/ssrfGuard', () => ({
+  checkSsrf: vi.fn(async () => ({ allowed: true, isPrivate: false, resolvedIp: '1.2.3.4' })),
+  createPinnedDispatcher: vi.fn(() => ({})),
+}));
+
+import { getEventText, buildEmailHtml, buildWebhookBody, sendWebhook } from '../../../src/services/notifications';
+import { checkSsrf } from '../../../src/utils/ssrfGuard';
+import { logError } from '../../../src/services/auditLog';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -193,3 +201,121 @@ describe('buildEmailHtml', () => {
     expect(unknown).toContain('notifications enabled in TREK');
   });
 });
+
+// ── SEC: XSS escaping in buildEmailHtml ──────────────────────────────────────
+
+describe('buildEmailHtml XSS prevention (SEC-016)', () => {
+  it('escapes HTML special characters in subject', () => {
+    const html = buildEmailHtml('<script>alert(1)</script>', 'Body', 'en');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('escapes HTML special characters in body', () => {
+    const html = buildEmailHtml('Subject', '<img src=x onerror=alert(1)>', 'en');
+    expect(html).toContain('&lt;img');
+    expect(html).not.toContain('<img src=x');
+  });
+
+  it('escapes double quotes in subject to prevent attribute injection', () => {
+    const html = buildEmailHtml('He said "hello"', 'Body', 'en');
+    expect(html).toContain('&quot;');
+    expect(html).not.toContain('"hello"');
+  });
+
+  it('escapes ampersands in body', () => {
+    const html = buildEmailHtml('Subject', 'a & b', 'en');
+    expect(html).toContain('&amp;');
+    expect(html).not.toMatch(/>[^<]*a & b[^<]*</);
+  });
+
+  it('escapes user-controlled actor and preview in collab_message body', () => {
+    const { body } = getEventText('en', 'collab_message', {
+      trip: 'MyTrip',
+      actor: '<evil>',
+      preview: '<script>xss()</script>',
+    });
+    const html = buildEmailHtml('Subject', body, 'en');
+    expect(html).not.toContain('<evil>');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;evil&gt;');
+    expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+// ── SEC: SSRF protection in sendWebhook ──────────────────────────────────────
+
+describe('sendWebhook SSRF protection (SEC-017)', () => {
+  const payload = { event: 'test', title: 'T', body: 'B' };
+
+  beforeEach(() => {
+    vi.mocked(logError).mockClear();
+  });
+
+  it('allows a public URL and calls fetch', async () => {
+    const mockFetch = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    mockFetch.mockResolvedValueOnce({ ok: true, text: async () => '' } as never);
+    vi.mocked(checkSsrf).mockResolvedValueOnce({ allowed: true, isPrivate: false, resolvedIp: '1.2.3.4' });
+
+    const result = await sendWebhook('https://example.com/hook', payload);
+    expect(result).toBe(true);
+    expect(mockFetch).toHaveBeenCalled();
+  });
+
+  it('blocks loopback address and returns false', async () => {
+    vi.mocked(checkSsrf).mockResolvedValueOnce({
+      allowed: false, isPrivate: true, resolvedIp: '127.0.0.1',
+      error: 'Requests to loopback and link-local addresses are not allowed',
+    });
+
+    const result = await sendWebhook('http://localhost/secret', payload);
+    expect(result).toBe(false);
+    expect(vi.mocked(logError)).toHaveBeenCalledWith(expect.stringContaining('SSRF'));
+  });
+
+  it('blocks cloud metadata endpoint (169.254.169.254) and returns false', async () => {
+    vi.mocked(checkSsrf).mockResolvedValueOnce({
+      allowed: false, isPrivate: true, resolvedIp: '169.254.169.254',
+      error: 'Requests to loopback and link-local addresses are not allowed',
+    });
+
+    const result = await sendWebhook('http://169.254.169.254/latest/meta-data', payload);
+    expect(result).toBe(false);
+    expect(vi.mocked(logError)).toHaveBeenCalledWith(expect.stringContaining('SSRF'));
+  });
+
+  it('blocks private network addresses and returns false', async () => {
+    vi.mocked(checkSsrf).mockResolvedValueOnce({
+      allowed: false, isPrivate: true, resolvedIp: '192.168.1.1',
+      error: 'Requests to private/internal network addresses are not allowed',
+    });
+
+    const result = await sendWebhook('http://192.168.1.1/hook', payload);
+    expect(result).toBe(false);
+    expect(vi.mocked(logError)).toHaveBeenCalledWith(expect.stringContaining('SSRF'));
+  });
+
+  it('blocks non-HTTP protocols', async () => {
+    vi.mocked(checkSsrf).mockResolvedValueOnce({
+      allowed: false, isPrivate: false,
+      error: 'Only HTTP and HTTPS URLs are allowed',
+    });
+
+    const result = await sendWebhook('file:///etc/passwd', payload);
+    expect(result).toBe(false);
+  });
+
+  it('does not call fetch when SSRF check blocks the URL', async () => {
+    const mockFetch = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    mockFetch.mockClear();
+    vi.mocked(checkSsrf).mockResolvedValueOnce({
+      allowed: false, isPrivate: true, resolvedIp: '127.0.0.1',
+      error: 'blocked',
+    });
+
+    await sendWebhook('http://localhost/secret', payload);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+afterAll(() => vi.unstubAllGlobals());

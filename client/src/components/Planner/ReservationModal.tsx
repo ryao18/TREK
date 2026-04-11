@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import apiClient from '../../api/client'
 import { useTripStore } from '../../store/tripStore'
+import { useAddonStore } from '../../store/addonStore'
 import Modal from '../shared/Modal'
 import CustomSelect from '../shared/CustomSelect'
 import { Plane, Hotel, Utensils, Train, Car, Ship, Ticket, FileText, Users, Paperclip, X, ExternalLink, Link2 } from 'lucide-react'
@@ -9,6 +10,7 @@ import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 import { CustomDatePicker } from '../shared/CustomDateTimePicker'
 import CustomTimePicker from '../shared/CustomTimePicker'
+import { getAuthUrl } from '../../api/authUrl'
 import type { Day, Place, Reservation, TripFile, AssignmentsMap, Accommodation } from '../../types'
 
 const TYPE_OPTIONS = [
@@ -71,11 +73,21 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
   const { t, locale } = useTranslation()
   const fileInputRef = useRef(null)
 
+  const isBudgetEnabled = useAddonStore(s => s.isEnabled('budget'))
+  const budgetItems = useTripStore(s => s.budgetItems)
+  const budgetCategories = useMemo(() => {
+    const cats = new Set<string>()
+    budgetItems.forEach(i => { if (i.category) cats.add(i.category) })
+    return Array.from(cats).sort()
+  }, [budgetItems])
+
   const [form, setForm] = useState({
     title: '', type: 'other', status: 'pending',
-    reservation_time: '', reservation_end_time: '', location: '', confirmation_number: '',
+    reservation_time: '', reservation_end_time: '', end_date: '', location: '', confirmation_number: '',
     notes: '', assignment_id: '', accommodation_id: '',
+    price: '', budget_category: '',
     meta_airline: '', meta_flight_number: '', meta_departure_airport: '', meta_arrival_airport: '',
+    meta_departure_timezone: '', meta_arrival_timezone: '',
     meta_train_number: '', meta_platform: '', meta_seat: '',
     meta_check_in_time: '', meta_check_out_time: '',
     hotel_place_id: '', hotel_start_day: '', hotel_end_day: '',
@@ -95,12 +107,24 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
   useEffect(() => {
     if (reservation) {
       const meta = typeof reservation.metadata === 'string' ? JSON.parse(reservation.metadata || '{}') : (reservation.metadata || {})
+      // Parse end_date from reservation_end_time if it's a full ISO datetime
+      const rawEnd = reservation.reservation_end_time || ''
+      let endDate = ''
+      let endTime = rawEnd
+      if (rawEnd.includes('T')) {
+        endDate = rawEnd.split('T')[0]
+        endTime = rawEnd.split('T')[1]?.slice(0, 5) || ''
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) {
+        endDate = rawEnd
+        endTime = ''
+      }
       setForm({
         title: reservation.title || '',
         type: reservation.type || 'other',
         status: reservation.status || 'pending',
         reservation_time: reservation.reservation_time ? reservation.reservation_time.slice(0, 16) : '',
-        reservation_end_time: reservation.reservation_end_time || '',
+        reservation_end_time: endTime,
+        end_date: endDate,
         location: reservation.location || '',
         confirmation_number: reservation.confirmation_number || '',
         notes: reservation.notes || '',
@@ -110,6 +134,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         meta_flight_number: meta.flight_number || '',
         meta_departure_airport: meta.departure_airport || '',
         meta_arrival_airport: meta.arrival_airport || '',
+        meta_departure_timezone: meta.departure_timezone || '',
+        meta_arrival_timezone: meta.arrival_timezone || '',
         meta_train_number: meta.train_number || '',
         meta_platform: meta.platform || '',
         meta_seat: meta.seat || '',
@@ -118,13 +144,17 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         hotel_place_id: (() => { const acc = accommodations.find(a => a.id == reservation.accommodation_id); return acc?.place_id || '' })(),
         hotel_start_day: (() => { const acc = accommodations.find(a => a.id == reservation.accommodation_id); return acc?.start_day_id || '' })(),
         hotel_end_day: (() => { const acc = accommodations.find(a => a.id == reservation.accommodation_id); return acc?.end_day_id || '' })(),
+        price: meta.price || '',
+        budget_category: (meta.budget_category && budgetItems.some(i => i.category === meta.budget_category)) ? meta.budget_category : '',
       })
     } else {
       setForm({
         title: '', type: 'other', status: 'pending',
-        reservation_time: '', reservation_end_time: '', location: '', confirmation_number: '',
+        reservation_time: '', reservation_end_time: '', end_date: '', location: '', confirmation_number: '',
         notes: '', assignment_id: '', accommodation_id: '',
+        price: '', budget_category: '',
         meta_airline: '', meta_flight_number: '', meta_departure_airport: '', meta_arrival_airport: '',
+        meta_departure_timezone: '', meta_arrival_timezone: '',
         meta_train_number: '', meta_platform: '', meta_seat: '',
         meta_check_in_time: '', meta_check_out_time: '',
       })
@@ -134,9 +164,37 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
 
   const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
 
+  // Validate that end datetime is after start datetime
+  const isEndBeforeStart = (() => {
+    if (!form.end_date || !form.reservation_time) return false
+    const startDate = form.reservation_time.split('T')[0]
+    const startTime = form.reservation_time.split('T')[1] || '00:00'
+    const endTime = form.reservation_end_time || '00:00'
+    // For flights, compare in UTC using timezone offsets
+    if (form.type === 'flight') {
+      const parseOffset = (tz: string): number | null => {
+        if (!tz) return null
+        const m = tz.trim().match(/^(?:UTC|GMT)?\s*([+-])(\d{1,2})(?::(\d{2}))?$/i)
+        if (!m) return null
+        const sign = m[1] === '+' ? 1 : -1
+        return sign * (parseInt(m[2]) * 60 + parseInt(m[3] || '0'))
+      }
+      const depOffset = parseOffset(form.meta_departure_timezone)
+      const arrOffset = parseOffset(form.meta_arrival_timezone)
+      if (depOffset === null || arrOffset === null) return false
+      const depMinutes = new Date(`${startDate}T${startTime}`).getTime() - depOffset * 60000
+      const arrMinutes = new Date(`${form.end_date}T${endTime}`).getTime() - arrOffset * 60000
+      return arrMinutes <= depMinutes
+    }
+    const startFull = `${startDate}T${startTime}`
+    const endFull = `${form.end_date}T${endTime}`
+    return endFull <= startFull
+  })()
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.title.trim()) return
+    if (isEndBeforeStart) { toast.error(t('reservations.validation.endBeforeStart')); return }
     setIsSaving(true)
     try {
       const metadata: Record<string, string> = {}
@@ -145,6 +203,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         if (form.meta_flight_number) metadata.flight_number = form.meta_flight_number
         if (form.meta_departure_airport) metadata.departure_airport = form.meta_departure_airport
         if (form.meta_arrival_airport) metadata.arrival_airport = form.meta_arrival_airport
+        if (form.meta_departure_timezone) metadata.departure_timezone = form.meta_departure_timezone
+        if (form.meta_arrival_timezone) metadata.arrival_timezone = form.meta_arrival_timezone
       } else if (form.type === 'hotel') {
         if (form.meta_check_in_time) metadata.check_in_time = form.meta_check_in_time
         if (form.meta_check_out_time) metadata.check_out_time = form.meta_check_out_time
@@ -153,14 +213,30 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         if (form.meta_platform) metadata.platform = form.meta_platform
         if (form.meta_seat) metadata.seat = form.meta_seat
       }
+      // Combine end_date + end_time into reservation_end_time
+      let combinedEndTime = form.reservation_end_time
+      if (form.end_date) {
+        combinedEndTime = form.reservation_end_time ? `${form.end_date}T${form.reservation_end_time}` : form.end_date
+      }
+      if (isBudgetEnabled) {
+        if (form.price) metadata.price = form.price
+        if (form.budget_category) metadata.budget_category = form.budget_category
+      }
       const saveData: Record<string, any> = {
         title: form.title, type: form.type, status: form.status,
-        reservation_time: form.reservation_time, reservation_end_time: form.reservation_end_time,
+        reservation_time: form.type === 'hotel' ? null : form.reservation_time,
+        reservation_end_time: form.type === 'hotel' ? null : combinedEndTime,
         location: form.location, confirmation_number: form.confirmation_number,
         notes: form.notes,
         assignment_id: form.assignment_id || null,
         accommodation_id: form.type === 'hotel' ? (form.accommodation_id || null) : null,
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
+      }
+      // Auto-create/update budget entry if price is set, or signal removal if cleared
+      if (isBudgetEnabled) {
+        saveData.create_budget_entry = form.price && parseFloat(form.price) > 0
+          ? { total_price: parseFloat(form.price), category: form.budget_category || t(`reservations.type.${form.type}`) || 'Other' }
+          : { total_price: 0 }
       }
       // If hotel with place + days, pass hotel data for auto-creation or update
       if (form.type === 'hotel' && form.hotel_place_id && form.hotel_start_day && form.hotel_end_day) {
@@ -258,10 +334,9 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
             placeholder={t('reservations.titlePlaceholder')} style={inputStyle} />
         </div>
 
-        {/* Assignment Picker + Date (hidden for hotels) */}
-        {form.type !== 'hotel' && (
-        <div style={{ display: 'flex', gap: 8 }}>
-          {assignmentOptions.length > 0 && (
+        {/* Assignment Picker (hidden for hotels) */}
+        {form.type !== 'hotel' && assignmentOptions.length > 0 && (
+        <div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <label style={labelStyle}>
                 <Link2 size={10} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />
@@ -288,54 +363,82 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
                 size="sm"
               />
             </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <label style={labelStyle}>{t('reservations.date')}</label>
-            <CustomDatePicker
-              value={(() => { const [d] = (form.reservation_time || '').split('T'); return d || '' })()}
-              onChange={d => {
-                const [, t] = (form.reservation_time || '').split('T')
-                set('reservation_time', d ? (t ? `${d}T${t}` : d) : '')
-              }}
-            />
-          </div>
         </div>
         )}
 
-        {/* Start Time + End Time + Status */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          {form.type !== 'hotel' && (
-            <>
+        {/* Start Date/Time + End Date/Time + Status (hidden for hotels) */}
+        {form.type !== 'hotel' && (
+        <>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={labelStyle}>{form.type === 'flight' ? t('reservations.departureDate') : form.type === 'car' ? t('reservations.pickupDate') : t('reservations.date')}</label>
+              <CustomDatePicker
+                value={(() => { const [d] = (form.reservation_time || '').split('T'); return d || '' })()}
+                onChange={d => {
+                  const [, t] = (form.reservation_time || '').split('T')
+                  set('reservation_time', d ? (t ? `${d}T${t}` : d) : '')
+                }}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={labelStyle}>{form.type === 'flight' ? t('reservations.departureTime') : form.type === 'car' ? t('reservations.pickupTime') : t('reservations.startTime')}</label>
+              <CustomTimePicker
+                value={(() => { const [, t] = (form.reservation_time || '').split('T'); return t || '' })()}
+                onChange={t => {
+                  const [d] = (form.reservation_time || '').split('T')
+                  const selectedDay = days.find(dy => dy.id === selectedDayId)
+                  const date = d || selectedDay?.date || new Date().toISOString().split('T')[0]
+                  set('reservation_time', t ? `${date}T${t}` : date)
+                }}
+              />
+            </div>
+            {form.type === 'flight' && (
               <div style={{ flex: 1, minWidth: 0 }}>
-                <label style={labelStyle}>{t('reservations.startTime')}</label>
-                <CustomTimePicker
-                  value={(() => { const [, t] = (form.reservation_time || '').split('T'); return t || '' })()}
-                  onChange={t => {
-                    const [d] = (form.reservation_time || '').split('T')
-                    const date = d || new Date().toISOString().split('T')[0]
-                    set('reservation_time', t ? `${date}T${t}` : date)
-                  }}
-                />
+                <label style={labelStyle}>{t('reservations.meta.departureTimezone')}</label>
+                <input type="text" value={form.meta_departure_timezone} onChange={e => set('meta_departure_timezone', e.target.value)}
+                  placeholder="e.g. CET, UTC+1" style={inputStyle} />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <label style={labelStyle}>{t('reservations.endTime')}</label>
-                <CustomTimePicker value={form.reservation_end_time} onChange={v => set('reservation_end_time', v)} />
-              </div>
-            </>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <label style={labelStyle}>{t('reservations.status')}</label>
-            <CustomSelect
-              value={form.status}
-              onChange={value => set('status', value)}
-              options={[
-                { value: 'pending', label: t('reservations.pending') },
-                { value: 'confirmed', label: t('reservations.confirmed') },
-              ]}
-              size="sm"
-            />
+            )}
           </div>
-        </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={labelStyle}>{form.type === 'flight' ? t('reservations.arrivalDate') : form.type === 'car' ? t('reservations.returnDate') : t('reservations.endDate')}</label>
+              <CustomDatePicker
+                value={form.end_date}
+                onChange={d => set('end_date', d || '')}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={labelStyle}>{form.type === 'flight' ? t('reservations.arrivalTime') : form.type === 'car' ? t('reservations.returnTime') : t('reservations.endTime')}</label>
+              <CustomTimePicker value={form.reservation_end_time} onChange={v => set('reservation_end_time', v)} />
+            </div>
+            {form.type === 'flight' && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={labelStyle}>{t('reservations.meta.arrivalTimezone')}</label>
+                <input type="text" value={form.meta_arrival_timezone} onChange={e => set('meta_arrival_timezone', e.target.value)}
+                  placeholder="e.g. JST, UTC+9" style={inputStyle} />
+              </div>
+            )}
+          </div>
+          {isEndBeforeStart && (
+            <div style={{ fontSize: 11, color: '#ef4444', marginTop: -6 }}>{t('reservations.validation.endBeforeStart')}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <label style={labelStyle}>{t('reservations.status')}</label>
+              <CustomSelect
+                value={form.status}
+                onChange={value => set('status', value)}
+                options={[
+                  { value: 'pending', label: t('reservations.pending') },
+                  { value: 'confirmed', label: t('reservations.confirmed') },
+                ]}
+                size="sm"
+              />
+            </div>
+          </div>
+        </>
+        )}
 
         {/* Location + Booking Code */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -424,8 +527,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
                 />
               </div>
             </div>
-            {/* Check-in/out times */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Check-in/out times + Status */}
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label style={labelStyle}>{t('reservations.meta.checkIn')}</label>
                 <CustomTimePicker value={form.meta_check_in_time} onChange={v => set('meta_check_in_time', v)} />
@@ -433,6 +536,18 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
               <div>
                 <label style={labelStyle}>{t('reservations.meta.checkOut')}</label>
                 <CustomTimePicker value={form.meta_check_out_time} onChange={v => set('meta_check_out_time', v)} />
+              </div>
+              <div>
+                <label style={labelStyle}>{t('reservations.status')}</label>
+                <CustomSelect
+                  value={form.status}
+                  onChange={value => set('status', value)}
+                  options={[
+                    { value: 'pending', label: t('reservations.pending') },
+                    { value: 'confirmed', label: t('reservations.confirmed') },
+                  ]}
+                  size="sm"
+                />
               </div>
             </div>
           </>
@@ -475,7 +590,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
               <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: 'var(--bg-secondary)', borderRadius: 8 }}>
                 <FileText size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_name}</span>
-                <a href={f.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-faint)', display: 'flex', flexShrink: 0 }}><ExternalLink size={11} /></a>
+                <a href="#" onClick={async (e) => { e.preventDefault(); const u = await getAuthUrl(f.url, 'download'); window.open(u, '_blank', 'noreferrer') }} style={{ color: 'var(--text-faint)', display: 'flex', flexShrink: 0, cursor: 'pointer' }}><ExternalLink size={11} /></a>
                 <button type="button" onClick={async () => {
                   // Always unlink, never delete the file
                   // Clear primary reservation_id if it points to this reservation
@@ -559,12 +674,45 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
           </div>
         </div>
 
+        {/* Price + Budget Category — only shown when budget addon is enabled */}
+        {isBudgetEnabled && (
+          <>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={labelStyle}>{t('reservations.price')}</label>
+                <input type="text" inputMode="decimal" value={form.price}
+                  onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) set('price', v) }}
+                  placeholder="0.00"
+                  style={inputStyle} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <label style={labelStyle}>{t('reservations.budgetCategory')}</label>
+                <CustomSelect
+                  value={form.budget_category}
+                  onChange={v => set('budget_category', v)}
+                  options={[
+                    { value: '', label: t('reservations.budgetCategoryAuto') },
+                    ...budgetCategories.map(c => ({ value: c, label: c })),
+                  ]}
+                  placeholder={t('reservations.budgetCategoryAuto')}
+                  size="sm"
+                />
+              </div>
+            </div>
+            {form.price && parseFloat(form.price) > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: -4 }}>
+                {t('reservations.budgetHint')}
+              </div>
+            )}
+          </>
+        )}
+
         {/* Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4, borderTop: '1px solid var(--border-secondary)' }}>
           <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-muted)' }}>
             {t('common.cancel')}
           </button>
-          <button type="submit" data-bombadil="reservation-submit" disabled={isSaving || !form.title.trim()} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() ? 0.5 : 1 }}>
+          <button type="submit" data-bombadil="reservation-submit" disabled={isSaving || !form.title.trim() || isEndBeforeStart} style={{ padding: '8px 20px', borderRadius: 10, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: isSaving || !form.title.trim() || isEndBeforeStart ? 0.5 : 1 }}>
             {isSaving ? t('common.saving') : reservation ? t('common.update') : t('common.add')}
           </button>
         </div>

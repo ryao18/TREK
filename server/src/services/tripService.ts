@@ -2,6 +2,11 @@ import path from 'path';
 import fs from 'fs';
 import { db, canAccessTrip, isOwner } from '../db/database';
 import { Trip, User } from '../types';
+import { listDays, listAccommodations } from './dayService';
+import { listBudgetItems } from './budgetService';
+import { listItems as listPackingItems } from './packingService';
+import { listReservations } from './reservationService';
+import { listNotes as listCollabNotes } from './collabService';
 
 export const MS_PER_DAY = 86400000;
 export const MAX_TRIP_DAYS = 365;
@@ -27,7 +32,7 @@ export { isOwner };
 
 // ── Day generation ────────────────────────────────────────────────────────
 
-export function generateDays(tripId: number | bigint | string, startDate: string | null, endDate: string | null) {
+export function generateDays(tripId: number | bigint | string, startDate: string | null, endDate: string | null, maxDays?: number, dayCount?: number) {
   const existing = db.prepare('SELECT id, day_number, date FROM days WHERE trip_id = ?').all(tripId) as { id: number; day_number: number; date: string | null }[];
 
   if (!startDate || !endDate) {
@@ -36,12 +41,13 @@ export function generateDays(tripId: number | bigint | string, startDate: string
     if (withDates.length > 0) {
       db.prepare(`DELETE FROM days WHERE trip_id = ? AND date IS NOT NULL`).run(tripId);
     }
-    const needed = 7 - datelessExisting.length;
+    const targetCount = Math.min(Math.max(dayCount ?? (datelessExisting.length || 7), 1), MAX_TRIP_DAYS);
+    const needed = targetCount - datelessExisting.length;
     if (needed > 0) {
       const insert = db.prepare('INSERT INTO days (trip_id, day_number, date) VALUES (?, ?, NULL)');
       for (let i = 0; i < needed; i++) insert.run(tripId, datelessExisting.length + i + 1);
     } else if (needed < 0) {
-      const toRemove = datelessExisting.slice(7);
+      const toRemove = datelessExisting.slice(targetCount);
       const del = db.prepare('DELETE FROM days WHERE id = ?');
       for (const d of toRemove) del.run(d.id);
     }
@@ -56,7 +62,7 @@ export function generateDays(tripId: number | bigint | string, startDate: string
   const [ey, em, ed] = endDate.split('-').map(Number);
   const startMs = Date.UTC(sy, sm - 1, sd);
   const endMs = Date.UTC(ey, em - 1, ed);
-  const numDays = Math.min(Math.floor((endMs - startMs) / MS_PER_DAY) + 1, MAX_TRIP_DAYS);
+  const numDays = Math.min(Math.floor((endMs - startMs) / MS_PER_DAY) + 1, maxDays ?? MAX_TRIP_DAYS);
 
   const targetDates: string[] = [];
   for (let i = 0; i < numDays; i++) {
@@ -75,9 +81,13 @@ export function generateDays(tripId: number | bigint | string, startDate: string
   const targetDateSet = new Set(targetDates);
 
   const toDelete = existing.filter(d => d.date && !targetDateSet.has(d.date));
-  const datelessToDelete = existing.filter(d => !d.date);
+  const dateless = existing.filter(d => !d.date).sort((a, b) => a.day_number - b.day_number);
   const del = db.prepare('DELETE FROM days WHERE id = ?');
-  for (const d of [...toDelete, ...datelessToDelete]) del.run(d.id);
+  for (const d of toDelete) del.run(d.id);
+
+  // Reassign dateless days to the first unmatched target dates (preserves content)
+  const assignDate = db.prepare('UPDATE days SET date = ?, day_number = ? WHERE id = ?');
+  let datelessIdx = 0;
 
   const setTemp = db.prepare('UPDATE days SET day_number = ? WHERE id = ?');
   const kept = existing.filter(d => d.date && targetDateSet.has(d.date));
@@ -91,15 +101,30 @@ export function generateDays(tripId: number | bigint | string, startDate: string
     const ex = existingByDate.get(date);
     if (ex) {
       update.run(i + 1, ex.id);
+    } else if (datelessIdx < dateless.length) {
+      // Reuse a dateless day — keeps its assignments, notes, etc.
+      assignDate.run(date, i + 1, dateless[datelessIdx].id);
+      datelessIdx++;
     } else {
       insert.run(tripId, i + 1, date);
     }
   }
+
+  // Delete any remaining unused dateless days
+  for (let i = datelessIdx; i < dateless.length; i++) del.run(dateless[i].id);
 }
 
 // ── Trip CRUD ─────────────────────────────────────────────────────────────
 
-export function listTrips(userId: number, archived: number) {
+export function listTrips(userId: number, archived: number | null) {
+  if (archived === null) {
+    return db.prepare(`
+      ${TRIP_SELECT}
+      LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
+      WHERE (t.user_id = :userId OR m.user_id IS NOT NULL)
+      ORDER BY t.created_at DESC
+    `).all({ userId });
+  }
   return db.prepare(`
     ${TRIP_SELECT}
     LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
@@ -115,9 +140,10 @@ interface CreateTripData {
   end_date?: string | null;
   currency?: string;
   reminder_days?: number;
+  day_count?: number;
 }
 
-export function createTrip(userId: number, data: CreateTripData) {
+export function createTrip(userId: number, data: CreateTripData, maxDays?: number) {
   const rd = data.reminder_days !== undefined
     ? (Number(data.reminder_days) >= 0 && Number(data.reminder_days) <= 30 ? Number(data.reminder_days) : 3)
     : 3;
@@ -128,7 +154,7 @@ export function createTrip(userId: number, data: CreateTripData) {
   `).run(userId, data.title, data.description || null, data.start_date || null, data.end_date || null, data.currency || 'EUR', rd);
 
   const tripId = result.lastInsertRowid;
-  generateDays(tripId, data.start_date || null, data.end_date || null);
+  generateDays(tripId, data.start_date || null, data.end_date || null, maxDays, data.day_count);
 
   const trip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId, tripId });
   return { trip, tripId: Number(tripId), reminderDays: rd };
@@ -151,6 +177,7 @@ interface UpdateTripData {
   is_archived?: boolean | number;
   cover_image?: string;
   reminder_days?: number;
+  day_count?: number;
 }
 
 export interface UpdateTripResult {
@@ -190,8 +217,9 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
     WHERE id=?
   `).run(newTitle, newDesc, newStart || null, newEnd || null, newCurrency, newArchived, newCover, newReminder, tripId);
 
-  if (newStart !== trip.start_date || newEnd !== trip.end_date)
-    generateDays(tripId, newStart || null, newEnd || null);
+  const dayCount = data.day_count ? Math.min(Math.max(Number(data.day_count) || 7, 1), MAX_TRIP_DAYS) : undefined;
+  if (newStart !== trip.start_date || newEnd !== trip.end_date || dayCount)
+    generateDays(tripId, newStart || null, newEnd || null, undefined, dayCount);
 
   const changes: Record<string, unknown> = {};
   if (title && title !== trip.title) changes.title = title;
@@ -338,8 +366,13 @@ export function exportICS(tripId: string | number): { ics: string; filename: str
   const uid = (id: number, type: string) => `trek-${type}-${id}@trek`;
 
   // Format datetime: handles full ISO "2026-03-30T09:00" and time-only "10:00"
+  // iCal requires exactly YYYYMMDDTHHMMSS format
   const fmtDateTime = (d: string, refDate?: string) => {
-    if (d.includes('T')) return d.replace(/[-:]/g, '').split('.')[0];
+    if (d.includes('T')) {
+      const raw = d.replace(/[-:]/g, '').split('.')[0];
+      // Pad to 15 chars (YYYYMMDDTHHMMSS) — add missing seconds
+      return raw.length === 13 ? raw + '00' : raw;
+    }
     // Time-only: combine with reference date
     if (refDate && d.match(/^\d{2}:\d{2}/)) {
       const datePart = refDate.split('T')[0];
@@ -396,6 +429,49 @@ export function exportICS(tripId: string | number): { ics: string; filename: str
 
   const safeFilename = (trip.title || 'trek-trip').replace(/["\r\n]/g, '').replace(/[^\w\s.-]/g, '_');
   return { ics, filename: `${safeFilename}.ics` };
+}
+
+// ── Trip summary (used by MCP get_trip_summary tool) ──────────────────────
+
+export function getTripSummary(tripId: number) {
+  const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as Record<string, unknown> | undefined;
+  if (!trip) return null;
+
+  const ownerRow = getTripOwner(tripId);
+  if (!ownerRow) return null;
+  const { owner, members } = listMembers(tripId, ownerRow.user_id);
+
+  const { days: rawDays } = listDays(tripId);
+  const days = rawDays.map(({ notes_items, ...day }) => ({ ...day, notes: notes_items }));
+
+  const accommodations = listAccommodations(tripId);
+
+  const budgetItems = listBudgetItems(tripId);
+  const budget = {
+    item_count: budgetItems.length,
+    total: budgetItems.reduce((sum, i) => sum + (i.total_price || 0), 0),
+    currency: trip.currency,
+  };
+
+  const packingItems = listPackingItems(tripId);
+  const packing = {
+    total: packingItems.length,
+    checked: (packingItems as { checked: number }[]).filter(i => i.checked).length,
+  };
+
+  const reservations = listReservations(tripId);
+  const collab_notes = listCollabNotes(tripId);
+
+  return {
+    trip,
+    members: { owner, collaborators: members },
+    days,
+    accommodations,
+    budget,
+    packing,
+    reservations,
+    collab_notes,
+  };
 }
 
 // ── Custom error types ────────────────────────────────────────────────────

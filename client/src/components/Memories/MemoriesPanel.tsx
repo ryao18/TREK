@@ -1,16 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Camera, Plus, Share2, EyeOff, Eye, X, Check, Search, ArrowUpDown, MapPin, Filter, Link2, RefreshCw, Unlink, FolderOpen } from 'lucide-react'
-import apiClient from '../../api/client'
+import apiClient, { addonsApi } from '../../api/client'
+import { Camera, Plus, Share2, EyeOff, Eye, X, Check, Search, ArrowUpDown, MapPin, Filter, Link2, RefreshCw, Unlink, FolderOpen, Info, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useTranslation } from '../../i18n'
-import { getAuthUrl, fetchImageAsBlob, clearImageQueue } from '../../api/authUrl'
+import { fetchImageAsBlob, clearImageQueue } from '../../api/authUrl'
 import { useToast } from '../shared/Toast'
 
-function ImmichImg({ baseUrl, style, loading }: { baseUrl: string; style?: React.CSSProperties; loading?: 'lazy' | 'eager' }) {
+interface PhotoProvider {
+  id: string
+  name: string
+  icon?: string
+  config?: Record<string, unknown>
+}
+
+function ProviderImg({ baseUrl, provider, style, loading }: { baseUrl: string; provider: string; style?: React.CSSProperties; loading?: 'lazy' | 'eager' }) {
   const [src, setSrc] = useState('')
   useEffect(() => {
     let revoke = ''
-    fetchImageAsBlob(baseUrl).then(blobUrl => {
+    fetchImageAsBlob('/api' + baseUrl).then(blobUrl => {
       revoke = blobUrl
       setSrc(blobUrl)
     })
@@ -19,18 +26,22 @@ function ImmichImg({ baseUrl, style, loading }: { baseUrl: string; style?: React
   return src ? <img src={src} alt="" loading={loading} style={style} /> : null
 }
 
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 interface TripPhoto {
-  immich_asset_id: string
+  asset_id: string
+  provider: string
   user_id: number
   username: string
   shared: number
   added_at: string
+  city?: string | null
 }
 
-interface ImmichAsset {
+interface Asset {
   id: string
+  provider: string
   takenAt: string
   city: string | null
   country: string | null
@@ -50,6 +61,9 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   const currentUser = useAuthStore(s => s.user)
 
   const [connected, setConnected] = useState(false)
+  const [enabledProviders, setEnabledProviders] = useState<PhotoProvider[]>([])
+  const [availableProviders, setAvailableProviders] = useState<PhotoProvider[]>([])
+  const [selectedProvider, setSelectedProvider] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
   // Trip photos (saved selections)
@@ -57,7 +71,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
 
   // Photo picker
   const [showPicker, setShowPicker] = useState(false)
-  const [pickerPhotos, setPickerPhotos] = useState<ImmichAsset[]>([])
+  const [pickerPhotos, setPickerPhotos] = useState<Asset[]>([])
   const [pickerLoading, setPickerLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -72,49 +86,102 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   const [showAlbumPicker, setShowAlbumPicker] = useState(false)
   const [albums, setAlbums] = useState<{ id: string; albumName: string; assetCount: number }[]>([])
   const [albumsLoading, setAlbumsLoading] = useState(false)
-  const [albumLinks, setAlbumLinks] = useState<{ id: number; immich_album_id: string; album_name: string; user_id: number; username: string; sync_enabled: number; last_synced_at: string | null }[]>([])
+  const [albumLinks, setAlbumLinks] = useState<{ id: number; provider: string; album_id: string; album_name: string; user_id: number; username: string; sync_enabled: number; last_synced_at: string | null }[]>([])
   const [syncing, setSyncing] = useState<number | null>(null)
+
+
+  //helpers for building urls
+  const ADDON_PREFIX = "/integrations/memories"
+  
+  function buildUnifiedUrl(endpoint: string, lastParam?:string,): string {
+    return `${ADDON_PREFIX}/unified/trips/${tripId}/${endpoint}${lastParam ? `/${lastParam}` : ''}`;
+  }
+
+  function buildProviderUrl(provider: string, endpoint: string, item?: string): string {
+    if (endpoint === 'album-link-sync') {
+      endpoint = `trips/${tripId}/album-links/${item?.toString() || ''}/sync`
+    }
+    return `${ADDON_PREFIX}/${provider}/${endpoint}`;
+  }
+
+  function buildProviderAssetUrl(photo: TripPhoto, what: string): string {
+    return `${ADDON_PREFIX}/${photo.provider}/assets/${tripId}/${photo.asset_id}/${photo.user_id}/${what}`
+  }
+
+  function buildProviderAssetUrlFromAsset(asset: Asset, what: string, userId: number): string {
+    const photo: TripPhoto = {
+      asset_id: asset.id,
+      provider: asset.provider,
+      user_id: userId,
+      username: '',
+      shared: 0,
+      added_at: null
+    }
+    return buildProviderAssetUrl(photo, what)
+  }
+
 
   const loadAlbumLinks = async () => {
     try {
-      const res = await apiClient.get(`/integrations/immich/trips/${tripId}/album-links`)
+      const res = await apiClient.get(buildUnifiedUrl('album-links'))
       setAlbumLinks(res.data.links || [])
     } catch { setAlbumLinks([]) }
   }
 
-  const openAlbumPicker = async () => {
-    setShowAlbumPicker(true)
+  const loadAlbums = async (provider: string = selectedProvider) => {
+    if (!provider) return
     setAlbumsLoading(true)
     try {
-      const res = await apiClient.get('/integrations/immich/albums')
+      const res = await apiClient.get(buildProviderUrl(provider, 'albums'))
       setAlbums(res.data.albums || [])
-    } catch { setAlbums([]); toast.error(t('memories.error.loadAlbums')) }
-    finally { setAlbumsLoading(false) }
+    } catch {
+      setAlbums([])
+      toast.error(t('memories.error.loadAlbums'))
+    } finally {
+      setAlbumsLoading(false)
+    }
+  }
+
+  const openAlbumPicker = async () => {
+    setShowAlbumPicker(true)
+    await loadAlbums(selectedProvider)
   }
 
   const linkAlbum = async (albumId: string, albumName: string) => {
+    if (!selectedProvider) {
+      toast.error(t('memories.error.linkAlbum'))
+      return
+    }
+
     try {
-      await apiClient.post(`/integrations/immich/trips/${tripId}/album-links`, { album_id: albumId, album_name: albumName })
+      await apiClient.post(buildUnifiedUrl('album-links'), {
+        album_id: albumId,
+        album_name: albumName,
+        provider: selectedProvider,
+      })
       setShowAlbumPicker(false)
       await loadAlbumLinks()
       // Auto-sync after linking
-      const linksRes = await apiClient.get(`/integrations/immich/trips/${tripId}/album-links`)
-      const newLink = (linksRes.data.links || []).find((l: any) => l.immich_album_id === albumId)
+      const linksRes = await apiClient.get(buildUnifiedUrl('album-links'))
+      const newLink = (linksRes.data.links || []).find((l: any) => l.album_id === albumId && l.provider === selectedProvider)
       if (newLink) await syncAlbum(newLink.id)
     } catch { toast.error(t('memories.error.linkAlbum')) }
   }
 
   const unlinkAlbum = async (linkId: number) => {
     try {
-      await apiClient.delete(`/integrations/immich/trips/${tripId}/album-links/${linkId}`)
-      loadAlbumLinks()
+      await apiClient.delete(buildUnifiedUrl('album-links', linkId.toString()))
+      await loadAlbumLinks()
+      await loadPhotos()
     } catch { toast.error(t('memories.error.unlinkAlbum')) }
   }
 
-  const syncAlbum = async (linkId: number) => {
+  const syncAlbum = async (linkId: number, provider?: string) => {
+    const targetProvider = provider || selectedProvider
+    if (!targetProvider) return
     setSyncing(linkId)
     try {
-      await apiClient.post(`/integrations/immich/trips/${tripId}/album-links/${linkId}/sync`)
+      await apiClient.post(buildProviderUrl(targetProvider, 'album-link-sync', linkId.toString()))
       await loadAlbumLinks()
       await loadPhotos()
     } catch { toast.error(t('memories.error.syncAlbum')) }
@@ -127,6 +194,14 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   const [lightboxInfo, setLightboxInfo] = useState<any>(null)
   const [lightboxInfoLoading, setLightboxInfoLoading] = useState(false)
   const [lightboxOriginalSrc, setLightboxOriginalSrc] = useState('')
+  const [showMobileInfo, setShowMobileInfo] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -143,7 +218,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
 
   const loadPhotos = async () => {
     try {
-      const photosRes = await apiClient.get(`/integrations/immich/trips/${tripId}/photos`)
+      const photosRes = await apiClient.get(buildUnifiedUrl('photos'))
       setTripPhotos(photosRes.data.photos || [])
     } catch {
       setTripPhotos([])
@@ -153,9 +228,37 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   const loadInitial = async () => {
     setLoading(true)
     try {
-      const statusRes = await apiClient.get('/integrations/immich/status')
-      setConnected(statusRes.data.connected)
+      const addonsRes = await addonsApi.enabled().catch(() => ({ addons: [] as any[] }))
+      const enabledAddons = addonsRes?.addons || []
+      const photoProviders = enabledAddons.filter((a: any) => a.type === 'photo_provider' && a.enabled)
+
+      setEnabledProviders(photoProviders.map((a: any) => ({ id: a.id, name: a.name, icon: a.icon, config: a.config })))
+
+      // Test connection status for each enabled provider
+      const statusResults = await Promise.all(
+        photoProviders.map(async (provider: any) => {
+          const statusUrl = (provider.config as Record<string, unknown>)?.status_get as string
+          if (!statusUrl) return { provider, connected: false }
+          try {
+            const res = await apiClient.get(statusUrl)
+            return { provider, connected: !!res.data?.connected }
+          } catch {
+            return { provider, connected: false }
+          }
+        })
+      )
+
+      const connectedProviders = statusResults
+        .filter(r => r.connected)
+        .map(r => ({ id: r.provider.id, name: r.provider.name, icon: r.provider.icon, config: r.provider.config }))
+      
+      setAvailableProviders(connectedProviders)
+      setConnected(connectedProviders.length > 0)
+      if (connectedProviders.length > 0 && !selectedProvider) {
+        setSelectedProvider(connectedProviders[0].id)
+      }
     } catch {
+      setAvailableProviders([])
       setConnected(false)
     }
     await loadPhotos()
@@ -175,14 +278,35 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
     await loadPickerPhotos(!!(startDate && endDate))
   }
 
+  useEffect(() => {
+    if (showPicker) {
+      loadPickerPhotos(pickerDateFilter)
+    }
+  }, [selectedProvider])
+
+  useEffect(() => {
+    loadAlbumLinks()
+  }, [tripId])
+
+  useEffect(() => {
+    if (showAlbumPicker) {
+      loadAlbums(selectedProvider)
+    }
+  }, [showAlbumPicker, selectedProvider, tripId])
+
   const loadPickerPhotos = async (useDate: boolean) => {
     setPickerLoading(true)
     try {
-      const res = await apiClient.post('/integrations/immich/search', {
+      const provider = availableProviders.find(p => p.id === selectedProvider)
+      if (!provider) {
+        setPickerPhotos([])
+        return
+      }
+      const res = await apiClient.post(buildProviderUrl(provider.id, 'search'), {
         from: useDate && startDate ? startDate : undefined,
         to: useDate && endDate ? endDate : undefined,
       })
-      setPickerPhotos(res.data.assets || [])
+      setPickerPhotos((res.data.assets || []).map((asset: Asset) => ({ ...asset, provider: provider.id })))
     } catch {
       setPickerPhotos([])
       toast.error(t('memories.error.loadPhotos'))
@@ -208,8 +332,17 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   const executeAddPhotos = async () => {
     setShowConfirmShare(false)
     try {
-      await apiClient.post(`/integrations/immich/trips/${tripId}/photos`, {
-        asset_ids: [...selectedIds],
+      const groupedByProvider = new Map<string, string[]>()
+      for (const key of selectedIds) {
+        const [provider, assetId] = key.split('::')
+        if (!provider || !assetId) continue
+        const list = groupedByProvider.get(provider) || []
+        list.push(assetId)
+        groupedByProvider.set(provider, list)
+      }
+
+      await apiClient.post(buildUnifiedUrl('photos'), {
+        selections: [...groupedByProvider.entries()].map(([provider, asset_ids]) => ({ provider, asset_ids })),
         shared: true,
       })
       setShowPicker(false)
@@ -220,28 +353,38 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
 
   // ── Remove photo ──────────────────────────────────────────────────────────
 
-  const removePhoto = async (assetId: string) => {
+  const removePhoto = async (photo: TripPhoto) => {
     try {
-      await apiClient.delete(`/integrations/immich/trips/${tripId}/photos/${assetId}`)
-      setTripPhotos(prev => prev.filter(p => p.immich_asset_id !== assetId))
+      await apiClient.delete(buildUnifiedUrl('photos'), {
+        data: {
+          asset_id: photo.asset_id,
+          provider: photo.provider,
+        },
+      })
+      setTripPhotos(prev => prev.filter(p => !(p.provider === photo.provider && p.asset_id === photo.asset_id)))
     } catch { toast.error(t('memories.error.removePhoto')) }
   }
 
   // ── Toggle sharing ────────────────────────────────────────────────────────
 
-  const toggleSharing = async (assetId: string, shared: boolean) => {
+  const toggleSharing = async (photo: TripPhoto, shared: boolean) => {
     try {
-      await apiClient.put(`/integrations/immich/trips/${tripId}/photos/${assetId}/sharing`, { shared })
+      await apiClient.put(buildUnifiedUrl('photos', 'sharing'), {
+        shared,
+        asset_id: photo.asset_id,
+        provider: photo.provider,
+      })
       setTripPhotos(prev => prev.map(p =>
-        p.immich_asset_id === assetId ? { ...p, shared: shared ? 1 : 0 } : p
+        p.provider === photo.provider && p.asset_id === photo.asset_id ? { ...p, shared: shared ? 1 : 0 } : p
       ))
     } catch { toast.error(t('memories.error.toggleSharing')) }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const thumbnailBaseUrl = (assetId: string, userId: number) =>
-    `/api/integrations/immich/assets/${assetId}/thumbnail?userId=${userId}`
+  
+
+  const makePickerKey = (provider: string, assetId: string): string => `${provider}::${assetId}`
 
   const ownPhotos = tripPhotos.filter(p => p.user_id === currentUser?.id)
   const othersPhotos = tripPhotos.filter(p => p.user_id !== currentUser?.id && p.shared)
@@ -281,10 +424,10 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: 40, textAlign: 'center', ...font }}>
         <Camera size={40} style={{ color: 'var(--text-faint)', marginBottom: 12 }} />
         <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-          {t('memories.notConnected')}
+          {t('memories.notConnected', { provider_name: enabledProviders.length === 1 ? enabledProviders[0]?.name : 'Photo provider' })}
         </h3>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', maxWidth: 300 }}>
-          {t('memories.notConnectedHint')}
+          {enabledProviders.length === 1 ? t('memories.notConnectedHint', { provider_name: enabledProviders[0]?.name }) : t('memories.notConnectedMultipleHint', { provider_names: enabledProviders.map(p => p.name).join(', ') })}
         </p>
       </div>
     )
@@ -292,22 +435,53 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
 
   // ── Photo Picker Modal ────────────────────────────────────────────────────
 
+  const ProviderTabs = () => {
+    if (availableProviders.length < 2) return null
+    return (
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        {availableProviders.map(provider => (
+          <button
+            key={provider.id}
+            onClick={() => setSelectedProvider(provider.id)}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 99,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              border: '1px solid',
+              transition: 'all 0.15s',
+              background: selectedProvider === provider.id ? 'var(--text-primary)' : 'var(--bg-card)',
+              borderColor: selectedProvider === provider.id ? 'var(--text-primary)' : 'var(--border-primary)',
+              color: selectedProvider === provider.id ? 'var(--bg-primary)' : 'var(--text-muted)',
+              textTransform: 'capitalize',
+            }}
+          >
+            {provider.name}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
   // ── Album Picker Modal ──────────────────────────────────────────────────
 
   if (showAlbumPicker) {
-    const linkedIds = new Set(albumLinks.map(l => l.immich_album_id))
+    const linkedIds = new Set(albumLinks.map(l => l.album_id))
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', ...font }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-secondary)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-              {t('memories.selectAlbum')}
+              {availableProviders.length > 1 ? t('memories.selectAlbumMultiple') : t('memories.selectAlbum', { provider_name: availableProviders.find(p => p.id === selectedProvider)?.name || 'Photo provider' })}
             </h3>
             <button onClick={() => setShowAlbumPicker(false)}
               style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid var(--border-primary)', background: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-muted)' }}>
               {t('common.cancel')}
             </button>
           </div>
+          <ProviderTabs />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
           {albumsLoading ? (
@@ -359,7 +533,11 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   // ── Photo Picker Modal ────────────────────────────────────────────────────
 
   if (showPicker) {
-    const alreadyAdded = new Set(tripPhotos.filter(p => p.user_id === currentUser?.id).map(p => p.immich_asset_id))
+    const alreadyAdded = new Set(
+      tripPhotos
+        .filter(p => p.user_id === currentUser?.id)
+        .map(p => makePickerKey(p.provider, p.asset_id))
+    )
 
     return (
       <>
@@ -368,7 +546,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-secondary)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-              {t('memories.selectPhotos')}
+              {availableProviders.length > 1 ? t('memories.selectPhotosMultiple') : t('memories.selectPhotos', { provider_name: availableProviders.find(p => p.id === selectedProvider)?.name || 'Photo provider' })}
             </h3>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => { clearImageQueue(); setShowPicker(false) }}
@@ -385,6 +563,9 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                 {selectedIds.size > 0 ? t('memories.addSelected', { count: selectedIds.size }) : t('memories.addPhotos')}
               </button>
             </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <ProviderTabs />
           </div>
           {/* Filter tabs */}
           <div style={{ display: 'flex', gap: 6 }}>
@@ -429,10 +610,17 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
               <Camera size={36} style={{ color: 'var(--text-faint)', margin: '0 auto 10px', display: 'block' }} />
               <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{t('memories.noPhotos')}</p>
+              {
+                pickerDateFilter && (
+                  <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '0 0 16px' }}>
+                    {t('memories.noPhotosHint', { provider_name: availableProviders.find(p => p.id === selectedProvider)?.name || 'Photo provider' })}
+                  </p>
+                )
+              } 
             </div>
           ) : (() => {
             // Group photos by month
-            const byMonth: Record<string, ImmichAsset[]> = {}
+            const byMonth: Record<string, Asset[]> = {}
             for (const asset of pickerPhotos) {
               const d = asset.takenAt ? new Date(asset.takenAt) : null
               const key = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : 'unknown'
@@ -450,11 +638,12 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 4 }}>
                   {byMonth[month].map(asset => {
-                    const isSelected = selectedIds.has(asset.id)
-                    const isAlready = alreadyAdded.has(asset.id)
+                    const pickerKey = makePickerKey(asset.provider, asset.id)
+                    const isSelected = selectedIds.has(pickerKey)
+                    const isAlready = alreadyAdded.has(pickerKey)
                     return (
-                      <div key={asset.id}
-                        onClick={() => !isAlready && togglePickerSelect(asset.id)}
+                      <div key={pickerKey}
+                        onClick={() => !isAlready && togglePickerSelect(pickerKey)}
                         style={{
                           position: 'relative', aspectRatio: '1', borderRadius: 8, overflow: 'hidden',
                           cursor: isAlready ? 'default' : 'pointer',
@@ -462,7 +651,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                           outline: isSelected ? '3px solid var(--text-primary)' : 'none',
                           outlineOffset: -3,
                         }}>
-                        <ImmichImg baseUrl={thumbnailBaseUrl(asset.id, currentUser!.id)} loading="lazy"
+                        <ProviderImg baseUrl={buildProviderAssetUrlFromAsset(asset, 'thumbnail', currentUser!.id)} provider={asset.provider} loading="lazy"
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         {isSelected && (
                           <div style={{
@@ -570,7 +759,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                 <FolderOpen size={11} />
                 <span style={{ fontWeight: 500 }}>{link.album_name}</span>
                 {link.username !== currentUser?.username && <span style={{ color: 'var(--text-faint)' }}>({link.username})</span>}
-                <button onClick={() => syncAlbum(link.id)} disabled={syncing === link.id} title={t('memories.syncAlbum')}
+                <button onClick={() => syncAlbum(link.id, link.provider)} disabled={syncing === link.id} title={t('memories.syncAlbum')}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'var(--text-faint)' }}>
                   <RefreshCw size={11} style={{ animation: syncing === link.id ? 'spin 1s linear infinite' : 'none' }} />
                 </button>
@@ -616,11 +805,8 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
         {allVisible.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
             <Camera size={40} style={{ color: 'var(--text-faint)', margin: '0 auto 12px', display: 'block' }} />
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: '0 0 4px' }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
               {t('memories.noPhotos')}
-            </p>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '0 0 16px' }}>
-              {t('memories.noPhotosHint')}
             </p>
             <button onClick={openPicker}
               style={{
@@ -636,19 +822,19 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
             {allVisible.map(photo => {
               const isOwn = photo.user_id === currentUser?.id
               return (
-                <div key={photo.immich_asset_id} className="group"
+                <div key={`${photo.provider}:${photo.asset_id}`} className="group"
                   style={{ position: 'relative', aspectRatio: '1', borderRadius: 10, overflow: 'visible', cursor: 'pointer' }}
                   onClick={() => {
-                    setLightboxId(photo.immich_asset_id); setLightboxUserId(photo.user_id); setLightboxInfo(null)
+                    setLightboxId(photo.asset_id); setLightboxUserId(photo.user_id); setLightboxInfo(null)
                     if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc)
                     setLightboxOriginalSrc('')
-                    fetchImageAsBlob(`/api/integrations/immich/assets/${photo.immich_asset_id}/original?userId=${photo.user_id}`).then(setLightboxOriginalSrc)
+                    fetchImageAsBlob('/api' + buildProviderAssetUrl(photo, 'original')).then(setLightboxOriginalSrc)
                     setLightboxInfoLoading(true)
-                    apiClient.get(`/integrations/immich/assets/${photo.immich_asset_id}/info?userId=${photo.user_id}`)
+                    apiClient.get(buildProviderAssetUrl(photo, 'info'))
                       .then(r => setLightboxInfo(r.data)).catch(() => {}).finally(() => setLightboxInfoLoading(false))
                   }}>
 
-                  <ImmichImg baseUrl={thumbnailBaseUrl(photo.immich_asset_id, photo.user_id)} loading="lazy"
+                  <ProviderImg baseUrl={buildProviderAssetUrl(photo, 'thumbnail')} provider={photo.provider} loading="lazy"
                     style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} />
 
                   {/* Other user's avatar */}
@@ -679,7 +865,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                   {isOwn && (
                     <div className="opacity-0 group-hover:opacity-100"
                       style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 3, transition: 'opacity 0.15s' }}>
-                      <button onClick={e => { e.stopPropagation(); toggleSharing(photo.immich_asset_id, !photo.shared) }}
+                      <button onClick={e => { e.stopPropagation(); toggleSharing(photo, !photo.shared) }}
                         title={photo.shared ? t('memories.stopSharing') : t('memories.sharePhotos')}
                         style={{
                           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer',
@@ -688,7 +874,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                         }}>
                         {photo.shared ? <Eye size={12} color="white" /> : <EyeOff size={12} color="white" />}
                       </button>
-                      <button onClick={e => { e.stopPropagation(); removePhoto(photo.immich_asset_id) }}
+                      <button onClick={e => { e.stopPropagation(); removePhoto(photo) }}
                         style={{
                           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer',
                           background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
@@ -749,117 +935,196 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
       )}
 
       {/* Lightbox */}
-      {lightboxId && lightboxUserId && (
-        <div onClick={() => { if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc); setLightboxOriginalSrc(''); setLightboxId(null); setLightboxUserId(null) }}
-          style={{
-            position: 'absolute', inset: 0, zIndex: 100,
-            background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-          <button onClick={() => { if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc); setLightboxOriginalSrc(''); setLightboxId(null); setLightboxUserId(null) }}
-            style={{
-              position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-            <X size={20} color="white" />
-          </button>
-          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 16, alignItems: 'flex-start', justifyContent: 'center', padding: 20, width: '100%', height: '100%' }}>
-            <img
-              src={lightboxOriginalSrc}
-              alt=""
-              style={{ maxWidth: lightboxInfo ? 'calc(100% - 280px)' : '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 10, cursor: 'default' }}
-            />
+      {lightboxId && lightboxUserId && (() => {
+        const closeLightbox = () => {
+          if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc)
+          setLightboxOriginalSrc('')
+          setLightboxId(null)
+          setLightboxUserId(null)
+          setShowMobileInfo(false)
+        }
 
-            {/* Info panel — liquid glass */}
-            {lightboxInfo && (
-              <div style={{
-                width: 240, flexShrink: 0, borderRadius: 16, padding: 18,
-                background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255,255,255,0.12)', color: 'white',
-                display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '100%', overflowY: 'auto',
-              }}>
-                {/* Date */}
-                {lightboxInfo.takenAt && (
+        const currentIdx = allVisible.findIndex(p => p.asset_id === lightboxId)
+        const hasPrev = currentIdx > 0
+        const hasNext = currentIdx < allVisible.length - 1
+        const navigateTo = (idx: number) => {
+          const photo = allVisible[idx]
+          if (!photo) return
+          if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc)
+          setLightboxOriginalSrc('')
+          setLightboxId(photo.asset_id)
+          setLightboxUserId(photo.user_id)
+          setLightboxInfo(null)
+          fetchImageAsBlob('/api' + buildProviderAssetUrl(photo, 'original')).then(setLightboxOriginalSrc)
+          setLightboxInfoLoading(true)
+          apiClient.get(buildProviderAssetUrl(photo, 'info'))
+            .then(r => setLightboxInfo(r.data)).catch(() => {}).finally(() => setLightboxInfoLoading(false))
+        }
+
+        const exifContent = lightboxInfo ? (
+          <>
+            {lightboxInfo.takenAt && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>Date</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{new Date(lightboxInfo.takenAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{new Date(lightboxInfo.takenAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+            )}
+            {(lightboxInfo.city || lightboxInfo.country) && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>
+                  <MapPin size={9} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />Location
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  {[lightboxInfo.city, lightboxInfo.state, lightboxInfo.country].filter(Boolean).join(', ')}
+                </div>
+              </div>
+            )}
+            {lightboxInfo.camera && (
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>Camera</div>
+                <div style={{ fontSize: 12, fontWeight: 500 }}>{lightboxInfo.camera}</div>
+                {lightboxInfo.lens && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{lightboxInfo.lens}</div>}
+              </div>
+            )}
+            {(lightboxInfo.focalLength || lightboxInfo.aperture || lightboxInfo.iso) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {lightboxInfo.focalLength && (
                   <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>Date</div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{new Date(lightboxInfo.takenAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{new Date(lightboxInfo.takenAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Focal</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.focalLength}</div>
                   </div>
                 )}
-
-                {/* Location */}
-                {(lightboxInfo.city || lightboxInfo.country) && (
+                {lightboxInfo.aperture && (
                   <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>
-                      <MapPin size={9} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />Location
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>
-                      {[lightboxInfo.city, lightboxInfo.state, lightboxInfo.country].filter(Boolean).join(', ')}
-                    </div>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Aperture</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.aperture}</div>
                   </div>
                 )}
-
-                {/* Camera */}
-                {lightboxInfo.camera && (
+                {lightboxInfo.shutter && (
                   <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>Camera</div>
-                    <div style={{ fontSize: 12, fontWeight: 500 }}>{lightboxInfo.camera}</div>
-                    {lightboxInfo.lens && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{lightboxInfo.lens}</div>}
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shutter</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.shutter}</div>
                   </div>
                 )}
-
-                {/* Settings */}
-                {(lightboxInfo.focalLength || lightboxInfo.aperture || lightboxInfo.iso) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {lightboxInfo.focalLength && (
-                      <div>
-                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Focal</div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.focalLength}</div>
-                      </div>
-                    )}
-                    {lightboxInfo.aperture && (
-                      <div>
-                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Aperture</div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.aperture}</div>
-                      </div>
-                    )}
-                    {lightboxInfo.shutter && (
-                      <div>
-                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shutter</div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.shutter}</div>
-                      </div>
-                    )}
-                    {lightboxInfo.iso && (
-                      <div>
-                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ISO</div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.iso}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Resolution & File */}
-                {(lightboxInfo.width || lightboxInfo.fileName) && (
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10 }}>
-                    {lightboxInfo.width && lightboxInfo.height && (
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>{lightboxInfo.width} × {lightboxInfo.height}</div>
-                    )}
-                    {lightboxInfo.fileSize && (
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{(lightboxInfo.fileSize / 1024 / 1024).toFixed(1)} MB</div>
-                    )}
+                {lightboxInfo.iso && (
+                  <div>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ISO</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{lightboxInfo.iso}</div>
                   </div>
                 )}
               </div>
             )}
+            {(lightboxInfo.width || lightboxInfo.fileName) && (
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10 }}>
+                {lightboxInfo.width && lightboxInfo.height && (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>{lightboxInfo.width} × {lightboxInfo.height}</div>
+                )}
+                {lightboxInfo.fileSize && (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{(lightboxInfo.fileSize / 1024 / 1024).toFixed(1)} MB</div>
+                )}
+              </div>
+            )}
+          </>
+        ) : null
 
-            {lightboxInfoLoading && (
-              <div style={{ width: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
+        return (
+          <div onClick={closeLightbox}
+            onKeyDown={e => { if (e.key === 'ArrowLeft' && hasPrev) navigateTo(currentIdx - 1); if (e.key === 'ArrowRight' && hasNext) navigateTo(currentIdx + 1); if (e.key === 'Escape') closeLightbox() }}
+            tabIndex={0} ref={el => el?.focus()}
+            onTouchStart={e => (e.currentTarget as any)._touchX = e.touches[0].clientX}
+            onTouchEnd={e => { const start = (e.currentTarget as any)._touchX; if (start == null) return; const diff = e.changedTouches[0].clientX - start; if (diff > 60 && hasPrev) navigateTo(currentIdx - 1); else if (diff < -60 && hasNext) navigateTo(currentIdx + 1) }}
+            style={{
+              position: 'absolute', inset: 0, zIndex: 100, outline: 'none',
+              background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+            {/* Close button */}
+            <button onClick={closeLightbox}
+              style={{
+                position: 'absolute', top: 16, right: 16, zIndex: 10, width: 40, height: 40, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+              <X size={20} color="white" />
+            </button>
+
+            {/* Counter */}
+            {allVisible.length > 1 && (
+              <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                {currentIdx + 1} / {allVisible.length}
+              </div>
+            )}
+
+            {/* Prev/Next buttons */}
+            {hasPrev && (
+              <button onClick={e => { e.stopPropagation(); navigateTo(currentIdx - 1) }}
+                style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', zIndex: 10, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.8)' }}>
+                <ChevronLeft size={22} />
+              </button>
+            )}
+            {hasNext && (
+              <button onClick={e => { e.stopPropagation(); navigateTo(currentIdx + 1) }}
+                style={{ position: 'absolute', right: isMobile ? 12 : 280, top: '50%', transform: 'translateY(-50%)', zIndex: 10, background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.8)' }}>
+                <ChevronRight size={22} />
+              </button>
+            )}
+
+            {/* Mobile info toggle button */}
+            {isMobile && (lightboxInfo || lightboxInfoLoading) && (
+              <button onClick={e => { e.stopPropagation(); setShowMobileInfo(prev => !prev) }}
+                style={{
+                  position: 'absolute', top: 16, right: 68, zIndex: 10, width: 40, height: 40, borderRadius: '50%',
+                  background: showMobileInfo ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)',
+                  border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                <Info size={20} color="white" />
+              </button>
+            )}
+
+            <div onClick={e => { if (e.target === e.currentTarget) closeLightbox() }} style={{ display: 'flex', gap: 16, alignItems: 'flex-start', justifyContent: 'center', padding: 20, width: '100%', height: '100%' }}>
+              <img
+                src={lightboxOriginalSrc}
+                alt=""
+                onClick={e => e.stopPropagation()}
+                style={{ maxWidth: (!isMobile && lightboxInfo) ? 'calc(100% - 280px)' : '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 10, cursor: 'default' }}
+              />
+
+              {/* Desktop info panel — liquid glass */}
+              {!isMobile && lightboxInfo && (
+                <div style={{
+                  width: 240, flexShrink: 0, borderRadius: 16, padding: 18,
+                  background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255,255,255,0.12)', color: 'white',
+                  display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '100%', overflowY: 'auto',
+                }}>
+                  {exifContent}
+                </div>
+              )}
+
+              {!isMobile && lightboxInfoLoading && (
+                <div style={{ width: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
+                </div>
+              )}
+            </div>
+
+            {/* Mobile bottom sheet */}
+            {isMobile && showMobileInfo && lightboxInfo && (
+              <div onClick={e => e.stopPropagation()} style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 5,
+                maxHeight: '60vh', overflowY: 'auto',
+                borderRadius: '16px 16px 0 0', padding: 18,
+                background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                border: '1px solid rgba(255,255,255,0.12)', borderBottom: 'none',
+                color: 'white', display: 'flex', flexDirection: 'column', gap: 14,
+              }}>
+                {exifContent}
               </div>
             )}
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

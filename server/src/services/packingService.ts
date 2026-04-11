@@ -11,6 +11,7 @@ type PackingItemRow = {
   name: string;
   checked: number;
   category: string | null;
+  quantity: number;
   weight_grams: number | null;
   bag_id: number | null;
   sort_order: number;
@@ -134,24 +135,26 @@ export function listItems(tripId: string | number) {
 export function createItem(
   tripId: string | number,
   userId: number,
-  data: { name: string; category?: string; checked?: boolean; weight_grams?: number | null; bag_id?: number | null }
+  data: { name: string; category?: string; checked?: boolean; quantity?: number; weight_grams?: number | null; bag_id?: number | null }
 ) {
   const sortOrder = nextItemSortOrder(tripId, userId);
   const bagId = data.bag_id ?? null;
+  const quantity = Math.max(1, Math.min(999, Number(data.quantity) || 1));
 
   if (bagId !== null && !getBagForMutation(tripId, bagId, userId)) {
     return null;
   }
 
   const result = db.prepare(`
-    INSERT INTO packing_items (trip_id, user_id, name, checked, category, weight_grams, bag_id, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO packing_items (trip_id, user_id, name, checked, category, quantity, weight_grams, bag_id, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     tripId,
     userId,
     data.name.trim(),
     data.checked ? 1 : 0,
     data.category?.trim() || 'Other',
+    quantity,
     data.weight_grams ?? null,
     bagId,
     sortOrder
@@ -164,7 +167,7 @@ export function updateItem(
   tripId: string | number,
   id: string | number,
   userId: number,
-  data: { name?: string; checked?: number; category?: string; weight_grams?: number | null; bag_id?: number | null },
+  data: { name?: string; checked?: number; category?: string; weight_grams?: number | null; bag_id?: number | null; quantity?: number },
   bodyKeys: string[]
 ) {
   const item = getItemForMutation(tripId, id, userId);
@@ -180,7 +183,8 @@ export function updateItem(
       checked = CASE WHEN ? IS NOT NULL THEN ? ELSE checked END,
       category = COALESCE(?, category),
       weight_grams = CASE WHEN ? THEN ? ELSE weight_grams END,
-      bag_id = CASE WHEN ? THEN ? ELSE bag_id END
+      bag_id = CASE WHEN ? THEN ? ELSE bag_id END,
+      quantity = CASE WHEN ? THEN ? ELSE quantity END
     WHERE id = ?
   `).run(
     data.name?.trim() || null,
@@ -191,6 +195,8 @@ export function updateItem(
     data.weight_grams ?? null,
     bodyKeys.includes('bag_id') ? 1 : 0,
     data.bag_id ?? null,
+    bodyKeys.includes('quantity') ? 1 : 0,
+    data.quantity ? Math.max(1, Math.min(999, Number(data.quantity))) : 1,
     id
   );
 
@@ -237,13 +243,39 @@ export function bulkImport(tripId: string | number, userId: number, items: Impor
 }
 
 export function listBags(tripId: string | number) {
-  return db.prepare(`
+  const bags = db.prepare(`
     SELECT pb.*, u.username as owner_name, u.avatar as owner_avatar
     FROM packing_bags pb
     JOIN users u ON u.id = pb.user_id
     WHERE pb.trip_id = ?
     ORDER BY pb.user_id ASC, pb.sort_order ASC, pb.id ASC
-  `).all(tripId);
+  `).all(tripId) as any[];
+  const members = db.prepare(`
+    SELECT bm.bag_id, bm.user_id, u.username, u.avatar
+    FROM packing_bag_members bm
+    JOIN users u ON bm.user_id = u.id
+    JOIN packing_bags b ON bm.bag_id = b.id
+    WHERE b.trip_id = ?
+  `).all(tripId) as { bag_id: number; user_id: number; username: string; avatar: string | null }[];
+  const membersByBag = new Map<number, typeof members>();
+  for (const m of members) {
+    if (!membersByBag.has(m.bag_id)) membersByBag.set(m.bag_id, []);
+    membersByBag.get(m.bag_id)!.push(m);
+  }
+  return bags.map(b => ({ ...b, members: membersByBag.get(b.id) || [] }));
+}
+
+export function setBagMembers(tripId: string | number, bagId: string | number, userIds: number[]) {
+  const bag = db.prepare('SELECT * FROM packing_bags WHERE id = ? AND trip_id = ?').get(bagId, tripId);
+  if (!bag) return null;
+  db.prepare('DELETE FROM packing_bag_members WHERE bag_id = ?').run(bagId);
+  const ins = db.prepare('INSERT OR IGNORE INTO packing_bag_members (bag_id, user_id) VALUES (?, ?)');
+  for (const uid of userIds) ins.run(bagId, uid);
+  return db.prepare(`
+    SELECT bm.user_id, u.username, u.avatar
+    FROM packing_bag_members bm JOIN users u ON bm.user_id = u.id
+    WHERE bm.bag_id = ?
+  `).all(bagId);
 }
 
 export function createBag(tripId: string | number, userId: number, data: { name: string; color?: string }) {
@@ -378,6 +410,9 @@ export function applyTemplate(tripId: string | number, userId: number, templateI
 
   transaction();
   return added;
+}
+export function saveAsTemplate(tripId: string | number, userId: number, templateName: string) {
+  return saveTripItemsAsTemplate(tripId, userId, templateName);
 }
 
 export function getCategoryAssignees(tripId: string | number) {

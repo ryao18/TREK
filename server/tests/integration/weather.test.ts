@@ -39,23 +39,21 @@ vi.mock('../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
-// Mock node-fetch / global fetch so no real HTTP calls are made
-vi.mock('node-fetch', () => ({
-  default: vi.fn().mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve({
-      current: { temperature_2m: 22, weathercode: 1, windspeed_10m: 10, relativehumidity_2m: 60, precipitation: 0 },
-      daily: {
-        time: ['2025-06-01'],
-        temperature_2m_max: [25],
-        temperature_2m_min: [18],
-        weathercode: [1],
-        precipitation_sum: [0],
-        windspeed_10m_max: [15],
-        sunrise: ['2025-06-01T06:00'],
-        sunset: ['2025-06-01T21:00'],
-      },
-    }),
+// Prevent real HTTP calls to Open-Meteo
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+  ok: true,
+  json: () => Promise.resolve({
+    current: { temperature_2m: 22, weathercode: 1, windspeed_10m: 10, relativehumidity_2m: 60, precipitation: 0 },
+    daily: {
+      time: ['2025-06-01'],
+      temperature_2m_max: [25],
+      temperature_2m_min: [18],
+      weathercode: [1],
+      precipitation_sum: [0],
+      windspeed_10m_max: [15],
+      sunrise: ['2025-06-01T06:00'],
+      sunset: ['2025-06-01T21:00'],
+    },
   }),
 }));
 
@@ -82,6 +80,7 @@ beforeEach(() => {
 
 afterAll(() => {
   testDb.close();
+  vi.unstubAllGlobals();
 });
 
 describe('Weather validation', () => {

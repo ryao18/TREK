@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/J27gr9GH"><img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="https://discord.gg/NhZBDSd4qW"><img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3" /></a>
   <a href="https://hub.docker.com/r/mauriceboe/trek"><img src="https://img.shields.io/docker/pulls/mauriceboe/trek" alt="Docker Pulls" /></a>
   <a href="https://github.com/mauriceboe/TREK"><img src="https://img.shields.io/github/stars/mauriceboe/TREK" alt="GitHub Stars" /></a>
@@ -161,6 +161,7 @@ services:
       # - ADMIN_EMAIL=admin@trek.local # Initial admin e-mail — only used on first boot when no users exist
       # - ADMIN_PASSWORD=changeme      # Initial admin password — only used on first boot when no users exist
       # - MCP_RATE_LIMIT=60 # Max MCP API requests per user per minute (default: 60)
+      # - MCP_MAX_SESSION_PER_USER=5 # Max concurrent MCP sessions per user (default: 5)
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -172,6 +173,8 @@ services:
       retries: 3
       start_period: 15s
 ```
+
+This example is aimed at reverse-proxy deployments. If you access TREK directly on `http://<host>:3000` without nginx, Caddy, Traefik, or another TLS-terminating proxy in front of it, set `FORCE_HTTPS=false` and remove `TRUST_PROXY` to avoid redirects to a non-existent HTTPS endpoint.
 
 ```bash
 docker compose up -d
@@ -282,9 +285,9 @@ trek.yourdomain.com {
 | `TZ` | Timezone for logs, reminders and cron jobs (e.g. `Europe/Berlin`) | `UTC` |
 | `LOG_LEVEL` | `info` = concise user actions, `debug` = verbose details | `info` |
 | `ALLOWED_ORIGINS` | Comma-separated origins for CORS and email links | same-origin |
-| `FORCE_HTTPS` | Redirect HTTP to HTTPS behind a TLS-terminating proxy | `false` |
+| `FORCE_HTTPS` | Redirect HTTP to HTTPS behind a TLS-terminating proxy. If you access TREK directly on `http://host:3000`, keep this `false`. | `false` |
 | `COOKIE_SECURE` | Set to `false` to allow session cookies over plain HTTP (e.g. accessing via IP without HTTPS). Defaults to `true` in production. **Not recommended to disable in production.** | `true` |
-| `TRUST_PROXY` | Number of trusted reverse proxies for `X-Forwarded-For` | `1` |
+| `TRUST_PROXY` | Number of trusted reverse proxies for `X-Forwarded-For`. Use this only when TREK is actually behind a reverse proxy. | `1` |
 | `ALLOW_INTERNAL_NETWORK` | Allow outbound requests to private/RFC-1918 IP addresses. Set to `true` if Immich or other integrated services are hosted on your local network. Loopback (`127.x`) and link-local/metadata addresses (`169.254.x`) are always blocked regardless of this setting. | `false` |
 | `APP_URL` | Public base URL of this instance (e.g. `https://trek.example.com`). Required when OIDC is enabled — must match the redirect URI registered with your IdP. Also used as the base URL for external links in email notifications. | — |
 | **OIDC / SSO** | | |
@@ -303,6 +306,7 @@ trek.yourdomain.com {
 | **Other** | | |
 | `DEMO_MODE` | Enable demo mode (hourly data resets) | `false` |
 | `MCP_RATE_LIMIT` | Max MCP API requests per user per minute | `60` |
+| `MCP_MAX_SESSION_PER_USER` | Max concurrent MCP sessions per user | `5` |
 
 ## Optional API Keys
 

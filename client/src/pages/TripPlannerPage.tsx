@@ -17,6 +17,7 @@ import { ReservationModal } from '../components/Planner/ReservationModal'
 import MemoriesPanel from '../components/Memories/MemoriesPanel'
 import ReservationsPanel from '../components/Planner/ReservationsPanel'
 import PackingListPanel from '../components/Packing/PackingListPanel'
+import TodoListPanel from '../components/Todo/TodoListPanel'
 import FileManager from '../components/Files/FileManager'
 import BudgetPanel from '../components/Budget/BudgetPanel'
 import CollabPanel from '../components/Collab/CollabPanel'
@@ -30,7 +31,40 @@ import { useResizablePanels } from '../hooks/useResizablePanels'
 import { useTripWebSocket } from '../hooks/useTripWebSocket'
 import { usePlaceSelection } from '../hooks/usePlaceSelection'
 import { usePlannerHistory } from '../hooks/usePlannerHistory'
-import type { Accommodation, TripMember, Day, Place, Reservation } from '../types'
+import type { Accommodation, TripMember, Day, Place, Reservation, PackingItem, TodoItem } from '../types'
+import { ListTodo } from 'lucide-react'
+
+function ListsContainer({ tripId, packingItems, todoItems }: { tripId: number; packingItems: PackingItem[]; todoItems: TodoItem[] }) {
+  const [subTab, setSubTab] = useState<'packing' | 'todo'>(() => {
+    return (sessionStorage.getItem(`trip-lists-subtab-${tripId}`) as 'packing' | 'todo') || 'packing'
+  })
+  const setSubTabPersist = (tab: 'packing' | 'todo') => { setSubTab(tab); sessionStorage.setItem(`trip-lists-subtab-${tripId}`, tab) }
+  const { t } = useTranslation()
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 4, padding: '4px 16px 0', borderBottom: '1px solid var(--border-faint)', marginBottom: 8 }}>
+        {([
+          { id: 'packing' as const, label: t('todo.subtab.packing'), icon: PackageCheck },
+          { id: 'todo' as const, label: t('todo.subtab.todo'), icon: ListTodo },
+        ]).map(tab => (
+          <button key={tab.id} onClick={() => setSubTabPersist(tab.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 500, padding: '8px 14px',
+              border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'none',
+              color: subTab === tab.id ? 'var(--text-primary)' : 'var(--text-faint)',
+              borderBottom: subTab === tab.id ? '2px solid var(--text-primary)' : '2px solid transparent',
+              marginBottom: -1, transition: 'color 0.15s',
+            }}>
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {subTab === 'packing' && <PackingListPanel tripId={tripId} items={packingItems} />}
+      {subTab === 'todo' && <TodoListPanel tripId={tripId} items={todoItems} />}
+    </div>
+  )
+}
 
 export default function TripPlannerPage(): React.ReactElement | null {
   const { id: tripId } = useParams<{ id: string }>()
@@ -43,6 +77,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
   const places = useTripStore(s => s.places)
   const assignments = useTripStore(s => s.assignments)
   const packingItems = useTripStore(s => s.packingItems)
+  const todoItems = useTripStore(s => s.todoItems)
   const categories = useTripStore(s => s.categories)
   const reservations = useTripStore(s => s.reservations)
   const budgetItems = useTripStore(s => s.budgetItems)
@@ -77,7 +112,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
     addonsApi.enabled().then(data => {
       const map = {}
       data.addons.forEach(a => { map[a.id] = true })
-      setEnabledAddons({ packing: !!map.packing, budget: !!map.budget, documents: !!map.documents, collab: !!map.collab, memories: !!map.memories })
+      // Check if any photo provider is enabled (for memories tab to show)
+      const hasPhotoProviders = data.addons.some(a => a.type === 'photo_provider')
+      setEnabledAddons({ packing: !!map.packing, budget: !!map.budget, documents: !!map.documents, collab: !!map.collab, memories: hasPhotoProviders })
     }).catch(() => {})
     authApi.getAppConfig().then(config => {
       if (config.allowed_file_types) setAllowedFileTypes(config.allowed_file_types)
@@ -87,7 +124,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
   const TRIP_TABS = [
     { id: 'plan', label: t('trip.tabs.plan'), icon: Map },
     { id: 'buchungen', label: t('trip.tabs.reservations'), shortLabel: t('trip.tabs.reservationsShort'), icon: Ticket },
-    ...(enabledAddons.packing ? [{ id: 'packliste', label: t('trip.tabs.packing'), shortLabel: t('trip.tabs.packingShort'), icon: PackageCheck }] : []),
+    ...(enabledAddons.packing ? [{ id: 'listen', label: t('trip.tabs.lists'), shortLabel: t('trip.tabs.listsShort'), icon: PackageCheck }] : []),
     ...(enabledAddons.budget ? [{ id: 'finanzplan', label: t('trip.tabs.budget'), icon: Wallet }] : []),
     ...(enabledAddons.documents ? [{ id: 'dateien', label: t('trip.tabs.files'), icon: FolderOpen }] : []),
     ...(enabledAddons.memories ? [{ id: 'memories', label: t('memories.title'), icon: Camera }] : []),
@@ -98,6 +135,14 @@ export default function TripPlannerPage(): React.ReactElement | null {
     const saved = sessionStorage.getItem(`trip-tab-${tripId}`)
     return saved || 'plan'
   })
+
+  useEffect(() => {
+    const validTabIds = TRIP_TABS.map(t => t.id)
+    if (!validTabIds.includes(activeTab)) {
+      setActiveTab('plan')
+      sessionStorage.setItem(`trip-tab-${tripId}`, 'plan')
+    }
+  }, [enabledAddons])
 
   const handleTabChange = (tabId: string): void => {
     setActiveTab(tabId)
@@ -384,7 +429,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
   const handleSaveReservation = async (data) => {
     try {
       if (editingReservation) {
-        const r = await tripActions.updateReservation(tripId, editingReservation.id, data)
+        const r = await tripActions.updateReservation(tripId, editingReservation.id, { ...data, day_id: selectedDayId || null })
         toast.success(t('trip.toast.reservationUpdated'))
         setShowReservationModal(false)
         if (data.type === 'hotel') {
@@ -452,10 +497,6 @@ export default function TripPlannerPage(): React.ReactElement | null {
         background: 'var(--bg-primary)', ...fontStyle,
       }}>
         <style>{`
-          @keyframes planeFloat {
-            0%, 100% { transform: translateY(0px) rotate(-2deg); }
-            50% { transform: translateY(-12px) rotate(2deg); }
-          }
           @keyframes dotPulse {
             0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
             40% { opacity: 1; transform: scale(1); }
@@ -465,10 +506,13 @@ export default function TripPlannerPage(): React.ReactElement | null {
             to { opacity: 1; transform: translateY(0); }
           }
         `}</style>
-        <div style={{ animation: 'planeFloat 2.5s ease-in-out infinite', marginBottom: 28 }}>
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
-            <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
-          </svg>
+        <div style={{ marginBottom: 28 }}>
+          <img
+            src={document.documentElement.classList.contains('dark') ? '/icons/trek-loading-light.gif' : '/icons/trek-loading-dark.gif'}
+            alt="Loading"
+            width={64}
+            height={64}
+          />
         </div>
         <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px', marginBottom: 6, animation: 'fadeInUp 0.5s ease-out' }}>
           {trip?.title || 'TREK'}
@@ -555,6 +599,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
               leftWidth={leftCollapsed ? 0 : leftWidth}
               rightWidth={rightCollapsed ? 0 : rightWidth}
               hasInspector={!!selectedPlace}
+              hasDayDetail={!!showDayDetail && !selectedPlace}
             />
 
 
@@ -853,9 +898,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
           </div>
         )}
 
-        {activeTab === 'packliste' && (
-          <div style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', maxWidth: 1200, margin: '0 auto', width: '100%', padding: '8px 0' }}>
-            <PackingListPanel tripId={tripId} items={packingItems} />
+        {activeTab === 'listen' && (
+          <div style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', maxWidth: 1800, margin: '0 auto', width: '100%', padding: '8px 0' }}>
+            <ListsContainer tripId={tripId} packingItems={packingItems} todoItems={todoItems} />
           </div>
         )}
 

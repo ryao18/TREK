@@ -57,6 +57,107 @@ interface UpdateInfo {
   is_docker?: boolean
 }
 
+const ADMIN_EVENT_LABEL_KEYS: Record<string, string> = {
+  version_available: 'settings.notifyVersionAvailable',
+}
+
+const ADMIN_CHANNEL_LABEL_KEYS: Record<string, string> = {
+  inapp: 'settings.notificationPreferences.inapp',
+  email: 'settings.notificationPreferences.email',
+  webhook: 'settings.notificationPreferences.webhook',
+}
+
+function AdminNotificationsPanel({ t, toast }: { t: (k: string) => string; toast: ReturnType<typeof useToast> }) {
+  const [matrix, setMatrix] = useState<any>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    adminApi.getNotificationPreferences().then((data: any) => setMatrix(data)).catch(() => {})
+  }, [])
+
+  if (!matrix) return <p style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic', padding: 16 }}>Loading…</p>
+
+  const visibleChannels = (['inapp', 'email', 'webhook'] as const).filter(ch => {
+    if (!matrix.available_channels[ch]) return false
+    return matrix.event_types.some((evt: string) => matrix.implemented_combos[evt]?.includes(ch))
+  })
+
+  const toggle = async (eventType: string, channel: string) => {
+    const current = matrix.preferences[eventType]?.[channel] ?? true
+    const updated = { ...matrix.preferences, [eventType]: { ...matrix.preferences[eventType], [channel]: !current } }
+    setMatrix((m: any) => m ? { ...m, preferences: updated } : m)
+    setSaving(true)
+    try {
+      await adminApi.updateNotificationPreferences(updated)
+    } catch {
+      setMatrix((m: any) => m ? { ...m, preferences: matrix.preferences } : m)
+      toast.error(t('common.error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (matrix.event_types.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <p style={{ fontSize: 13, color: 'var(--text-faint)' }}>{t('settings.notificationPreferences.noChannels')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-900">{t('admin.tabs.notifications')}</h2>
+          <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.adminNotificationsHint')}</p>
+        </div>
+        <div className="p-6">
+          {saving && <p style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 8 }}>Saving…</p>}
+          {/* Header row */}
+          <div style={{ display: 'grid', gridTemplateColumns: `1fr ${visibleChannels.map(() => '80px').join(' ')}`, gap: 4, paddingBottom: 6, marginBottom: 4, borderBottom: '1px solid var(--border-primary)' }}>
+            <span />
+            {visibleChannels.map(ch => (
+              <span key={ch} style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {t(ADMIN_CHANNEL_LABEL_KEYS[ch]) || ch}
+              </span>
+            ))}
+          </div>
+          {/* Event rows */}
+          {matrix.event_types.map((eventType: string) => {
+            const implementedForEvent = matrix.implemented_combos[eventType] ?? []
+            return (
+              <div key={eventType} style={{ display: 'grid', gridTemplateColumns: `1fr ${visibleChannels.map(() => '80px').join(' ')}`, gap: 4, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-primary)' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                  {t(ADMIN_EVENT_LABEL_KEYS[eventType]) || eventType}
+                </span>
+                {visibleChannels.map(ch => {
+                  if (!implementedForEvent.includes(ch)) {
+                    return <span key={ch} style={{ textAlign: 'center', color: 'var(--text-faint)', fontSize: 14 }}>—</span>
+                  }
+                  const isOn = matrix.preferences[eventType]?.[ch] ?? true
+                  return (
+                    <div key={ch} style={{ display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        onClick={() => toggle(eventType, ch)}
+                        className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
+                        style={{ background: isOn ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                      >
+                        <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-200"
+                          style={{ transform: isOn ? 'translateX(16px)' : 'translateX(0)' }} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage(): React.ReactElement {
   const { demoMode, serverTimezone } = useAuthStore()
   const { t, locale } = useTranslation()
@@ -68,6 +169,7 @@ export default function AdminPage(): React.ReactElement {
     { id: 'config', label: t('admin.tabs.config') },
     { id: 'addons', label: t('admin.tabs.addons') },
     { id: 'settings', label: t('admin.tabs.settings') },
+    { id: 'notifications', label: t('admin.tabs.notifications') },
     { id: 'backup', label: t('admin.tabs.backup') },
     { id: 'audit', label: t('admin.tabs.audit') },
     ...(mcpEnabled ? [{ id: 'mcp-tokens', label: t('admin.tabs.mcpTokens') }] : []),
@@ -969,189 +1071,6 @@ export default function AdminPage(): React.ReactElement {
                   </button>
                 </div>
               </div>
-              {/* Notifications — exclusive channel selector */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-100">
-                  <h2 className="font-semibold text-slate-900">{t('admin.notifications.title')}</h2>
-                  <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.hint')}</p>
-                </div>
-                <div className="p-6 space-y-4">
-                  {/* Channel selector */}
-                  <div className="flex gap-2">
-                    {(['none', 'email', 'webhook'] as const).map(ch => {
-                      const active = (smtpValues.notification_channel || 'none') === ch
-                      const labels: Record<string, string> = { none: t('admin.notifications.none'), email: t('admin.notifications.email'), webhook: t('admin.notifications.webhook') }
-                      return (
-                        <button
-                          key={ch}
-                          onClick={() => setSmtpValues(prev => ({ ...prev, notification_channel: ch }))}
-                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
-                        >
-                          {labels[ch]}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* Notification event toggles — shown when any channel is active */}
-                  {(smtpValues.notification_channel || 'none') !== 'none' && (() => {
-                    const ch = smtpValues.notification_channel || 'none'
-                    const configValid = ch === 'email' ? !!(smtpValues.smtp_host?.trim()) : ch === 'webhook' ? !!(smtpValues.notification_webhook_url?.trim()) : false
-                    return (
-                    <div className={`space-y-2 pt-2 border-t border-slate-100 ${!configValid ? 'opacity-50 pointer-events-none' : ''}`}>
-                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">{t('admin.notifications.events')}</p>
-                      {!configValid && (
-                        <p className="text-[10px] text-amber-600 mb-3">{t('admin.notifications.configureFirst')}</p>
-                      )}
-                      <p className="text-[10px] text-slate-400 mb-3">{t('admin.notifications.eventsHint')}</p>
-                      {[
-                        { key: 'notify_trip_invite', label: t('settings.notifyTripInvite') },
-                        { key: 'notify_booking_change', label: t('settings.notifyBookingChange') },
-                        { key: 'notify_trip_reminder', label: t('settings.notifyTripReminder') },
-                        { key: 'notify_vacay_invite', label: t('settings.notifyVacayInvite') },
-                        { key: 'notify_photos_shared', label: t('settings.notifyPhotosShared') },
-                        { key: 'notify_collab_message', label: t('settings.notifyCollabMessage') },
-                        { key: 'notify_packing_tagged', label: t('settings.notifyPackingTagged') },
-                      ].map(opt => {
-                        const isOn = (smtpValues[opt.key] ?? 'true') !== 'false'
-                        return (
-                          <div key={opt.key} className="flex items-center justify-between py-1">
-                            <span className="text-sm text-slate-700">{opt.label}</span>
-                            <button
-                              onClick={() => {
-                                const newVal = isOn ? 'false' : 'true'
-                                setSmtpValues(prev => ({ ...prev, [opt.key]: newVal }))
-                              }}
-                              className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                              style={{ background: isOn ? 'var(--text-primary)' : 'var(--border-primary)' }}
-                            >
-                              <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                                style={{ transform: isOn ? 'translateX(20px)' : 'translateX(0)' }} />
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    )
-                  })()}
-
-                  {/* Email (SMTP) settings — shown when email channel is active */}
-                  {(smtpValues.notification_channel || 'none') === 'email' && (
-                    <div className="space-y-3 pt-2 border-t border-slate-100">
-                      <p className="text-xs text-slate-400">{t('admin.smtp.hint')}</p>
-                      {smtpLoaded && [
-                        { key: 'smtp_host', label: 'SMTP Host', placeholder: 'mail.example.com' },
-                        { key: 'smtp_port', label: 'SMTP Port', placeholder: '587' },
-                        { key: 'smtp_user', label: 'SMTP User', placeholder: 'trek@example.com' },
-                        { key: 'smtp_pass', label: 'SMTP Password', placeholder: '••••••••', type: 'password' },
-                        { key: 'smtp_from', label: 'From Address', placeholder: 'trek@example.com' },
-                      ].map(field => (
-                        <div key={field.key}>
-                          <label className="block text-xs font-medium text-slate-500 mb-1">{field.label}</label>
-                          <input
-                            type={field.type || 'text'}
-                            value={smtpValues[field.key] || ''}
-                            onChange={e => setSmtpValues(prev => ({ ...prev, [field.key]: e.target.value }))}
-                            placeholder={field.placeholder}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                          />
-                        </div>
-                      ))}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                        <div>
-                          <span className="text-xs font-medium text-slate-500">Skip TLS certificate check</span>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Enable for self-signed certificates on local mail servers</p>
-                        </div>
-                        <button onClick={() => {
-                          const newVal = smtpValues.smtp_skip_tls_verify === 'true' ? 'false' : 'true'
-                          setSmtpValues(prev => ({ ...prev, smtp_skip_tls_verify: newVal }))
-                        }}
-                          className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                          style={{ background: smtpValues.smtp_skip_tls_verify === 'true' ? 'var(--text-primary)' : 'var(--border-primary)' }}>
-                          <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                            style={{ transform: smtpValues.smtp_skip_tls_verify === 'true' ? 'translateX(20px)' : 'translateX(0)' }} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Webhook settings — shown when webhook channel is active */}
-                  {(smtpValues.notification_channel || 'none') === 'webhook' && (
-                    <div className="space-y-3 pt-2 border-t border-slate-100">
-                      <p className="text-xs text-slate-400">{t('admin.webhook.hint')}</p>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Webhook URL</label>
-                        <input
-                          type="text"
-                          value={smtpValues.notification_webhook_url || ''}
-                          onChange={e => setSmtpValues(prev => ({ ...prev, notification_webhook_url: e.target.value }))}
-                          placeholder="https://discord.com/api/webhooks/..."
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
-                        />
-                        <p className="text-[10px] text-slate-400 mt-1">TREK will POST JSON with event, title, body, and timestamp to this URL.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Save + Test buttons */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                    <button
-                      onClick={async () => {
-                        const notifKeys = ['notification_channel', 'notification_webhook_url', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify', 'notify_trip_invite', 'notify_booking_change', 'notify_trip_reminder', 'notify_vacay_invite', 'notify_photos_shared', 'notify_collab_message', 'notify_packing_tagged']
-                        const payload: Record<string, string> = {}
-                        for (const k of notifKeys) { if (smtpValues[k] !== undefined) payload[k] = smtpValues[k] }
-                        try {
-                          await authApi.updateAppSettings(payload)
-                          toast.success(t('admin.notifications.saved'))
-                          authApi.getAppConfig().then((c: { trip_reminders_enabled?: boolean }) => {
-                            if (c?.trip_reminders_enabled !== undefined) setTripRemindersEnabled(c.trip_reminders_enabled)
-                          }).catch(() => {})
-                        } catch { toast.error(t('common.error')) }
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
-                    >
-                      <Save className="w-4 h-4" />
-                      {t('common.save')}
-                    </button>
-                    {(smtpValues.notification_channel || 'none') === 'email' && (
-                      <button
-                        onClick={async () => {
-                          const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify']
-                          const payload: Record<string, string> = {}
-                          for (const k of smtpKeys) { if (smtpValues[k] !== undefined) payload[k] = smtpValues[k] }
-                          await authApi.updateAppSettings(payload).catch(() => {})
-                          try {
-                            const result = await notificationsApi.testSmtp()
-                            if (result.success) toast.success(t('admin.smtp.testSuccess'))
-                            else toast.error(result.error || t('admin.smtp.testFailed'))
-                          } catch { toast.error(t('admin.smtp.testFailed')) }
-                        }}
-                        className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-                      >
-                        {t('admin.smtp.testButton')}
-                      </button>
-                    )}
-                    {(smtpValues.notification_channel || 'none') === 'webhook' && (
-                      <button
-                        onClick={async () => {
-                          if (smtpValues.notification_webhook_url) {
-                            await authApi.updateAppSettings({ notification_webhook_url: smtpValues.notification_webhook_url }).catch(() => {})
-                          }
-                          try {
-                            const result = await notificationsApi.testWebhook()
-                            if (result.success) toast.success(t('admin.notifications.testWebhookSuccess'))
-                            else toast.error(result.error || t('admin.notifications.testWebhookFailed'))
-                          } catch { toast.error(t('admin.notifications.testWebhookFailed')) }
-                        }}
-                        className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
-                      >
-                        {t('admin.notifications.testWebhook')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               {/* Danger Zone */}
               <div className="bg-white rounded-xl border border-red-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-red-100 bg-red-50">
@@ -1178,6 +1097,210 @@ export default function AdminPage(): React.ReactElement {
               </div>
             </div>
           )}
+
+          {activeTab === 'notifications' && (() => {
+            // Derive active channels from smtpValues.notification_channels (plural)
+            // with fallback to notification_channel (singular) for existing installs
+            const rawChannels = smtpValues.notification_channels ?? smtpValues.notification_channel ?? 'none'
+            const activeChans = rawChannels === 'none' ? [] : rawChannels.split(',').map((c: string) => c.trim())
+            const emailActive = activeChans.includes('email')
+            const webhookActive = activeChans.includes('webhook')
+
+            const setChannels = async (email: boolean, webhook: boolean) => {
+              const chans = [email && 'email', webhook && 'webhook'].filter(Boolean).join(',') || 'none'
+              setSmtpValues(prev => ({ ...prev, notification_channels: chans }))
+              try {
+                await authApi.updateAppSettings({ notification_channels: chans })
+              } catch {
+                // Revert state on failure
+                const reverted = [emailActive && 'email', webhookActive && 'webhook'].filter(Boolean).join(',') || 'none'
+                setSmtpValues(prev => ({ ...prev, notification_channels: reverted }))
+                toast.error(t('common.error'))
+              }
+            }
+
+            const smtpConfigured = !!(smtpValues.smtp_host?.trim())
+            const saveNotifications = async () => {
+              // Saves credentials only — channel activation is auto-saved by the toggle
+              const notifKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify']
+              const payload: Record<string, string> = {}
+              for (const k of notifKeys) { if (smtpValues[k] !== undefined) payload[k] = smtpValues[k] }
+              try {
+                await authApi.updateAppSettings(payload)
+                toast.success(t('admin.notifications.saved'))
+                authApi.getAppConfig().then((c: { trip_reminders_enabled?: boolean }) => {
+                  if (c?.trip_reminders_enabled !== undefined) setTripRemindersEnabled(c.trip_reminders_enabled)
+                }).catch(() => {})
+              } catch { toast.error(t('common.error')) }
+            }
+
+            return (<>
+              <div className="space-y-4">
+                {/* Email Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-semibold text-slate-900">{t('admin.notifications.emailPanel.title')}</h2>
+                      <p className="text-xs text-slate-400 mt-1">{t('admin.smtp.hint')}</p>
+                    </div>
+                    <button
+                      onClick={() => setChannels(!emailActive, webhookActive)}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                      style={{ background: emailActive ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                        style={{ transform: emailActive ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
+                  </div>
+                  <div className={`p-6 space-y-3 ${!emailActive ? 'opacity-50 pointer-events-none' : ''}`}>
+                    {smtpLoaded && [
+                      { key: 'smtp_host', label: 'SMTP Host', placeholder: 'mail.example.com' },
+                      { key: 'smtp_port', label: 'SMTP Port', placeholder: '587' },
+                      { key: 'smtp_user', label: 'SMTP User', placeholder: 'trek@example.com' },
+                      { key: 'smtp_pass', label: 'SMTP Password', placeholder: '••••••••', type: 'password' },
+                      { key: 'smtp_from', label: 'From Address', placeholder: 'trek@example.com' },
+                    ].map(field => (
+                      <div key={field.key}>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">{field.label}</label>
+                        <input
+                          type={field.type || 'text'}
+                          value={smtpValues[field.key] || ''}
+                          onChange={e => setSmtpValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                          placeholder={field.placeholder}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                        />
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                      <div>
+                        <span className="text-xs font-medium text-slate-500">Skip TLS certificate check</span>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Enable for self-signed certificates on local mail servers</p>
+                      </div>
+                      <button onClick={() => {
+                        const newVal = smtpValues.smtp_skip_tls_verify === 'true' ? 'false' : 'true'
+                        setSmtpValues(prev => ({ ...prev, smtp_skip_tls_verify: newVal }))
+                      }}
+                        className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                        style={{ background: smtpValues.smtp_skip_tls_verify === 'true' ? 'var(--text-primary)' : 'var(--border-primary)' }}>
+                        <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                          style={{ transform: smtpValues.smtp_skip_tls_verify === 'true' ? 'translateX(20px)' : 'translateX(0)' }} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="px-6 pb-4 flex items-center gap-2 border-t border-slate-100 pt-4">
+                    <button onClick={saveNotifications}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors">
+                      <Save className="w-4 h-4" />{t('common.save')}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const smtpKeys = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify']
+                        const payload: Record<string, string> = {}
+                        for (const k of smtpKeys) { if (smtpValues[k] !== undefined) payload[k] = smtpValues[k] }
+                        await authApi.updateAppSettings(payload).catch(() => {})
+                        try {
+                          const result = await notificationsApi.testSmtp()
+                          if (result.success) toast.success(t('admin.smtp.testSuccess'))
+                          else toast.error(result.error || t('admin.smtp.testFailed'))
+                        } catch { toast.error(t('admin.smtp.testFailed')) }
+                      }}
+                      disabled={!smtpConfigured}
+                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-40"
+                    >
+                      {t('admin.smtp.testButton')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Webhook Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-semibold text-slate-900">{t('admin.notifications.webhookPanel.title')}</h2>
+                      <p className="text-xs text-slate-400 mt-1">{t('admin.webhook.hint')}</p>
+                    </div>
+                    <button
+                      onClick={() => setChannels(emailActive, !webhookActive)}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                      style={{ background: webhookActive ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                        style={{ transform: webhookActive ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* In-App Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-semibold text-slate-900">{t('admin.notifications.inappPanel.title')}</h2>
+                      <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.inappPanel.hint')}</p>
+                    </div>
+                    <div className="relative inline-flex h-6 w-11 items-center rounded-full flex-shrink-0"
+                      style={{ background: 'var(--text-primary)', opacity: 0.5, cursor: 'not-allowed' }}>
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                        style={{ transform: 'translateX(20px)' }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Admin Webhook Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100">
+                    <h2 className="font-semibold text-slate-900">{t('admin.notifications.adminWebhookPanel.title')}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.adminWebhookPanel.hint')}</p>
+                  </div>
+                  <div className="p-6 space-y-3">
+                    {smtpLoaded && (
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">{t('admin.notifications.adminWebhookPanel.title')}</label>
+                        <input
+                          type="text"
+                          value={smtpValues.admin_webhook_url === '••••••••' ? '' : smtpValues.admin_webhook_url || ''}
+                          onChange={e => setSmtpValues(prev => ({ ...prev, admin_webhook_url: e.target.value }))}
+                          placeholder={smtpValues.admin_webhook_url === '••••••••' ? '••••••••' : 'https://discord.com/api/webhooks/...'}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-6 pb-4 flex items-center gap-2 border-t border-slate-100 pt-4">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await authApi.updateAppSettings({ admin_webhook_url: smtpValues.admin_webhook_url || '' })
+                          toast.success(t('admin.notifications.adminWebhookPanel.saved'))
+                        } catch { toast.error(t('common.error')) }
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors">
+                      <Save className="w-4 h-4" />{t('common.save')}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const url = smtpValues.admin_webhook_url === '••••••••' ? undefined : smtpValues.admin_webhook_url
+                        if (!url && smtpValues.admin_webhook_url !== '••••••••') return
+                        try {
+                          if (url) await authApi.updateAppSettings({ admin_webhook_url: url }).catch(() => {})
+                          const result = await notificationsApi.testWebhook(url)
+                          if (result.success) toast.success(t('admin.notifications.adminWebhookPanel.testSuccess'))
+                          else toast.error(result.error || t('admin.notifications.adminWebhookPanel.testFailed'))
+                        } catch { toast.error(t('admin.notifications.adminWebhookPanel.testFailed')) }
+                      }}
+                      disabled={!smtpValues.admin_webhook_url?.trim()}
+                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-40"
+                    >
+                      {t('admin.smtp.testButton')}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+              <div className="mt-6">
+                <AdminNotificationsPanel t={t} toast={toast} />
+              </div>
+            </>)
+          })()}
 
           {activeTab === 'backup' && <BackupPanel />}
 
@@ -1428,7 +1551,7 @@ docker run -d --name trek \\
                   await adminApi.rotateJwtSecret()
                   setShowRotateJwtModal(false)
                   logout()
-                  navigate('/login')
+                  navigate('/login', { state: { noRedirect: true } })
                 } catch {
                   toast.error(t('common.error'))
                   setRotatingJwt(false)

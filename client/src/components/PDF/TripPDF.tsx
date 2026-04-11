@@ -1,9 +1,16 @@
 // Trip PDF via browser print window
 import { createElement } from 'react'
 import { getCategoryIcon } from '../shared/categoryIcons'
-import { FileText, Info, Clock, MapPin, Navigation, Train, Plane, Bus, Car, Ship, Coffee, Ticket, Star, Heart, Camera, Flag, Lightbulb, AlertTriangle, ShoppingBag, Bookmark } from 'lucide-react'
-import { mapsApi } from '../../api/client'
+import { FileText, Info, Clock, MapPin, Navigation, Train, Plane, Bus, Car, Ship, Coffee, Ticket, Star, Heart, Camera, Flag, Lightbulb, AlertTriangle, ShoppingBag, Bookmark, Hotel, LogIn, LogOut, KeyRound, BedDouble, LucideIcon } from 'lucide-react'
+import { accommodationsApi, mapsApi } from '../../api/client'
 import type { Trip, Day, Place, Category, AssignmentsMap, DayNotesMap } from '../../types'
+
+function renderLucideIcon(icon:LucideIcon, props = {}) {
+  if (!_renderToStaticMarkup) return ''
+  return _renderToStaticMarkup(
+    createElement(icon, props)
+  );
+}
 
 const NOTE_ICON_MAP = { FileText, Info, Clock, MapPin, Navigation, Train, Plane, Bus, Car, Ship, Coffee, Ticket, Star, Heart, Camera, Flag, Lightbulb, AlertTriangle, ShoppingBag, Bookmark }
 const TRANSPORT_ICON_MAP = { flight: Plane, train: Train, bus: Bus, car: Car, cruise: Ship }
@@ -28,6 +35,13 @@ function transportIconSvg(type: string) {
   if (!_renderToStaticMarkup) return ''
   const Icon = TRANSPORT_ICON_MAP[type as keyof typeof TRANSPORT_ICON_MAP] || Ticket
   return _renderToStaticMarkup(createElement(Icon, { size: 14, strokeWidth: 1.8, color: '#3b82f6' }))
+}
+
+const ACCOMMODATION_ICON_MAP = { accommodation: Hotel, checkin: LogIn, checkout: LogOut, location: MapPin, note: FileText, confirmation: KeyRound }
+function accommodationIconSvg(type: string) {
+  if (!_renderToStaticMarkup) return ''
+  const Icon = ACCOMMODATION_ICON_MAP[type as keyof typeof ACCOMMODATION_ICON_MAP] || BedDouble
+  return _renderToStaticMarkup(createElement(Icon, { size: 14, strokeWidth: 1.8, color: '#03398f', className: 'accommodation-icon' }))
 }
 
 const svgPin = `<svg width="11" height="11" viewBox="0 0 24 24" fill="#94a3b8" style="flex-shrink:0;margin-top:1px"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="white"/></svg>`
@@ -145,6 +159,10 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
   const sorted = [...(days || [])].sort((a, b) => a.day_number - b.day_number)
   const range = longDateRange(sorted, loc)
   const coverImg = safeImg(trip?.cover_image)
+  //retrieve accommodations for the trip to display on the day sections and prefetch their photos if needed
+  const accommodations = await accommodationsApi.list(trip.id);
+
+  // Pre-fetch place photos from Google
   const photoMap = await fetchPlacePhotos(assignments)
 
   const totalAssigned = new Set(
@@ -262,7 +280,41 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
                 ${sectionItems.length === 0 ? '<div class="pdf-day-group-empty"></div>' : sectionItems.map(renderItem).join('')}
               </div>
             </div>`
-        }).join('')
+      }).join('')
+
+    const accommodationsForDay = (accommodations.accommodations || []).filter(a =>
+      days.some(d => d.id >= a.start_day_id && d.id <= a.end_day_id && d.id === day?.id)
+    ).sort((a, b) => a.start_day_id - b.start_day_id)
+
+    const accommodationDetails = accommodationsForDay.map(item => {
+      const isCheckIn = day.id === item.start_day_id
+      const isCheckOut = day.id === item.end_day_id
+      const actionLabel = isCheckIn ? tr('reservations.meta.checkIn')
+        : isCheckOut ? tr('reservations.meta.checkOut')
+        : tr('reservations.meta.linkAccommodation')
+      const actionIcon = isCheckIn ? accommodationIconSvg('checkin')
+        : isCheckOut ? accommodationIconSvg('checkout')
+        : accommodationIconSvg('accommodation')
+      const timeStr = isCheckIn ? (item.check_in || '')
+        : isCheckOut ? (item.check_out || '')
+        : ''
+
+      return `
+        <div class="day-accommodation">
+          <div class="day-accommodation-title accommodation-center-icon">${actionIcon} ${escHtml(actionLabel)}</div>
+          ${timeStr ? `<div class="accommodation-center-icon">${accommodationIconSvg('checkin')} <b>${escHtml(timeStr)}</b></div>` : ''}
+          <div class="accommodation-center-icon">${accommodationIconSvg('accommodation')} ${escHtml(item.place_name)}</div>
+          ${item.place_address ? `<div class="accommodation-center-icon">${accommodationIconSvg('location')} ${escHtml(item.place_address)}</div>` : ''}
+          ${item.notes ? `<div class="accommodation-center-icon">${accommodationIconSvg('note')} ${escHtml(item.notes)}</div>` : ''}
+          ${isCheckIn && item.confirmation ? `<div class="accommodation-center-icon">${accommodationIconSvg('confirmation')} ${escHtml(item.confirmation)}</div>` : ''}
+        </div>`
+    }).join('')
+
+    const accommodationsHtml = accommodationsForDay.length > 0
+      ? `<div class="day-accommodations-overview">
+          <div class="day-accommodations ${accommodationsForDay.length === 1 ? 'single' : ''}">${accommodationDetails}</div>
+        </div>`
+      : ''
 
     return `
       <div class="day-section${di > 0 ? ' page-break' : ''}">
@@ -272,8 +324,8 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
           ${day.date ? `<span class="day-date">${shortDate(day.date, loc)}</span>` : ''}
           ${cost ? `<span class="day-cost">${cost}</span>` : ''}
         </div>
-        <div class="day-body">${itemsHtml}</div>
-      </div>`
+        <div class="day-body">${accommodationsHtml}${itemsHtml}</div>
+      </div>`  
   }).join('')
 
   const html = `<!DOCTYPE html>
@@ -368,6 +420,23 @@ export async function downloadTripPDF({ trip, days, places, assignments, categor
   .pdf-day-group-body { min-height: 4px; }
   .pdf-day-group-empty { height: 4px; }
 
+  /* accommodation info */
+  .day-accommodations-overview { font-size: 12px; }
+  .day-accommodations { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+  .day-accommodations.single { justify-content: center; }
+  .day-accommodation {
+    flex: 1 1 45%; min-width: 200px; margin: 4px 0; padding: 10px;
+    border: 2px solid #e2e8f0; border-radius: 12px;
+    display: flex; flex-direction: column;
+  }
+  .day-accommodation-title {
+    font-size: 16px; font-weight: 600; text-align: center;
+    margin-bottom: 4px; align-self: center;
+  }
+  .accommodation-center-icon { display: flex; align-items: center; gap: 4px; }
+
+
+  /* ── Place card ────────────────────────────────── */
   .place-card {
     display: flex; align-items: stretch;
     border: 1px solid #e2e8f0; border-radius: 8px;

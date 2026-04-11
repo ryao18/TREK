@@ -260,8 +260,8 @@ router.post('/mfa/setup', authenticate, (req: Request, res: Response) => {
   const result = setupMfa(authReq.user.id, authReq.user.email);
   if (result.error) return res.status(result.status!).json({ error: result.error });
   result.qrPromise!
-    .then((qr_data_url: string) => {
-      res.json({ secret: result.secret, otpauth_url: result.otpauth_url, qr_data_url });
+    .then((qr_svg: string) => {
+      res.json({ secret: result.secret, otpauth_url: result.otpauth_url, qr_svg });
     })
     .catch((err: unknown) => {
       console.error('[MFA] QR code generation error:', err);
@@ -317,9 +317,9 @@ router.post('/ws-token', authenticate, (req: Request, res: Response) => {
 // Short-lived single-use token for direct resource URLs
 router.post('/resource-token', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const result = createResourceToken(authReq.user.id, req.body.purpose);
-  if (result.error) return res.status(result.status!).json({ error: result.error });
-  res.json({ token: result.token });
+  const token = createResourceToken(authReq.user.id, req.body.purpose);
+  if (!token) return res.status(503).json({ error: 'Service unavailable' });
+  res.json(token);
 });
 
 export default router;

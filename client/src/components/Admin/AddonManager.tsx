@@ -15,7 +15,17 @@ interface Addon {
   name: string
   description: string
   icon: string
+  type: string
   enabled: boolean
+  config?: Record<string, unknown>
+}
+
+interface ProviderOption {
+  key: string
+  label: string
+  description: string
+  enabled: boolean
+  toggle: () => Promise<void>
 }
 
 interface AddonIconProps {
@@ -34,7 +44,7 @@ export default function AddonManager({ bagTrackingEnabled, onToggleBagTracking }
   const dark = dm === true || dm === 'dark' || (dm === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const toast = useToast()
   const refreshGlobalAddons = useAddonStore(s => s.loadAddons)
-  const [addons, setAddons] = useState([])
+  const [addons, setAddons] = useState<Addon[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -53,7 +63,7 @@ export default function AddonManager({ bagTrackingEnabled, onToggleBagTracking }
     }
   }
 
-  const handleToggle = async (addon) => {
+  const handleToggle = async (addon: Addon) => {
     const newEnabled = !addon.enabled
     // Optimistic update
     setAddons(prev => prev.map(a => a.id === addon.id ? { ...a, enabled: newEnabled } : a))
@@ -68,9 +78,44 @@ export default function AddonManager({ bagTrackingEnabled, onToggleBagTracking }
     }
   }
 
+  const isPhotoProviderAddon = (addon: Addon) => {
+    return addon.type === 'photo_provider'
+  }
+
+  const isPhotosAddon = (addon: Addon) => {
+    const haystack = `${addon.id} ${addon.name} ${addon.description}`.toLowerCase()
+    return addon.type === 'trip' && (addon.icon === 'Image' || haystack.includes('photo') || haystack.includes('memories'))
+  }
+
+  const handleTogglePhotoProvider = async (providerAddon: Addon) => {
+    const enableProvider = !providerAddon.enabled
+    const prev = addons
+
+    setAddons(current => current.map(a => a.id === providerAddon.id ? { ...a, enabled: enableProvider } : a))
+
+    try {
+      await adminApi.updateAddon(providerAddon.id, { enabled: enableProvider })
+      refreshGlobalAddons()
+      toast.success(t('admin.addons.toast.updated'))
+    } catch {
+      setAddons(prev)
+      toast.error(t('admin.addons.toast.error'))
+    }
+  }
+
   const tripAddons = addons.filter(a => a.type === 'trip')
   const globalAddons = addons.filter(a => a.type === 'global')
+  const photoProviderAddons = addons.filter(isPhotoProviderAddon)
   const integrationAddons = addons.filter(a => a.type === 'integration')
+  const photosAddon = tripAddons.find(isPhotosAddon)
+  const providerOptions: ProviderOption[] = photoProviderAddons.map((provider) => ({
+      key: provider.id,
+      label: provider.name,
+      description: provider.description,
+      enabled: provider.enabled,
+      toggle: () => handleTogglePhotoProvider(provider),
+    }))
+  const photosDerivedEnabled = providerOptions.some(p => p.enabled)
 
   if (loading) {
     return (
@@ -108,7 +153,42 @@ export default function AddonManager({ bagTrackingEnabled, onToggleBagTracking }
                 </div>
                 {tripAddons.map(addon => (
                   <div key={addon.id}>
-                    <AddonRow addon={addon} onToggle={handleToggle} t={t} />
+                    <AddonRow
+                      addon={addon}
+                      onToggle={handleToggle}
+                      t={t}
+                      nameOverride={photosAddon && addon.id === photosAddon.id ? 'Memories providers' : undefined}
+                      descriptionOverride={photosAddon && addon.id === photosAddon.id ? 'Enable or disable each photo provider.' : undefined}
+                      statusOverride={photosAddon && addon.id === photosAddon.id ? photosDerivedEnabled : undefined}
+                      hideToggle={photosAddon && addon.id === photosAddon.id}
+                    />
+                    {photosAddon && addon.id === photosAddon.id && providerOptions.length > 0 && (
+                      <div className="px-6 py-3 border-b" style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-secondary)', paddingLeft: 70 }}>
+                        <div className="space-y-2">
+                          {providerOptions.map(provider => (
+                            <div key={provider.key} className="flex items-center gap-4" style={{ minHeight: 32 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{provider.label}</div>
+                                <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{provider.description}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="hidden sm:inline text-xs font-medium" style={{ color: provider.enabled ? 'var(--text-primary)' : 'var(--text-faint)' }}>
+                                  {provider.enabled ? t('admin.addons.enabled') : t('admin.addons.disabled')}
+                                </span>
+                                <button
+                                  onClick={provider.toggle}
+                                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                                  style={{ background: provider.enabled ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                                >
+                                  <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                                    style={{ transform: provider.enabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {addon.id === 'packing' && addon.enabled && onToggleBagTracking && (
                       <div className="flex items-center gap-4 px-6 py-3 border-b" style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-secondary)', paddingLeft: 70 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -171,8 +251,10 @@ export default function AddonManager({ bagTrackingEnabled, onToggleBagTracking }
 
 interface AddonRowProps {
   addon: Addon
-  onToggle: (addonId: string) => void
+  onToggle: (addon: Addon) => void
   t: (key: string) => string
+  statusOverride?: boolean
+  hideToggle?: boolean
 }
 
 function getAddonLabel(t: (key: string) => string, addon: Addon): { name: string; description: string } {
@@ -187,9 +269,12 @@ function getAddonLabel(t: (key: string) => string, addon: Addon): { name: string
   }
 }
 
-function AddonRow({ addon, onToggle, t }: AddonRowProps) {
+function AddonRow({ addon, onToggle, t, nameOverride, descriptionOverride, statusOverride, hideToggle }: AddonRowProps & { nameOverride?: string; descriptionOverride?: string }) {
   const isComingSoon = false
   const label = getAddonLabel(t, addon)
+  const displayName = nameOverride || label.name
+  const displayDescription = descriptionOverride || label.description
+  const enabledState = statusOverride ?? addon.enabled
   return (
     <div className="flex items-center gap-4 px-6 py-4 border-b transition-colors hover:opacity-95" style={{ borderColor: 'var(--border-secondary)', opacity: isComingSoon ? 0.5 : 1, pointerEvents: isComingSoon ? 'none' : 'auto' }}>
       {/* Icon */}
@@ -200,7 +285,7 @@ function AddonRow({ addon, onToggle, t }: AddonRowProps) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{label.name}</span>
+          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{displayName}</span>
           {isComingSoon && (
             <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-faint)' }}>
               Coming Soon
@@ -210,28 +295,30 @@ function AddonRow({ addon, onToggle, t }: AddonRowProps) {
             {addon.type === 'global' ? t('admin.addons.type.global') : addon.type === 'integration' ? t('admin.addons.type.integration') : t('admin.addons.type.trip')}
           </span>
         </div>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{label.description}</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{displayDescription}</p>
       </div>
 
       {/* Toggle */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className="hidden sm:inline text-xs font-medium" style={{ color: (addon.enabled && !isComingSoon) ? 'var(--text-primary)' : 'var(--text-faint)' }}>
-          {isComingSoon ? t('admin.addons.disabled') : addon.enabled ? t('admin.addons.enabled') : t('admin.addons.disabled')}
+        <span className="hidden sm:inline text-xs font-medium" style={{ color: (enabledState && !isComingSoon) ? 'var(--text-primary)' : 'var(--text-faint)' }}>
+          {isComingSoon ? t('admin.addons.disabled') : enabledState ? t('admin.addons.enabled') : t('admin.addons.disabled')}
         </span>
-        <button
-          onClick={() => !isComingSoon && onToggle(addon)}
-          disabled={isComingSoon}
-          className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-          style={{ background: (addon.enabled && !isComingSoon) ? 'var(--text-primary)' : 'var(--border-primary)', cursor: isComingSoon ? 'not-allowed' : 'pointer' }}
-        >
-          <span
-            className="inline-block h-4 w-4 transform rounded-full transition-transform"
-            style={{
-              background: 'var(--bg-card)',
-              transform: (addon.enabled && !isComingSoon) ? 'translateX(22px)' : 'translateX(4px)',
-            }}
-          />
-        </button>
+        {!hideToggle && (
+          <button
+            onClick={() => !isComingSoon && onToggle(addon)}
+            disabled={isComingSoon}
+            className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+            style={{ background: (enabledState && !isComingSoon) ? 'var(--text-primary)' : 'var(--border-primary)', cursor: isComingSoon ? 'not-allowed' : 'pointer' }}
+          >
+            <span
+              className="inline-block h-4 w-4 transform rounded-full transition-transform"
+              style={{
+                background: 'var(--bg-card)',
+                transform: (enabledState && !isComingSoon) ? 'translateX(22px)' : 'translateX(4px)',
+              }}
+            />
+          </button>
+        )}
       </div>
     </div>
   )

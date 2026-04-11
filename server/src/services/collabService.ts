@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { db, canAccessTrip } from '../db/database';
 import { CollabNote, CollabPoll, CollabMessage, TripFile } from '../types';
-import { checkSsrf, createPinnedAgent } from '../utils/ssrfGuard';
+import { checkSsrf, createPinnedDispatcher } from '../utils/ssrfGuard';
 
 /* ------------------------------------------------------------------ */
 /*  Internal row types                                                 */
@@ -400,17 +400,16 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreviewResult> 
   }
 
   try {
-    const nodeFetch = require('node-fetch');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     try {
-      const r: { ok: boolean; text: () => Promise<string> } = await nodeFetch(url, {
+      const r = await fetch(url, {
         redirect: 'error',
         signal: controller.signal,
-        agent: createPinnedAgent(ssrf.resolvedIp!, parsed.protocol),
+        dispatcher: createPinnedDispatcher(ssrf.resolvedIp!),
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NOMAD/1.0; +https://github.com/mauriceboe/NOMAD)' },
-      });
+      } as any);
       clearTimeout(timeout);
       if (!r.ok) throw new Error('Fetch failed');
 

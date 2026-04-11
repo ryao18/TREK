@@ -82,7 +82,7 @@ function seedCategories(db: Database.Database): void {
 function seedAddons(db: Database.Database): void {
   try {
     const defaultAddons = [
-      { id: 'packing', name: 'Packing List', description: 'Pack your bags with checklists per trip', type: 'trip', icon: 'ListChecks', enabled: 1, sort_order: 0 },
+      { id: 'packing', name: 'Lists', description: 'Packing lists and to-do tasks for your trips', type: 'trip', icon: 'ListChecks', enabled: 1, sort_order: 0 },
       { id: 'budget', name: 'Budget Planner', description: 'Track expenses and plan your travel budget', type: 'trip', icon: 'Wallet', enabled: 1, sort_order: 1 },
       { id: 'documents', name: 'Documents', description: 'Store and manage travel documents', type: 'trip', icon: 'FileText', enabled: 1, sort_order: 2 },
       { id: 'vacay', name: 'Vacay', description: 'Personal vacation day planner with calendar view', type: 'global', icon: 'CalendarDays', enabled: 1, sort_order: 10 },
@@ -92,6 +92,39 @@ function seedAddons(db: Database.Database): void {
     ];
     const insertAddon = db.prepare('INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const a of defaultAddons) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.enabled, a.sort_order);
+
+    const providerRows = [
+      {
+        id: 'immich',
+        name: 'Immich',
+        description: 'Immich photo provider',
+        icon: 'Image',
+        enabled: 0,
+        sort_order: 0,
+      },
+      {
+        id: 'synologyphotos',
+        name: 'Synology Photos',
+        description: 'Synology Photos integration with separate account settings',
+        icon: 'Image',
+        enabled: 0,
+        sort_order: 1,
+      },
+    ];
+    const insertProvider = db.prepare('INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const p of providerRows) insertProvider.run(p.id, p.name, p.description, p.icon, p.enabled, p.sort_order);
+
+    const providerFields = [
+      { provider_id: 'immich', field_key: 'immich_url', label: 'providerUrl', input_type: 'url', placeholder: 'https://immich.example.com', required: 1, secret: 0, settings_key: 'immich_url', payload_key: 'immich_url', sort_order: 0 },
+      { provider_id: 'immich', field_key: 'immich_api_key', label: 'providerApiKey', input_type: 'password', placeholder: 'API Key', required: 1, secret: 1, settings_key: null, payload_key: 'immich_api_key', sort_order: 1 },
+      { provider_id: 'synologyphotos', field_key: 'synology_url', label: 'providerUrl', input_type: 'url', placeholder: 'https://synology.example.com', required: 1, secret: 0, settings_key: 'synology_url', payload_key: 'synology_url', sort_order: 0 },
+      { provider_id: 'synologyphotos', field_key: 'synology_username', label: 'providerUsername', input_type: 'text', placeholder: 'Username', required: 1, secret: 0, settings_key: 'synology_username', payload_key: 'synology_username', sort_order: 1 },
+      { provider_id: 'synologyphotos', field_key: 'synology_password', label: 'providerPassword', input_type: 'password', placeholder: 'Password', required: 1, secret: 1, settings_key: null, payload_key: 'synology_password', sort_order: 2 },
+    ];
+    const insertProviderField = db.prepare('INSERT OR IGNORE INTO photo_provider_fields (provider_id, field_key, label, input_type, placeholder, required, secret, settings_key, payload_key, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const f of providerFields) {
+      insertProviderField.run(f.provider_id, f.field_key, f.label, f.input_type, f.placeholder, f.required, f.secret, f.settings_key, f.payload_key, f.sort_order);
+    }
     console.log('Default addons seeded');
   } catch (err: unknown) {
     console.error('Error seeding addons:', err instanceof Error ? err.message : err);

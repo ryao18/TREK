@@ -107,6 +107,8 @@ export interface PackingBag {
   sort_order?: number
   owner_name?: string | null
   owner_avatar?: string | null
+  assigned_username?: string | null
+  members?: Array<{ user_id: number; username: string; avatar: string | null }>
   created_at?: string
 }
 
@@ -118,6 +120,19 @@ export interface PackingTemplateSummary {
   is_global: number
   item_count: number
   created_at?: string
+}
+
+export interface TodoItem {
+  id: number
+  trip_id: number
+  name: string
+  category: string | null
+  checked: number
+  sort_order: number
+  due_date: string | null
+  description: string | null
+  assigned_user_id: number | null
+  priority: number
 }
 
 export interface Tag {

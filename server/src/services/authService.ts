@@ -3,7 +3,6 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import fetch from 'node-fetch';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { randomBytes, createHash } from 'crypto';
@@ -31,9 +30,7 @@ const MFA_BACKUP_CODE_COUNT = 10;
 const ADMIN_SETTINGS_KEYS = [
   'allow_registration', 'allowed_file_types', 'require_mfa',
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify',
-  'notification_webhook_url', 'notification_channel',
-  'notify_trip_invite', 'notify_booking_change', 'notify_trip_reminder',
-  'notify_vacay_invite', 'notify_photos_shared', 'notify_collab_message', 'notify_packing_tagged',
+  'notification_channels', 'admin_webhook_url',
 ];
 
 const avatarDir = path.join(__dirname, '../../uploads/avatars');
@@ -195,8 +192,10 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
   const notifChannel = (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_channel'").get() as { value: string } | undefined)?.value || 'none';
   const tripReminderSetting = (db.prepare("SELECT value FROM app_settings WHERE key = 'notify_trip_reminder'").get() as { value: string } | undefined)?.value;
   const hasSmtpHost = !!(process.env.SMTP_HOST || (db.prepare("SELECT value FROM app_settings WHERE key = 'smtp_host'").get() as { value: string } | undefined)?.value);
-  const hasWebhookUrl = !!(process.env.NOTIFICATION_WEBHOOK_URL || (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_webhook_url'").get() as { value: string } | undefined)?.value);
-  const channelConfigured = (notifChannel === 'email' && hasSmtpHost) || (notifChannel === 'webhook' && hasWebhookUrl);
+  const notifChannelsRaw = (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_channels'").get() as { value: string } | undefined)?.value || notifChannel;
+  const activeChannels = notifChannelsRaw === 'none' ? [] : notifChannelsRaw.split(',').map((c: string) => c.trim()).filter(Boolean);
+  const hasWebhookEnabled = activeChannels.includes('webhook');
+  const channelConfigured = (activeChannels.includes('email') && hasSmtpHost) || hasWebhookEnabled;
   const tripRemindersEnabled = channelConfigured && tripReminderSetting !== 'false';
   const setupComplete = userCount > 0 && !(db.prepare("SELECT id FROM users WHERE role = 'admin' AND must_change_password = 1 LIMIT 1").get());
 
@@ -216,6 +215,8 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
     demo_password: isDemo ? 'demo12345' : undefined,
     timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     notification_channel: notifChannel,
+    notification_channels: activeChannels,
+    available_channels: { email: hasSmtpHost, webhook: hasWebhookEnabled, inapp: true },
     trip_reminders_enabled: tripRemindersEnabled,
     permissions: authenticatedUser ? getAllPermissions() : undefined,
     dev_mode: process.env.NODE_ENV === 'development',
@@ -676,7 +677,7 @@ export function getAppSettings(userId: number): { error?: string; status?: numbe
   const result: Record<string, string> = {};
   for (const key of ADMIN_SETTINGS_KEYS) {
     const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined;
-    if (row) result[key] = key === 'smtp_pass' ? '••••••••' : row.value;
+    if (row) result[key] = (key === 'smtp_pass' || key === 'admin_webhook_url') ? '••••••••' : row.value;
   }
   return { data: result };
 }
@@ -714,6 +715,8 @@ export function updateAppSettings(
       }
       if (key === 'smtp_pass' && val === '••••••••') continue;
       if (key === 'smtp_pass') val = encrypt_api_key(val);
+      if (key === 'admin_webhook_url' && val === '••••••••') continue;
+      if (key === 'admin_webhook_url' && val) val = maybe_encrypt_api_key(val) ?? val;
       db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val);
     }
   }
@@ -722,11 +725,9 @@ export function updateAppSettings(
 
   const summary: Record<string, unknown> = {};
   const smtpChanged = changedKeys.some(k => k.startsWith('smtp_'));
-  const eventsChanged = changedKeys.some(k => k.startsWith('notify_'));
-  if (changedKeys.includes('notification_channel')) summary.notification_channel = body.notification_channel;
-  if (changedKeys.includes('notification_webhook_url')) summary.webhook_url_updated = true;
+  if (changedKeys.includes('notification_channels')) summary.notification_channels = body.notification_channels;
+  if (changedKeys.includes('admin_webhook_url')) summary.admin_webhook_url_updated = true;
   if (smtpChanged) summary.smtp_settings_updated = true;
-  if (eventsChanged) summary.notification_events_updated = true;
   if (changedKeys.includes('allow_registration')) summary.allow_registration = body.allow_registration;
   if (changedKeys.includes('allowed_file_types')) summary.allowed_file_types_updated = true;
   if (changedKeys.includes('require_mfa')) summary.require_mfa = body.require_mfa;
@@ -736,7 +737,7 @@ export function updateAppSettings(
     debugDetails[k] = k === 'smtp_pass' ? '***' : body[k];
   }
 
-  const notifRelated = ['notification_channel', 'notification_webhook_url', 'smtp_host', 'notify_trip_reminder'];
+  const notifRelated = ['notification_channels', 'smtp_host'];
   const shouldRestartScheduler = changedKeys.some(k => notifRelated.includes(k));
   if (shouldRestartScheduler) {
     startTripReminders();
@@ -814,7 +815,7 @@ export function setupMfa(userId: number, userEmail: string): { error?: string; s
     console.error('[MFA] Setup error:', err);
     return { error: 'MFA setup failed', status: 500 };
   }
-  return { secret, otpauth_url, qrPromise: QRCode.toDataURL(otpauth_url) };
+  return { secret, otpauth_url, qrPromise: QRCode.toString(otpauth_url, { type: 'svg', width: 250 }) };
 }
 
 export function enableMfa(userId: number, code?: string): { error?: string; status?: number; success?: boolean; mfa_enabled?: boolean; backup_codes?: string[] } {
@@ -981,10 +982,45 @@ export function createWsToken(userId: number): { error?: string; status?: number
 }
 
 export function createResourceToken(userId: number, purpose?: string): { error?: string; status?: number; token?: string } {
-  if (purpose !== 'download' && purpose !== 'immich') {
+  if (purpose !== 'download') {
     return { error: 'Invalid purpose', status: 400 };
   }
   const token = createEphemeralToken(userId, purpose);
   if (!token) return { error: 'Service unavailable', status: 503 };
   return { token };
+}
+
+// ---------------------------------------------------------------------------
+// MCP auth helpers
+// ---------------------------------------------------------------------------
+
+export function isDemoUser(userId: number): boolean {
+  if (process.env.DEMO_MODE !== 'true') return false;
+  const user = db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined;
+  return user?.email === 'demo@nomad.app';
+}
+
+export function verifyMcpToken(rawToken: string): User | null {
+  const hash = createHash('sha256').update(rawToken).digest('hex');
+  const row = db.prepare(`
+    SELECT u.id, u.username, u.email, u.role
+    FROM mcp_tokens mt
+    JOIN users u ON mt.user_id = u.id
+    WHERE mt.token_hash = ?
+  `).get(hash) as User | undefined;
+  if (row) {
+    db.prepare('UPDATE mcp_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = ?').run(hash);
+    return row;
+  }
+  return null;
+}
+
+export function verifyJwtToken(token: string): User | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: number };
+    const user = db.prepare('SELECT id, username, email, role FROM users WHERE id = ?').get(decoded.id) as User | undefined;
+    return user || null;
+  } catch {
+    return null;
+  }
 }

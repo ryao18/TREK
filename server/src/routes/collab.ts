@@ -79,9 +79,9 @@ router.post('/notes', authenticate, (req: Request, res: Response) => {
   res.status(201).json({ note: formatted });
   broadcast(tripId, 'collab:note:created', { note: formatted }, req.headers['x-socket-id'] as string);
 
-  import('../services/notifications').then(({ notifyTripMembers }) => {
+  import('../services/notificationService').then(({ send }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
-    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email }).catch(() => {});
+    send({ event: 'collab_message', actorId: authReq.user.id, scope: 'trip', targetId: Number(tripId), params: { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, tripId: String(tripId) } }).catch(() => {});
   });
 });
 
@@ -256,10 +256,10 @@ router.post('/messages', authenticate, validateStringLengths({ text: 5000 }), (r
   broadcast(tripId, 'collab:message:created', { message: result.message }, req.headers['x-socket-id'] as string);
 
   // Notify trip members about new chat message
-  import('../services/notifications').then(({ notifyTripMembers }) => {
+  import('../services/notificationService').then(({ send }) => {
     const tripInfo = db.prepare('SELECT title FROM trips WHERE id = ?').get(tripId) as { title: string } | undefined;
     const preview = text.trim().length > 80 ? text.trim().substring(0, 80) + '...' : text.trim();
-    notifyTripMembers(Number(tripId), authReq.user.id, 'collab_message', { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, preview }).catch(() => {});
+    send({ event: 'collab_message', actorId: authReq.user.id, scope: 'trip', targetId: Number(tripId), params: { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, preview, tripId: String(tripId) } }).catch(() => {});
   });
 });
 

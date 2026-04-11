@@ -36,6 +36,8 @@ const RESET_TABLES = [
   'packing_items',
   'budget_item_members',
   'budget_items',
+  'trip_photos',
+  'trip_album_links',
   'trip_files',
   'share_tokens',
   'photos',
@@ -54,6 +56,7 @@ const RESET_TABLES = [
   'vacay_plans',
   'atlas_visited_countries',
   'atlas_bucket_list',
+  'notification_channel_preferences',
   'notifications',
   'audit_log',
   'user_settings',
@@ -88,12 +91,22 @@ const DEFAULT_ADDONS = [
   { id: 'collab',    name: 'Collab',          description: 'Notes, polls, live chat',    type: 'trip',        icon: 'Users',       enabled: 1, sort_order: 6  },
 ];
 
+const DEFAULT_PHOTO_PROVIDERS = [
+  { id: 'immich',         name: 'Immich',          enabled: 1 },
+  { id: 'synologyphotos', name: 'Synology Photos',  enabled: 1 },
+];
+
 function seedDefaults(db: Database.Database): void {
   const insertCat = db.prepare('INSERT OR IGNORE INTO categories (name, color, icon) VALUES (?, ?, ?)');
   for (const cat of DEFAULT_CATEGORIES) insertCat.run(cat.name, cat.color, cat.icon);
 
   const insertAddon = db.prepare('INSERT OR IGNORE INTO addons (id, name, description, type, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
   for (const a of DEFAULT_ADDONS) insertAddon.run(a.id, a.name, a.description, a.type, a.icon, a.enabled, a.sort_order);
+
+  try {
+    const insertProvider = db.prepare('INSERT OR IGNORE INTO photo_providers (id, name, description, icon, enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const p of DEFAULT_PHOTO_PROVIDERS) insertProvider.run(p.id, p.name, p.id, 'Image', p.enabled, 0);
+  } catch { /* table may not exist in very old schemas */ }
 }
 
 /**

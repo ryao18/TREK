@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import fetch from 'node-fetch';
 import jwt from 'jsonwebtoken';
 import { db } from '../db/database';
 import { JWT_SECRET } from '../config';

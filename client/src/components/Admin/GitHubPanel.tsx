@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Tag, Calendar, ExternalLink, ChevronDown, ChevronUp, Loader2, Heart, Coffee } from 'lucide-react'
+import { Tag, Calendar, ExternalLink, ChevronDown, ChevronUp, Loader2, Heart, Coffee, Bug, Lightbulb, BookOpen } from 'lucide-react'
 import { getLocaleForLanguage, useTranslation } from '../../i18n'
 import apiClient from '../../api/client'
 
-const REPO = 'mauriceboe/NOMAD'
+const REPO = 'mauriceboe/TREK'
 const PER_PAGE = 10
 
 export default function GitHubPanel() {
@@ -171,6 +171,63 @@ export default function GitHubPanel() {
           <div>
             <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Discord</div>
             <div className="text-xs" style={{ color: 'var(--text-faint)' }}>Join the community</div>
+          </div>
+          <ExternalLink size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }} />
+        </a>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <a
+          href="https://github.com/mauriceboe/TREK/issues/new?template=bug_report.yml"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-xl border overflow-hidden flex items-center gap-4 px-5 py-4 transition-all"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', textDecoration: 'none' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.boxShadow = '0 0 0 1px #ef444422' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.boxShadow = 'none' }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#ef444415', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Bug size={20} style={{ color: '#ef4444' }} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{t('settings.about.reportBug')}</div>
+            <div className="text-xs" style={{ color: 'var(--text-faint)' }}>{t('settings.about.reportBugHint')}</div>
+          </div>
+          <ExternalLink size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }} />
+        </a>
+        <a
+          href="https://github.com/mauriceboe/TREK/discussions/new?category=feature-requests"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-xl border overflow-hidden flex items-center gap-4 px-5 py-4 transition-all"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', textDecoration: 'none' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.boxShadow = '0 0 0 1px #f59e0b22' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.boxShadow = 'none' }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f59e0b15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Lightbulb size={20} style={{ color: '#f59e0b' }} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{t('settings.about.featureRequest')}</div>
+            <div className="text-xs" style={{ color: 'var(--text-faint)' }}>{t('settings.about.featureRequestHint')}</div>
+          </div>
+          <ExternalLink size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }} />
+        </a>
+        <a
+          href="https://github.com/mauriceboe/TREK/wiki"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-xl border overflow-hidden flex items-center gap-4 px-5 py-4 transition-all"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', textDecoration: 'none' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.boxShadow = '0 0 0 1px #6366f122' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)'; e.currentTarget.style.boxShadow = 'none' }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: '#6366f115', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <BookOpen size={20} style={{ color: '#6366f1' }} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Wiki</div>
+            <div className="text-xs" style={{ color: 'var(--text-faint)' }}>{t('settings.about.wikiHint')}</div>
           </div>
           <ExternalLink size={14} className="ml-auto flex-shrink-0" style={{ color: 'var(--text-faint)' }} />
         </a>

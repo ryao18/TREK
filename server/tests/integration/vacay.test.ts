@@ -37,14 +37,12 @@ vi.mock('../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
-// Mock external holiday API (node-fetch used by some service paths)
-vi.mock('node-fetch', () => ({
-  default: vi.fn().mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve([
-      { date: '2025-01-01', name: 'New Year\'s Day', countryCode: 'DE' },
-    ]),
-  }),
+// Prevent real HTTP calls (holiday API etc.)
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+  ok: true,
+  json: () => Promise.resolve([
+    { date: '2025-01-01', name: 'New Year\'s Day', countryCode: 'DE' },
+  ]),
 }));
 
 // Mock vacayService.getCountries to avoid real HTTP call to nager.at
@@ -81,6 +79,7 @@ beforeEach(() => {
 
 afterAll(() => {
   testDb.close();
+  vi.unstubAllGlobals();
 });
 
 describe('Vacay plan', () => {

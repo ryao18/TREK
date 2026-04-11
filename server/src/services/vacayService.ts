@@ -341,8 +341,8 @@ export function sendInvite(planId: number, inviterId: number, inviterUsername: s
   } catch { /* websocket not available */ }
 
   // Notify invited user
-  import('../services/notifications').then(({ notify }) => {
-    notify({ userId: targetUserId, event: 'vacay_invite', params: { actor: inviterEmail } }).catch(() => {});
+  import('../services/notificationService').then(({ send }) => {
+    send({ event: 'vacay_invite', actorId: inviterId, scope: 'user', targetId: targetUserId, params: { actor: inviterEmail, planId: String(planId) } }).catch(() => {});
   });
 
   return {};

@@ -18,6 +18,7 @@ import daysRoutes, { accommodationsRouter as accommodationsRoutes } from './rout
 import placesRoutes from './routes/places';
 import assignmentsRoutes from './routes/assignments';
 import packingRoutes from './routes/packing';
+import todoRoutes from './routes/todo';
 import tagsRoutes from './routes/tags';
 import categoriesRoutes from './routes/categories';
 import adminRoutes from './routes/admin';
@@ -33,11 +34,12 @@ import backupRoutes from './routes/backup';
 import oidcRoutes from './routes/oidc';
 import vacayRoutes from './routes/vacay';
 import atlasRoutes from './routes/atlas';
-import immichRoutes from './routes/immich';
+import memoriesRoutes from './routes/memories/unified';
 import notificationRoutes from './routes/notifications';
 import shareRoutes from './routes/share';
 import { mcpHandler } from './mcp';
 import { Addon } from './types';
+import { getPhotoProviderConfig } from './services/memories/helpersService';
 
 export function createApp(): express.Application {
   const app = express();
@@ -81,7 +83,8 @@ export function createApp(): express.Application {
           "https://*.basemaps.cartocdn.com", "https://*.tile.openstreetmap.org",
           "https://unpkg.com", "https://open-meteo.com", "https://api.open-meteo.com",
           "https://geocoding-api.open-meteo.com", "https://api.exchangerate-api.com",
-          "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson"
+          "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson",
+          "https://router.project-osrm.org/route/v1/"
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
         objectSrc: ["'none'"],
@@ -179,6 +182,7 @@ export function createApp(): express.Application {
   app.use('/api/trips/:tripId/accommodations', accommodationsRoutes);
   app.use('/api/trips/:tripId/places', placesRoutes);
   app.use('/api/trips/:tripId/packing', packingRoutes);
+  app.use('/api/trips/:tripId/todo', todoRoutes);
   app.use('/api/trips/:tripId/files', filesRoutes);
   app.use('/api/trips/:tripId/budget', budgetRoutes);
   app.use('/api/trips/:tripId/collab', collabRoutes);
@@ -193,13 +197,66 @@ export function createApp(): express.Application {
   // Addons list endpoint
   app.get('/api/addons', authenticate, (_req: Request, res: Response) => {
     const addons = db.prepare('SELECT id, name, type, icon, enabled FROM addons WHERE enabled = 1 ORDER BY sort_order').all() as Pick<Addon, 'id' | 'name' | 'type' | 'icon' | 'enabled'>[];
-    res.json({ addons: addons.map(a => ({ ...a, enabled: !!a.enabled })) });
+    const providers = db.prepare(`
+      SELECT id, name, icon, enabled, sort_order
+      FROM photo_providers
+      WHERE enabled = 1
+      ORDER BY sort_order, id
+    `).all() as Array<{ id: string; name: string; icon: string; enabled: number; sort_order: number }>;
+    const fields = db.prepare(`
+      SELECT provider_id, field_key, label, input_type, placeholder, required, secret, settings_key, payload_key, sort_order
+      FROM photo_provider_fields
+      ORDER BY sort_order, id
+    `).all() as Array<{
+      provider_id: string;
+      field_key: string;
+      label: string;
+      input_type: string;
+      placeholder?: string | null;
+      required: number;
+      secret: number;
+      settings_key?: string | null;
+      payload_key?: string | null;
+      sort_order: number;
+    }>;
+
+    const fieldsByProvider = new Map<string, typeof fields>();
+    for (const field of fields) {
+      const arr = fieldsByProvider.get(field.provider_id) || [];
+      arr.push(field);
+      fieldsByProvider.set(field.provider_id, arr);
+    }
+
+    res.json({
+      addons: [
+        ...addons.map(a => ({ ...a, enabled: !!a.enabled })),
+        ...providers.map(p => ({
+          id: p.id,
+          name: p.name,
+          type: 'photo_provider',
+          icon: p.icon,
+          enabled: !!p.enabled,
+          config: getPhotoProviderConfig(p.id),
+          fields: (fieldsByProvider.get(p.id) || []).map(f => ({
+            key: f.field_key,
+            label: f.label,
+            input_type: f.input_type,
+            placeholder: f.placeholder || '',
+            required: !!f.required,
+            secret: !!f.secret,
+            settings_key: f.settings_key || null,
+            payload_key: f.payload_key || null,
+            sort_order: f.sort_order,
+          })),
+        })),
+      ],
+    });
   });
 
   // Addon routes
   app.use('/api/addons/vacay', vacayRoutes);
   app.use('/api/addons/atlas', atlasRoutes);
-  app.use('/api/integrations/immich', immichRoutes);
+  app.use('/api/integrations/memories', memoriesRoutes);
   app.use('/api/maps', mapsRoutes);
   app.use('/api/weather', weatherRoutes);
   app.use('/api/settings', settingsRoutes);

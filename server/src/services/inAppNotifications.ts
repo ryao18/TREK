@@ -1,6 +1,7 @@
 import { db } from '../db/database';
 import { broadcastToUser } from '../websocket';
 import { getAction } from './inAppNotificationActions';
+import { isEnabledForEvent, type NotifEventType } from './notificationPreferencesService';
 
 type NotificationType = 'simple' | 'boolean' | 'navigate';
 type NotificationScope = 'trip' | 'user' | 'admin';
@@ -11,6 +12,7 @@ interface BaseNotificationInput {
   scope: NotificationScope;
   target: number;
   sender_id: number | null;
+  event_type?: NotifEventType;
   title_key: string;
   title_params?: Record<string, string>;
   text_key: string;
@@ -61,7 +63,7 @@ interface NotificationRow {
   created_at: string;
 }
 
-function resolveRecipients(scope: NotificationScope, target: number, excludeUserId?: number | null): number[] {
+export function resolveRecipients(scope: NotificationScope, target: number, excludeUserId?: number | null): number[] {
   let userIds: number[] = [];
 
   if (scope === 'trip') {
@@ -93,7 +95,8 @@ function createNotification(input: NotificationInput): number[] {
   const titleParams = JSON.stringify(input.title_params ?? {});
   const textParams = JSON.stringify(input.text_params ?? {});
 
-  const insertedIds: number[] = [];
+  // Track inserted id → recipientId pairs (some recipients may be skipped by pref check)
+  const insertedPairs: Array<{ id: number; recipientId: number }> = [];
 
   const insert = db.transaction(() => {
     const stmt = db.prepare(`
@@ -106,6 +109,11 @@ function createNotification(input: NotificationInput): number[] {
     `);
 
     for (const recipientId of recipients) {
+      // Check per-user in-app preference if an event_type is provided
+      if (input.event_type && !isEnabledForEvent(recipientId, input.event_type, 'inapp')) {
+        continue;
+      }
+
       let positiveTextKey: string | null = null;
       let negativeTextKey: string | null = null;
       let positiveCallback: string | null = null;
@@ -130,7 +138,7 @@ function createNotification(input: NotificationInput): number[] {
         navigateTextKey, navigateTarget
       );
 
-      insertedIds.push(result.lastInsertRowid as number);
+      insertedPairs.push({ id: result.lastInsertRowid as number, recipientId });
     }
   });
 
@@ -142,9 +150,7 @@ function createNotification(input: NotificationInput): number[] {
     : null;
 
   // Broadcast to each recipient
-  for (let i = 0; i < insertedIds.length; i++) {
-    const notificationId = insertedIds[i];
-    const recipientId = recipients[i];
+  for (const { id: notificationId, recipientId } of insertedPairs) {
     const row = db.prepare('SELECT * FROM notifications WHERE id = ?').get(notificationId) as NotificationRow;
     if (!row) continue;
 
@@ -158,7 +164,66 @@ function createNotification(input: NotificationInput): number[] {
     });
   }
 
-  return insertedIds;
+  return insertedPairs.map(p => p.id);
+}
+
+/**
+ * Insert a single in-app notification for one pre-resolved recipient and broadcast via WebSocket.
+ * Used by notificationService.send() which handles recipient resolution externally.
+ */
+export function createNotificationForRecipient(
+  input: NotificationInput,
+  recipientId: number,
+  sender: { username: string; avatar: string | null } | null
+): number | null {
+  const titleParams = JSON.stringify(input.title_params ?? {});
+  const textParams = JSON.stringify(input.text_params ?? {});
+
+  let positiveTextKey: string | null = null;
+  let negativeTextKey: string | null = null;
+  let positiveCallback: string | null = null;
+  let negativeCallback: string | null = null;
+  let navigateTextKey: string | null = null;
+  let navigateTarget: string | null = null;
+
+  if (input.type === 'boolean') {
+    positiveTextKey = input.positive_text_key;
+    negativeTextKey = input.negative_text_key;
+    positiveCallback = JSON.stringify(input.positive_callback);
+    negativeCallback = JSON.stringify(input.negative_callback);
+  } else if (input.type === 'navigate') {
+    navigateTextKey = input.navigate_text_key;
+    navigateTarget = input.navigate_target;
+  }
+
+  const result = db.prepare(`
+    INSERT INTO notifications (
+      type, scope, target, sender_id, recipient_id,
+      title_key, title_params, text_key, text_params,
+      positive_text_key, negative_text_key, positive_callback, negative_callback,
+      navigate_text_key, navigate_target
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.type, input.scope, input.target, input.sender_id, recipientId,
+    input.title_key, titleParams, input.text_key, textParams,
+    positiveTextKey, negativeTextKey, positiveCallback, negativeCallback,
+    navigateTextKey, navigateTarget
+  );
+
+  const notificationId = result.lastInsertRowid as number;
+  const row = db.prepare('SELECT * FROM notifications WHERE id = ?').get(notificationId) as NotificationRow | undefined;
+  if (!row) return null;
+
+  broadcastToUser(recipientId, {
+    type: 'notification:new',
+    notification: {
+      ...row,
+      sender_username: sender?.username ?? null,
+      sender_avatar: sender?.avatar ?? null,
+    },
+  });
+
+  return notificationId;
 }
 
 function getNotifications(
@@ -266,55 +331,6 @@ async function respondToBoolean(
   return { success: true, notification: updated };
 }
 
-interface NotificationPreferences {
-  id: number;
-  user_id: number;
-  notify_trip_invite: number;
-  notify_booking_change: number;
-  notify_trip_reminder: number;
-  notify_webhook: number;
-}
-
-interface PreferencesUpdate {
-  notify_trip_invite?: boolean;
-  notify_booking_change?: boolean;
-  notify_trip_reminder?: boolean;
-  notify_webhook?: boolean;
-}
-
-function getPreferences(userId: number): NotificationPreferences {
-  let prefs = db.prepare('SELECT * FROM notification_preferences WHERE user_id = ?').get(userId) as NotificationPreferences | undefined;
-  if (!prefs) {
-    db.prepare('INSERT INTO notification_preferences (user_id) VALUES (?)').run(userId);
-    prefs = db.prepare('SELECT * FROM notification_preferences WHERE user_id = ?').get(userId) as NotificationPreferences;
-  }
-  return prefs;
-}
-
-function updatePreferences(userId: number, updates: PreferencesUpdate): NotificationPreferences {
-  const existing = db.prepare('SELECT id FROM notification_preferences WHERE user_id = ?').get(userId);
-  if (!existing) {
-    db.prepare('INSERT INTO notification_preferences (user_id) VALUES (?)').run(userId);
-  }
-
-  const { notify_trip_invite, notify_booking_change, notify_trip_reminder, notify_webhook } = updates;
-
-  db.prepare(`UPDATE notification_preferences SET
-    notify_trip_invite = COALESCE(?, notify_trip_invite),
-    notify_booking_change = COALESCE(?, notify_booking_change),
-    notify_trip_reminder = COALESCE(?, notify_trip_reminder),
-    notify_webhook = COALESCE(?, notify_webhook)
-    WHERE user_id = ?`).run(
-    notify_trip_invite !== undefined ? (notify_trip_invite ? 1 : 0) : null,
-    notify_booking_change !== undefined ? (notify_booking_change ? 1 : 0) : null,
-    notify_trip_reminder !== undefined ? (notify_trip_reminder ? 1 : 0) : null,
-    notify_webhook !== undefined ? (notify_webhook ? 1 : 0) : null,
-    userId
-  );
-
-  return db.prepare('SELECT * FROM notification_preferences WHERE user_id = ?').get(userId) as NotificationPreferences;
-}
-
 export {
   createNotification,
   getNotifications,
@@ -325,8 +341,6 @@ export {
   deleteNotification,
   deleteAll,
   respondToBoolean,
-  getPreferences,
-  updatePreferences,
 };
 
 export type { NotificationInput, NotificationRow, NotificationType, NotificationScope, NotificationResponse };

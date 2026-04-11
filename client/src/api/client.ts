@@ -27,7 +27,8 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && (error.response?.data as { code?: string } | undefined)?.code === 'AUTH_REQUIRED') {
       if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register') && !window.location.pathname.startsWith('/shared/')) {
-        window.location.href = '/login'
+        const currentPath = window.location.pathname + window.location.search
+        window.location.href = '/login?redirect=' + encodeURIComponent(currentPath)
       }
     }
     if (
@@ -133,10 +134,22 @@ export const packingApi = {
   applyTemplate: (tripId: number | string, templateId: number) => apiClient.post(`/trips/${tripId}/packing/apply-template/${templateId}`).then(r => r.data),
   saveTemplate: (tripId: number | string, name: string) => apiClient.post(`/trips/${tripId}/packing/templates`, { name }).then(r => r.data),
   listTemplates: (tripId: number | string) => apiClient.get(`/trips/${tripId}/packing`).then(r => ({ templates: r.data.templates || [], current_user_id: r.data.current_user_id })),
+  saveAsTemplate: (tripId: number | string, name: string) => apiClient.post(`/trips/${tripId}/packing/save-as-template`, { name }).then(r => r.data),
+  setBagMembers: (tripId: number | string, bagId: number, userIds: number[]) => apiClient.put(`/trips/${tripId}/packing/bags/${bagId}/members`, { user_ids: userIds }).then(r => r.data),
   listBags: (tripId: number | string) => apiClient.get(`/trips/${tripId}/packing/bags`).then(r => r.data),
   createBag: (tripId: number | string, data: { name: string; color?: string }) => apiClient.post(`/trips/${tripId}/packing/bags`, data).then(r => r.data),
   updateBag: (tripId: number | string, bagId: number, data: Record<string, unknown>) => apiClient.put(`/trips/${tripId}/packing/bags/${bagId}`, data).then(r => r.data),
   deleteBag: (tripId: number | string, bagId: number) => apiClient.delete(`/trips/${tripId}/packing/bags/${bagId}`).then(r => r.data),
+}
+
+export const todoApi = {
+  list: (tripId: number | string) => apiClient.get(`/trips/${tripId}/todo`).then(r => r.data),
+  create: (tripId: number | string, data: Record<string, unknown>) => apiClient.post(`/trips/${tripId}/todo`, data).then(r => r.data),
+  update: (tripId: number | string, id: number, data: Record<string, unknown>) => apiClient.put(`/trips/${tripId}/todo/${id}`, data).then(r => r.data),
+  delete: (tripId: number | string, id: number) => apiClient.delete(`/trips/${tripId}/todo/${id}`).then(r => r.data),
+  reorder: (tripId: number | string, orderedIds: number[]) => apiClient.put(`/trips/${tripId}/todo/reorder`, { orderedIds }).then(r => r.data),
+  getCategoryAssignees: (tripId: number | string) => apiClient.get(`/trips/${tripId}/todo/category-assignees`).then(r => r.data),
+  setCategoryAssignees: (tripId: number | string, categoryName: string, userIds: number[]) => apiClient.put(`/trips/${tripId}/todo/category-assignees/${encodeURIComponent(categoryName)}`, { user_ids: userIds }).then(r => r.data),
 }
 
 export const tagsApi = {
@@ -190,6 +203,8 @@ export const adminApi = {
   rotateJwtSecret: () => apiClient.post('/admin/rotate-jwt-secret').then(r => r.data),
   sendTestNotification: (data: Record<string, unknown>) =>
     apiClient.post('/admin/dev/test-notification', data).then(r => r.data),
+  getNotificationPreferences: () => apiClient.get('/admin/notification-preferences').then(r => r.data),
+  updateNotificationPreferences: (prefs: Record<string, Record<string, boolean>>) => apiClient.put('/admin/notification-preferences', prefs).then(r => r.data),
 }
 
 export const addonsApi = {
@@ -240,7 +255,7 @@ export const reservationsApi = {
   create: (tripId: number | string, data: Record<string, unknown>) => apiClient.post(`/trips/${tripId}/reservations`, data).then(r => r.data),
   update: (tripId: number | string, id: number, data: Record<string, unknown>) => apiClient.put(`/trips/${tripId}/reservations/${id}`, data).then(r => r.data),
   delete: (tripId: number | string, id: number) => apiClient.delete(`/trips/${tripId}/reservations/${id}`).then(r => r.data),
-  updatePositions: (tripId: number | string, positions: { id: number; day_plan_position: number }[]) => apiClient.put(`/trips/${tripId}/reservations/positions`, { positions }).then(r => r.data),
+  updatePositions: (tripId: number | string, positions: { id: number; day_plan_position: number }[], dayId?: number) => apiClient.put(`/trips/${tripId}/reservations/positions`, { positions, day_id: dayId }).then(r => r.data),
 }
 
 export const weatherApi = {
@@ -323,9 +338,9 @@ export const shareApi = {
 
 export const notificationsApi = {
   getPreferences: () => apiClient.get('/notifications/preferences').then(r => r.data),
-  updatePreferences: (prefs: Record<string, boolean>) => apiClient.put('/notifications/preferences', prefs).then(r => r.data),
+  updatePreferences: (prefs: Record<string, Record<string, boolean>>) => apiClient.put('/notifications/preferences', prefs).then(r => r.data),
   testSmtp: (email?: string) => apiClient.post('/notifications/test-smtp', { email }).then(r => r.data),
-  testWebhook: () => apiClient.post('/notifications/test-webhook').then(r => r.data),
+  testWebhook: (url?: string) => apiClient.post('/notifications/test-webhook', { url }).then(r => r.data),
 }
 
 export const inAppNotificationsApi = {

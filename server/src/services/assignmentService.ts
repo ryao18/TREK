@@ -35,9 +35,12 @@ export function getAssignmentWithPlace(assignmentId: number | bigint) {
   return {
     id: a.id,
     day_id: a.day_id,
+    place_id: a.place_id,
     order_index: a.order_index,
     day_section: a.day_section,
     notes: a.notes,
+    assignment_time: a.assignment_time ?? null,
+    assignment_end_time: a.assignment_end_time ?? null,
     participants,
     created_at: a.created_at,
     place: {
@@ -172,6 +175,34 @@ export function getParticipants(assignmentId: string | number) {
 export function updateTime(id: string | number, placeTime: string | null, endTime: string | null) {
   db.prepare('UPDATE day_assignments SET assignment_time = ?, assignment_end_time = ? WHERE id = ?')
     .run(placeTime ?? null, endTime ?? null, id);
+
+  // Auto-sort: reorder timed assignments chronologically within the day
+  if (placeTime) {
+    const assignment = db.prepare('SELECT day_id FROM day_assignments WHERE id = ?').get(id) as { day_id: number } | undefined;
+    if (assignment) {
+      const dayAssignments = db.prepare(`
+        SELECT da.id, COALESCE(da.assignment_time, p.place_time) as effective_time
+        FROM day_assignments da
+        JOIN places p ON da.place_id = p.id
+        WHERE da.day_id = ?
+        ORDER BY da.order_index ASC
+      `).all(assignment.day_id) as { id: number; effective_time: string | null }[];
+
+      // Separate timed and untimed, sort timed by time
+      const timed = dayAssignments.filter(a => a.effective_time).sort((a, b) => {
+        const ta = a.effective_time!.includes(':') ? a.effective_time! : '99:99';
+        const tb = b.effective_time!.includes(':') ? b.effective_time! : '99:99';
+        return ta.localeCompare(tb);
+      });
+      const untimed = dayAssignments.filter(a => !a.effective_time);
+
+      // Interleave: timed in chronological order, untimed keep relative position
+      const reordered = [...timed, ...untimed];
+      const update = db.prepare('UPDATE day_assignments SET order_index = ? WHERE id = ?');
+      reordered.forEach((a, i) => update.run(i, a.id));
+    }
+  }
+
   return getAssignmentWithPlace(Number(id));
 }
 

@@ -597,6 +597,360 @@ function runMigrations(db: Database.Database): void {
       try { db.exec("ALTER TABLE packing_templates ADD COLUMN is_global INTEGER NOT NULL DEFAULT 0"); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
       db.exec('CREATE INDEX IF NOT EXISTS idx_packing_templates_creator ON packing_templates(created_by)')
       db.exec('CREATE INDEX IF NOT EXISTS idx_packing_templates_global ON packing_templates(is_global, created_at DESC)')
+      // Normalize trip_photos to provider-based schema used by current routes
+      const tripPhotosExists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'trip_photos'").get();
+      if (!tripPhotosExists) {
+        db.exec(`
+          CREATE TABLE trip_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            asset_id TEXT NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'immich',
+            shared INTEGER NOT NULL DEFAULT 1,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(trip_id, user_id, asset_id, provider)
+          );
+          CREATE INDEX IF NOT EXISTS idx_trip_photos_trip ON trip_photos(trip_id);
+        `);
+      } else {
+        const columns = db.prepare("PRAGMA table_info('trip_photos')").all() as Array<{ name: string }>;
+        const names = new Set(columns.map(c => c.name));
+        const assetSource = names.has('asset_id') ? 'asset_id' : (names.has('immich_asset_id') ? 'immich_asset_id' : null);
+        if (assetSource) {
+          const providerExpr = names.has('provider')
+            ? "CASE WHEN provider IS NULL OR provider = '' THEN 'immich' ELSE provider END"
+            : "'immich'";
+          const sharedExpr = names.has('shared') ? 'COALESCE(shared, 1)' : '1';
+          const addedAtExpr = names.has('added_at') ? 'COALESCE(added_at, CURRENT_TIMESTAMP)' : 'CURRENT_TIMESTAMP';
+
+          db.exec(`
+            CREATE TABLE trip_photos_new (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              asset_id TEXT NOT NULL,
+              provider TEXT NOT NULL DEFAULT 'immich',
+              shared INTEGER NOT NULL DEFAULT 1,
+              added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(trip_id, user_id, asset_id, provider)
+            );
+          `);
+
+          db.exec(`
+            INSERT OR IGNORE INTO trip_photos_new (trip_id, user_id, asset_id, provider, shared, added_at)
+            SELECT trip_id, user_id, ${assetSource}, ${providerExpr}, ${sharedExpr}, ${addedAtExpr}
+            FROM trip_photos
+            WHERE ${assetSource} IS NOT NULL AND TRIM(${assetSource}) != ''
+          `);
+
+          db.exec('DROP TABLE trip_photos');
+          db.exec('ALTER TABLE trip_photos_new RENAME TO trip_photos');
+          db.exec('CREATE INDEX IF NOT EXISTS idx_trip_photos_trip ON trip_photos(trip_id)');
+        }
+      }
+    },
+    () => {
+      // Normalize trip_album_links to provider + album_id schema used by current routes
+      const linksExists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'trip_album_links'").get();
+      if (!linksExists) {
+        db.exec(`
+          CREATE TABLE trip_album_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            provider TEXT NOT NULL,
+            album_id TEXT NOT NULL,
+            album_name TEXT NOT NULL DEFAULT '',
+            sync_enabled INTEGER NOT NULL DEFAULT 1,
+            last_synced_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(trip_id, user_id, provider, album_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_trip_album_links_trip ON trip_album_links(trip_id);
+        `);
+      } else {
+        const columns = db.prepare("PRAGMA table_info('trip_album_links')").all() as Array<{ name: string }>;
+        const names = new Set(columns.map(c => c.name));
+        const albumIdSource = names.has('album_id') ? 'album_id' : (names.has('immich_album_id') ? 'immich_album_id' : null);
+        if (albumIdSource) {
+          const providerExpr = names.has('provider')
+            ? "CASE WHEN provider IS NULL OR provider = '' THEN 'immich' ELSE provider END"
+            : "'immich'";
+          const albumNameExpr = names.has('album_name') ? "COALESCE(album_name, '')" : "''";
+          const syncEnabledExpr = names.has('sync_enabled') ? 'COALESCE(sync_enabled, 1)' : '1';
+          const lastSyncedExpr = names.has('last_synced_at') ? 'last_synced_at' : 'NULL';
+          const createdAtExpr = names.has('created_at') ? 'COALESCE(created_at, CURRENT_TIMESTAMP)' : 'CURRENT_TIMESTAMP';
+
+          db.exec(`
+            CREATE TABLE trip_album_links_new (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              provider TEXT NOT NULL,
+              album_id TEXT NOT NULL,
+              album_name TEXT NOT NULL DEFAULT '',
+              sync_enabled INTEGER NOT NULL DEFAULT 1,
+              last_synced_at DATETIME,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(trip_id, user_id, provider, album_id)
+            );
+          `);
+
+          db.exec(`
+            INSERT OR IGNORE INTO trip_album_links_new (trip_id, user_id, provider, album_id, album_name, sync_enabled, last_synced_at, created_at)
+            SELECT trip_id, user_id, ${providerExpr}, ${albumIdSource}, ${albumNameExpr}, ${syncEnabledExpr}, ${lastSyncedExpr}, ${createdAtExpr}
+            FROM trip_album_links
+            WHERE ${albumIdSource} IS NOT NULL AND TRIM(${albumIdSource}) != ''
+          `);
+
+          db.exec('DROP TABLE trip_album_links');
+          db.exec('ALTER TABLE trip_album_links_new RENAME TO trip_album_links');
+          db.exec('CREATE INDEX IF NOT EXISTS idx_trip_album_links_trip ON trip_album_links(trip_id)');
+        }
+      }
+    },
+    () => {
+      // Add Synology credential columns for existing databases
+      try { db.exec('ALTER TABLE users ADD COLUMN synology_url TEXT'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec('ALTER TABLE users ADD COLUMN synology_username TEXT'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec('ALTER TABLE users ADD COLUMN synology_password TEXT'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec('ALTER TABLE users ADD COLUMN synology_sid TEXT'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+    },
+    () => {
+      // Seed Synology Photos provider and fields in existing databases
+      try {
+        db.prepare(`
+          INSERT INTO photo_providers (id, name, description, icon, enabled, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            description = excluded.description,
+            icon = excluded.icon,
+            enabled = excluded.enabled,
+            sort_order = excluded.sort_order
+        `).run(
+          'synologyphotos',
+          'Synology Photos',
+          'Synology Photos integration with separate account settings',
+          'Image',
+          0,
+          1,
+        );
+      } catch (err: any) {
+        if (!err.message?.includes('no such table')) throw err;
+      }
+      try {
+        const insertField = db.prepare(`
+          INSERT INTO photo_provider_fields
+          (provider_id, field_key, label, input_type, placeholder, required, secret, settings_key, payload_key, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(provider_id, field_key) DO UPDATE SET
+            label = excluded.label,
+            input_type = excluded.input_type,
+            placeholder = excluded.placeholder,
+            required = excluded.required,
+            secret = excluded.secret,
+            settings_key = excluded.settings_key,
+            payload_key = excluded.payload_key,
+            sort_order = excluded.sort_order
+        `);
+        insertField.run('synologyphotos', 'synology_url', 'providerUrl', 'url', 'https://synology.example.com', 1, 0, 'synology_url', 'synology_url', 0);
+        insertField.run('synologyphotos', 'synology_username', 'providerUsername', 'text', 'Username', 1, 0, 'synology_username', 'synology_username', 1);
+        insertField.run('synologyphotos', 'synology_password', 'providerPassword', 'password', 'Password', 1, 1, null, 'synology_password', 2);
+      } catch (err: any) {
+        if (!err.message?.includes('no such table')) throw err;
+      }
+    },
+    () => {
+      // Remove the stored config column from photo_providers now that it is generated from provider id.
+      const columns = db.prepare("PRAGMA table_info('photo_providers')").all() as Array<{ name: string }>;
+      const names = new Set(columns.map(c => c.name));
+      if (!names.has('config')) return;
+
+      db.exec('ALTER TABLE photo_providers DROP COLUMN config');
+    },
+    () => {
+      const photoColumns = db.prepare("PRAGMA table_info('trip_photos')").all() as Array<{ name: string }>;
+      const photoNames = new Set(photoColumns.map(c => c.name));
+      if (photoNames.has('immich_asset_id') && !photoNames.has('asset_id')) {
+        db.exec('ALTER TABLE `trip_photos` RENAME COLUMN immich_asset_id TO asset_id');
+      }
+      if (!photoNames.has('provider')) {
+        db.exec('ALTER TABLE `trip_photos` ADD COLUMN provider TEXT NOT NULL DEFAULT "immich"');
+      }
+
+      const albumColumns = db.prepare("PRAGMA table_info('trip_album_links')").all() as Array<{ name: string }>;
+      const albumNames = new Set(albumColumns.map(c => c.name));
+      if (!albumNames.has('provider')) {
+        db.exec('ALTER TABLE `trip_album_links` ADD COLUMN provider TEXT NOT NULL DEFAULT "immich"');
+      }
+      if (albumNames.has('immich_album_id') && !albumNames.has('album_id')) {
+        db.exec('ALTER TABLE `trip_album_links` RENAME COLUMN immich_album_id TO album_id');
+      }
+    },
+    () => {
+      // Track which album link each photo was synced from
+      try { db.exec("ALTER TABLE trip_photos ADD COLUMN album_link_id INTEGER REFERENCES trip_album_links(id) ON DELETE SET NULL DEFAULT NULL"); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      db.exec('CREATE INDEX IF NOT EXISTS idx_trip_photos_album_link ON trip_photos(album_link_id)');
+    },
+    // Migration 68: Todo items
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS todo_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          checked INTEGER DEFAULT 0,
+          category TEXT,
+          sort_order INTEGER DEFAULT 0,
+          due_date TEXT,
+          description TEXT,
+          assigned_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          priority INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_todo_items_trip_id ON todo_items(trip_id);
+
+        CREATE TABLE IF NOT EXISTS todo_category_assignees (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+          category_name TEXT NOT NULL,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(trip_id, category_name, user_id)
+        );
+      `);
+    },
+    () => {
+      try {db.exec("UPDATE addons SET enabled = 0 WHERE id = 'memories'");} catch (err) {}
+    },
+    // Migration 69: Place region cache for sub-national Atlas regions
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS place_regions (
+          place_id INTEGER PRIMARY KEY REFERENCES places(id) ON DELETE CASCADE,
+          country_code TEXT NOT NULL,
+          region_code TEXT NOT NULL,
+          region_name TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_place_regions_country ON place_regions(country_code);
+        CREATE INDEX IF NOT EXISTS idx_place_regions_region ON place_regions(region_code);
+      `);
+    },
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS visited_regions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          region_code TEXT NOT NULL,
+          region_name TEXT NOT NULL,
+          country_code TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, region_code)
+        );
+        CREATE INDEX IF NOT EXISTS idx_visited_regions_country ON visited_regions(country_code);
+      `);
+    },
+    // Migration 71: Normalized per-user per-channel notification preferences
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notification_channel_preferences (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          event_type TEXT NOT NULL,
+          channel TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          PRIMARY KEY (user_id, event_type, channel)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ncp_user ON notification_channel_preferences(user_id);
+      `);
+
+      // Migrate data from old notification_preferences table (may not exist on fresh installs)
+      const tableExists = (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='notification_preferences'").get() as { name: string } | undefined) != null;
+      const oldPrefs: Array<Record<string, number>> = tableExists
+        ? db.prepare('SELECT * FROM notification_preferences').all() as Array<Record<string, number>>
+        : [];
+      const eventCols: Record<string, string> = {
+        trip_invite: 'notify_trip_invite',
+        booking_change: 'notify_booking_change',
+        trip_reminder: 'notify_trip_reminder',
+        vacay_invite: 'notify_vacay_invite',
+        photos_shared: 'notify_photos_shared',
+        collab_message: 'notify_collab_message',
+        packing_tagged: 'notify_packing_tagged',
+      };
+      const insert = db.prepare(
+        'INSERT OR IGNORE INTO notification_channel_preferences (user_id, event_type, channel, enabled) VALUES (?, ?, ?, ?)'
+      );
+      const insertMany = db.transaction((rows: Array<[number, string, string, number]>) => {
+        for (const [userId, eventType, channel, enabled] of rows) {
+          insert.run(userId, eventType, channel, enabled);
+        }
+      });
+
+      for (const row of oldPrefs) {
+        const userId = row.user_id as number;
+        const webhookEnabled = (row.notify_webhook as number) ?? 0;
+        const rows: Array<[number, string, string, number]> = [];
+        for (const [eventType, col] of Object.entries(eventCols)) {
+          const emailEnabled = (row[col] as number) ?? 1;
+          // Only insert if disabled (no row = enabled is our default)
+          if (!emailEnabled) rows.push([userId, eventType, 'email', 0]);
+          if (!webhookEnabled) rows.push([userId, eventType, 'webhook', 0]);
+        }
+        if (rows.length > 0) insertMany(rows);
+      }
+
+      // Copy existing single-channel setting to new plural key
+      db.exec(`
+        INSERT OR IGNORE INTO app_settings (key, value)
+          SELECT 'notification_channels', value FROM app_settings WHERE key = 'notification_channel';
+      `);
+    },
+    // Migration 72: Drop the old notification_preferences table (data migrated to notification_channel_preferences in migration 71)
+    () => {
+      db.exec('DROP TABLE IF EXISTS notification_preferences;');
+    },
+    // Migration 73: Add reservation_id to budget_items for linking budget entries to reservations
+    () => {
+      try { db.exec('ALTER TABLE budget_items ADD COLUMN reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL DEFAULT NULL'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+    },
+    // Migration 74: Add quantity to packing_items + user_id to packing_bags + bag_members table
+    () => {
+      try { db.exec('ALTER TABLE packing_items ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec('ALTER TABLE packing_bags ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL DEFAULT NULL'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS packing_bag_members (
+          bag_id INTEGER NOT NULL REFERENCES packing_bags(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          PRIMARY KEY (bag_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_packing_bag_members_bag ON packing_bag_members(bag_id);
+      `);
+      // Migrate existing single user_id to bag_members
+      const bagsWithUser = db.prepare('SELECT id, user_id FROM packing_bags WHERE user_id IS NOT NULL').all() as { id: number; user_id: number }[];
+      const ins = db.prepare('INSERT OR IGNORE INTO packing_bag_members (bag_id, user_id) VALUES (?, ?)');
+      for (const b of bagsWithUser) ins.run(b.id, b.user_id);
+    },
+    // Migration: Per-day positions for multi-day reservations
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS reservation_day_positions (
+          reservation_id INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+          day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
+          position REAL NOT NULL,
+          PRIMARY KEY (reservation_id, day_id)
+        );
+      `);
+      // Migrate existing global positions to per-day entries
+      const reservations = db.prepare('SELECT id, trip_id, reservation_time, reservation_end_time, day_plan_position FROM reservations WHERE day_plan_position IS NOT NULL').all() as any[];
+      const ins = db.prepare('INSERT OR IGNORE INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)');
+      for (const r of reservations) {
+        const startDate = r.reservation_time?.split('T')[0];
+        const endDate = r.reservation_end_time?.split('T')[0] || startDate;
+        if (!startDate) continue;
+        const matchingDays = db.prepare('SELECT id FROM days WHERE trip_id = ? AND date >= ? AND date <= ?').all(r.trip_id, startDate, endDate) as { id: number }[];
+        for (const d of matchingDays) ins.run(r.id, d.id, r.day_plan_position);
+      }
     },
   ];
 

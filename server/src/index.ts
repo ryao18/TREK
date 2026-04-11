@@ -46,6 +46,7 @@ const server = app.listen(PORT, () => {
   }
   scheduler.start();
   scheduler.startTripReminders();
+  scheduler.startVersionCheck();
   scheduler.startDemoReset();
   const { startTokenCleanup } = require('./services/ephemeralTokens');
   startTokenCleanup();

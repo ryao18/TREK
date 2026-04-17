@@ -238,7 +238,7 @@ export default function Navbar({ tripTitle, tripId, onBack, showBack, onShare }:
                           <img src={dark ? '/text-light.svg' : '/text-dark.svg'} alt="TREK" style={{ height: 10, opacity: 0.5 }} />
                           <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-faint)' }}>v{appVersion}</span>
                         </div>
-                        <a href="https://discord.gg/nSdKaXgN" target="_blank" rel="noopener noreferrer"
+                        <a href="https://discord.gg/NhZBDSd4qW" target="_blank" rel="noopener noreferrer"
                           style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 99, background: 'var(--bg-tertiary)', transition: 'background 0.15s' }}
                           onMouseEnter={e => e.currentTarget.style.background = '#5865F220'}
                           onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}

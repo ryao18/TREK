@@ -285,6 +285,117 @@ Do not start with:
 - write access
 - large unbounded history windows
 
+## LLM Deployment Strategy
+
+The assistant should be designed so the LLM provider can be swapped without changing the assistant UI, tool layer, or business rules.
+
+### Initial Deployment Target
+
+The initial target is a local model running on a single RTX 4090 through LM Studio or another OpenAI-compatible local server.
+
+This is a good fit for Phase 1 because:
+
+- the MVP is read-only
+- the assistant should answer from TREK data, not from the public internet
+- the tool layer can keep prompts compact and structured
+- the model only needs to reason over retrieved trip context
+
+### Why Local-First Works For MVP
+
+For a read-only trip assistant, lack of direct internet access is not a blocker.
+
+The assistant should not browse on its own. Instead:
+
+1. TREK retrieves trip data through its own tools
+2. TREK passes only relevant structured context to the LLM
+3. the LLM produces a grounded answer
+
+This is safer and better aligned with TREK's structured data model than giving the model open-ended access.
+
+### Why Provider Swapping Matters
+
+If the assistant later becomes more ambitious, model quality and external-data needs will increase.
+
+Examples:
+
+- more reliable reasoning across larger trip contexts
+- better summarization across many entities
+- stronger action proposal quality
+- live external intelligence such as travel advisories, web recommendations, or flight insights
+
+At that point, TREK may need to use hosted models such as ChatGPT or Claude for some requests.
+
+The design should therefore support:
+
+- local-only mode
+- hosted-only mode
+- hybrid mode with local-first and hosted fallback
+
+### Recommended Provider Interface
+
+Add a thin provider abstraction in the server assistant layer.
+
+Example responsibilities:
+
+- send model request
+- pass system prompt and tool context
+- normalize response shape
+- report provider and model metadata
+- support timeout and fallback behavior
+
+Suggested configuration model:
+
+- `provider`: `local`, `openai`, `anthropic`, or future providers
+- `model`
+- `base_url`
+- `api_key` when required
+- `timeout_ms`
+- `max_tokens`
+
+The assistant route should depend on this interface rather than any specific SDK.
+
+### Local Model Expectations
+
+A single RTX 4090 is enough for the Phase 1 read-only assistant if the system is designed correctly.
+
+That means:
+
+- targeted tool calls
+- compact prompts
+- trip-scoped requests
+- structured outputs
+
+It should not assume:
+
+- entire-trip raw dumps into context
+- huge conversation windows
+- autonomous multi-step planning
+
+### External Data Strategy
+
+If future versions need internet-backed information, the LLM should still not browse the web directly.
+
+Instead:
+
+- TREK should call external APIs or web-backed integrations itself
+- TREK should pass the retrieved results into the assistant as tool outputs
+- the LLM should synthesize those results
+
+This keeps the architecture consistent across both local and hosted models.
+
+### Recommended Evolution Path
+
+1. Phase 1: local model only, read-only assistant
+2. Phase 2: keep the same tool layer, improve prompts and answer quality
+3. Phase 3: add hosted-model support behind the same provider interface
+4. Phase 4: optionally route complex prompts or internet-backed prompts to hosted models
+
+### Non-Goal
+
+Do not couple assistant behavior to one specific model vendor or SDK.
+
+The tool contracts and response schema should remain stable even if the backing LLM changes.
+
 ## Implementation Plan
 
 ### Milestone 1: Tooling
@@ -298,6 +409,7 @@ Do not start with:
 - add a trip-scoped assistant route
 - wire auth and trip access checks
 - implement basic orchestration
+- add a pluggable LLM provider interface
 - return structured answer payloads
 
 ### Milestone 3: Client UI

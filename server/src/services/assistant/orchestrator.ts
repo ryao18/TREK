@@ -254,7 +254,7 @@ function addSelectedDayContext(context: Record<string, unknown>, tripId: number,
 }
 
 function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unknown>) {
-  const history = (input.history || []).slice(-6).map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n');
+  const history = (input.history || []).slice(-10).map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n');
   const plannerContext = JSON.stringify(input.context || {}, null, 2);
   const serializedTools = JSON.stringify(trimContextForPrompt(toolContext, input), null, 2);
 

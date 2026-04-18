@@ -30,7 +30,7 @@ router.post('/query', authenticate, async (req: Request, res: Response) => {
       message,
       history: history
         .filter((item: any) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
-        .slice(-6),
+        .slice(-10),
       context,
     });
     res.json(result);
@@ -42,4 +42,3 @@ router.post('/query', authenticate, async (req: Request, res: Response) => {
 });
 
 export default router;
-

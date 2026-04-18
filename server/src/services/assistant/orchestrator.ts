@@ -78,6 +78,11 @@ function buildContext(tripId: number, tools: ToolName[]) {
   return context;
 }
 
+function isOperationalPlaceQuestion(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /\bon our itinerary\b|\bitinerary\b|\bday\b|\bplanned\b|\bunplanned\b|\bplan\b|\breservation\b|\bbooking\b|\bnotes\b|\baddress\b|\bcoordinates\b|\bwhere\b|\bwhen\b|\bdid we\b|\bdo we\b/.test(lower);
+}
+
 function isFullListRequest(message: string): boolean {
   const lower = message.toLowerCase();
   return /\bfull list\b|\ball\b|\blist everything\b|\bshow all\b|\bevery\b/.test(lower);
@@ -313,7 +318,9 @@ function extractMentionedPlaceName(message: string, toolContext: Record<string, 
 
 function isPlaceKnowledgeQuestion(message: string): boolean {
   const lower = message.toLowerCase();
-  return /\bwhat is\b|\btell me about\b|\bwhat kind of place\b|\bwhat kind of attraction\b|\bwhat is this place\b/.test(lower);
+  if (isOperationalPlaceQuestion(lower)) return false;
+  return /\btell me about\b|\bdescribe\b|\bwhat kind of place\b|\bwhat kind of attraction\b|\bwhat is this place\b|\bwhat's this place\b/.test(lower)
+    || /^(what is|what's)\s+.+\??$/.test(lower);
 }
 
 function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse | null {
@@ -356,8 +363,11 @@ function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: R
 }
 
 export async function runAssistantQuery(input: AssistantQueryInput): Promise<AssistantResponse> {
-  const tools = selectTools(input.message, input.context?.selected_day_id);
-  const toolContext = addSelectedDayContext(buildContext(input.tripId, tools), input.tripId, input.context?.selected_day_id);
+  const tools = new Set<ToolName>(selectTools(input.message, input.context?.selected_day_id));
+  if (isPlaceKnowledgeQuestion(input.message)) {
+    tools.add('get_trip_places');
+  }
+  const toolContext = addSelectedDayContext(buildContext(input.tripId, Array.from(tools)), input.tripId, input.context?.selected_day_id);
   const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
   if (guardedResponse) return guardedResponse;
   const prompt = buildPrompt(input, toolContext);
@@ -390,7 +400,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       provider: result.provider,
       model: result.model,
       tools_used: Array.from(new Set([
-        ...tools,
+        ...Array.from(tools),
         ...(toolContext.get_trip_places ? ['get_trip_places'] : []),
         ...(toolContext.get_day_plan ? ['get_day_plan'] : []),
       ])),

@@ -39,11 +39,9 @@ const QUICK_PROMPTS = [
 
 const panelBaseStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 12,
-  right: 12,
-  bottom: 12,
-  width: 380,
-  maxWidth: 'min(380px, calc(100vw - 24px))',
+  top: 10,
+  right: 10,
+  bottom: 10,
   background: 'var(--sidebar-bg)',
   backdropFilter: 'blur(24px) saturate(180%)',
   WebkitBackdropFilter: 'blur(24px) saturate(180%)',
@@ -110,7 +108,36 @@ export default function TripAssistantPanel({
         borderRadius: 0,
       }
     }
-    return panelBaseStyle
+    return {
+      ...panelBaseStyle,
+      width: '66vw',
+      maxWidth: 'min(860px, calc(100vw - 20px))',
+      minWidth: 560,
+    }
+  }, [isMobile])
+
+  const minimizedPanelStyle = useMemo<React.CSSProperties>(() => {
+    if (isMobile) {
+      return {
+        ...panelBaseStyle,
+        right: 12,
+        left: 'auto',
+        bottom: 12,
+        top: 'auto',
+        width: 220,
+        minWidth: 220,
+        maxWidth: 'calc(100vw - 24px)',
+        height: 72,
+        minHeight: 72,
+      }
+    }
+
+    return {
+      ...panelBaseStyle,
+      width: 380,
+      minWidth: 380,
+      maxWidth: 380,
+    }
   }, [isMobile])
 
   const closedButtonStyle = useMemo<React.CSSProperties>(() => {
@@ -135,28 +162,6 @@ export default function TripAssistantPanel({
     }
   }, [isMobile])
 
-  const minimizedButtonStyle = useMemo<React.CSSProperties>(() => {
-    return {
-      position: 'absolute',
-      right: 12,
-      bottom: isMobile ? 12 : 18,
-      zIndex: 35,
-      border: '1px solid var(--border-faint)',
-      borderRadius: 14,
-      width: 52,
-      height: 52,
-      background: 'var(--sidebar-bg)',
-      color: 'var(--text-primary)',
-      cursor: 'pointer',
-      boxShadow: 'var(--sidebar-shadow)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backdropFilter: isMobile ? undefined : 'blur(20px)',
-      WebkitBackdropFilter: isMobile ? undefined : 'blur(20px)',
-    }
-  }, [isMobile])
-
   async function sendMessage(raw: string) {
     const message = raw.trim()
     if (!message || isLoading) return
@@ -170,7 +175,6 @@ export default function TripAssistantPanel({
     const history = messages.map((entry) => ({ role: entry.role, content: entry.content }))
     setMessages((current) => [...current, nextUserMessage])
     setInput('')
-    setPanelState('open')
     setIsLoading(true)
     setAvailability(null)
 
@@ -230,19 +234,10 @@ export default function TripAssistantPanel({
   }
 
   if (panelState === 'minimized') {
-    return (
-      <button
-        onClick={() => setPanelState('open')}
-        title="Expand AI assistant"
-        style={minimizedButtonStyle}
-      >
-        <MessageCircle size={18} />
-      </button>
-    )
   }
 
   return (
-    <div style={shellStyle}>
+    <div style={panelState === 'minimized' ? minimizedPanelStyle : shellStyle}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-faint)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}>
@@ -254,9 +249,17 @@ export default function TripAssistantPanel({
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button onClick={() => setPanelState('minimized')} title="Minimize" style={iconButtonStyle}>
-            <Minus size={15} />
-          </button>
+          {panelState === 'minimized'
+            ? (
+              <button onClick={() => setPanelState('open')} title="Expand" style={iconButtonStyle}>
+                <Sparkles size={15} />
+              </button>
+            )
+            : (
+              <button onClick={() => setPanelState('minimized')} title="Minimize" style={iconButtonStyle}>
+                <Minus size={15} />
+              </button>
+            )}
           <button onClick={() => setPanelState('closed')} title="Close" style={iconButtonStyle}>
             <X size={15} />
           </button>
@@ -386,6 +389,12 @@ export default function TripAssistantPanel({
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              sendMessage(input)
+            }
+          }}
           placeholder="Ask about this trip..."
           rows={2}
           disabled={isLoading}

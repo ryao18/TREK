@@ -62,6 +62,8 @@ export default function TripAssistantPanel({
   selectedAssignmentId,
   activeTab,
 }: TripAssistantPanelProps): React.ReactElement {
+  const messagesRef = React.useRef<HTMLDivElement | null>(null)
+  const formRef = React.useRef<HTMLFormElement | null>(null)
   const [panelState, setPanelState] = useState<AssistantPanelState>(() => {
     try {
       return (sessionStorage.getItem(`trip-assistant-panel-${tripId}`) as AssistantPanelState) || 'closed'
@@ -93,6 +95,16 @@ export default function TripAssistantPanel({
       sessionStorage.setItem(`trip-assistant-messages-${tripId}`, JSON.stringify(messages.slice(-20)))
     } catch {}
   }, [messages, tripId])
+
+  React.useEffect(() => {
+    if (panelState === 'open') {
+      requestAnimationFrame(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+        }
+      })
+    }
+  }, [panelState])
 
   const shellStyle = useMemo<React.CSSProperties>(() => {
     if (isMobile) {
@@ -233,11 +245,10 @@ export default function TripAssistantPanel({
     )
   }
 
-  if (panelState === 'minimized') {
-  }
+  const currentPanelStyle = panelState === 'minimized' ? minimizedPanelStyle : shellStyle
 
   return (
-    <div style={panelState === 'minimized' ? minimizedPanelStyle : shellStyle}>
+    <div style={currentPanelStyle}>
       <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-faint)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}>
@@ -287,7 +298,7 @@ export default function TripAssistantPanel({
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div ref={messagesRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.length === 0 && (
           <div style={{ marginTop: 12, padding: 14, borderRadius: 14, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
             Ask about itinerary gaps, busy days, reservations, packing progress, or trip prep.
@@ -380,6 +391,7 @@ export default function TripAssistantPanel({
       </div>
 
       <form
+        ref={formRef}
         onSubmit={(event) => {
           event.preventDefault()
           sendMessage(input)
@@ -390,9 +402,9 @@ export default function TripAssistantPanel({
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
-              sendMessage(input)
+              formRef.current?.requestSubmit()
             }
           }}
           placeholder="Ask about this trip..."

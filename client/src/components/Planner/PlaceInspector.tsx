@@ -117,6 +117,7 @@ interface PlaceInspectorProps {
   onEdit: () => void
   onDelete: () => void
   onAssignToDay: (placeId: number, dayId: number) => void
+  onAddReservation?: (placeId: number, assignmentId?: number | null) => void
   onRemoveAssignment: (assignmentId: number, dayId: number) => void
   files: TripFile[]
   onFileUpload?: (fd: FormData) => Promise<void>
@@ -129,7 +130,7 @@ interface PlaceInspectorProps {
 
 export default function PlaceInspector({
   place, categories, days, selectedDayId, selectedAssignmentId, assignments, reservations = [],
-  onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
+  onClose, onEdit, onDelete, onAssignToDay, onAddReservation, onRemoveAssignment,
   files, onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
   leftWidth = 0, rightWidth = 0,
 }: PlaceInspectorProps) {
@@ -605,6 +606,14 @@ export default function PlaceInspector({
             ) : (
               <ActionButton onClick={() => onAssignToDay(place.id)} variant="primary" icon={<Plus size={13} />} label={t('inspector.addToDay')} />
             )
+          )}
+          {onAddReservation && (
+            <ActionButton
+              onClick={() => onAddReservation(place.id, assignmentInDay?.id || null)}
+              variant="ghost"
+              icon={<Plus size={13} />}
+              label={<span className="hidden sm:inline">{t('reservations.addManual')}</span>}
+            />
           )}
           {googleDetails?.google_maps_url && (
             <ActionButton onClick={() => window.open(googleDetails.google_maps_url, '_blank')} variant="ghost" icon={<Navigation size={13} />}

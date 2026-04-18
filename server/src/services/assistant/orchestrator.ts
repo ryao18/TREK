@@ -644,7 +644,9 @@ function buildUnplannedPlacesListResponse(toolContext: Record<string, unknown>):
 
 function buildPlanningStatusResponse(toolContext: Record<string, unknown>): AssistantResponse {
   const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{ id?: number; name?: string; has_assignment?: boolean }>;
-  const reservations = (toolContext.get_reservations_summary as any)?.total ?? 0;
+  const reservationSummary = (toolContext.get_reservations_summary as any) || {};
+  const reservations = reservationSummary.total ?? 0;
+  const unscheduledReservations = Number(reservationSummary.unscheduled_count || 0);
   const todoSummary = (toolContext.get_todo_summary as any) || {};
   const openTodos = Math.max(0, Number(todoSummary.total || 0) - Number(todoSummary.checked || 0));
   const budget = (toolContext.get_budget_summary as any) || {};
@@ -657,6 +659,7 @@ function buildPlanningStatusResponse(toolContext: Record<string, unknown>): Assi
   if (unplannedPlaces > 0) lines.push(`- ${unplannedPlaces} places/activities still have no day assignment`);
   if (reservations === 0) lines.push('- no reservations have been added yet');
   else lines.push(`- ${reservations} reservations are already recorded`);
+  if (unscheduledReservations > 0) lines.push(`- ${unscheduledReservations} reservations are linked to places but not scheduled to a day yet`);
   if (Number(todoSummary.total || 0) === 0) lines.push('- no to-dos have been added yet');
   else if (openTodos === 0) lines.push('- all to-dos are completed');
   else lines.push(`- ${openTodos} to-do items are still open`);
@@ -755,7 +758,9 @@ function buildReservationsStatusResponse(toolContext: Record<string, unknown>): 
     const when = reservation.day_number ? ` | Day ${reservation.day_number}` : '';
     const status = reservation.status ? ` | ${reservation.status}` : '';
     const type = reservation.type ? ` | ${reservation.type}` : '';
-    lines.push(`- ${reservation.title || 'Untitled reservation'}${type}${status}${when}`);
+    const unscheduled = reservation.is_unscheduled ? ' | unscheduled' : '';
+    const place = reservation.place_name ? ` | ${reservation.place_name}` : '';
+    lines.push(`- ${reservation.title || 'Untitled reservation'}${type}${status}${when}${unscheduled}${place}`);
   }
 
   return makeDeterministicResponse(lines.join('\n'), {

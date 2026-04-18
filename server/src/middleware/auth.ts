@@ -29,12 +29,8 @@ function getOrCreateBypassUser(): User {
 
   if (user) return user;
 
-  const result = db.prepare(
-    'INSERT INTO users (username, email, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, 0)'
-  ).run('local-admin', 'local-admin@trek.local', '__LOCAL_AUTH_BYPASS__', 'admin');
-
   return {
-    id: Number(result.lastInsertRowid),
+    id: 0,
     username: 'local-admin',
     email: 'local-admin@trek.local',
     role: 'admin',

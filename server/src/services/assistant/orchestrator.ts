@@ -93,12 +93,8 @@ function inferIntentKindFromMessage(message: string, selectedDayId?: number | nu
 }
 
 function inferPriorIntent(history?: AssistantQueryInput['history'], selectedDayId?: number | null): ResolvedIntentKind {
-  const entries = history || [];
-  const ordered = [
-    ...entries.filter((entry) => entry.role === 'user').reverse(),
-    ...entries.filter((entry) => entry.role === 'assistant').reverse(),
-  ];
-  for (const entry of ordered) {
+  const entries = [...(history || [])].reverse();
+  for (const entry of entries) {
     const kind = inferIntentKindFromMessage(entry.content, selectedDayId);
     if (kind !== 'unknown') return kind;
   }

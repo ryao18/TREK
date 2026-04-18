@@ -4,6 +4,8 @@ import { listReservations } from '../reservationService';
 import { listItems as listPackingItems } from '../packingService';
 import { listItems as listTodoItems } from '../todoService';
 import { calculateSettlement, getPerPersonSummary, listBudgetItems } from '../budgetService';
+import { listPlaces } from '../placeService';
+import { db } from '../db/database';
 
 function toIsoDate(value: unknown): string | null {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
@@ -72,6 +74,31 @@ export function getDayPlan(tripId: number, dayId: number) {
         id: participant.user_id ?? participant.id ?? null,
         username: participant.username ?? null,
       })),
+    })),
+  };
+}
+
+export function getTripPlaces(tripId: number) {
+  const places = listPlaces(String(tripId), {}) as any[];
+  const assignedRows = db.prepare(`
+    SELECT DISTINCT da.place_id
+    FROM day_assignments da
+    JOIN days d ON d.id = da.day_id
+    WHERE d.trip_id = ?
+  `).all(tripId) as Array<{ place_id: number }>;
+  const assignedPlaceIds = new Set(assignedRows.map((row) => Number(row.place_id)));
+
+  return {
+    total: places.length,
+    items: places.slice(0, 20).map((place) => ({
+      id: place.id,
+      name: place.name,
+      address: place.address || null,
+      category_name: place.category?.name || null,
+      lat: place.lat ?? null,
+      lng: place.lng ?? null,
+      has_coordinates: place.lat != null && place.lng != null,
+      has_assignment: assignedPlaceIds.has(Number(place.id)),
     })),
   };
 }

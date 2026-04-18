@@ -5,7 +5,7 @@ import { listItems as listPackingItems } from '../packingService';
 import { listItems as listTodoItems } from '../todoService';
 import { calculateSettlement, getPerPersonSummary, listBudgetItems } from '../budgetService';
 import { listPlaces } from '../placeService';
-import { db } from '../db/database';
+import { db } from '../../db/database';
 
 function toIsoDate(value: unknown): string | null {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;

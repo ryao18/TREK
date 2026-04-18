@@ -21,6 +21,7 @@ import TodoListPanel from '../components/Todo/TodoListPanel'
 import FileManager from '../components/Files/FileManager'
 import BudgetPanel from '../components/Budget/BudgetPanel'
 import CollabPanel from '../components/Collab/CollabPanel'
+import TripAssistantPanel from '../components/Assistant/TripAssistantPanel'
 import Navbar from '../components/Layout/Navbar'
 import { useToast } from '../components/shared/Toast'
 import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Ticket, PackageCheck, Wallet, FolderOpen, Camera, Users } from 'lucide-react'
@@ -488,16 +489,9 @@ export default function TripPlannerPage(): React.ReactElement | null {
 
   const fontStyle = { fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif" }
 
-  // Splash screen — show for initial load + a brief moment for photos to start loading
-  const [splashDone, setSplashDone] = useState(false)
-  useEffect(() => {
-    if (!isLoading && trip) {
-      const timer = setTimeout(() => setSplashDone(true), 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [isLoading, trip])
-
-  if (isLoading || !splashDone) {
+  // Keep the blocking splash only for real data loading. An extra post-load delay
+  // leaves the route with no actionable UI, which breaks Bombadil-style exploration.
+  if (isLoading) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -564,6 +558,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               title={tab.label}
+              data-bombadil={`trip-tab-${tab.id}`}
               style={{
                 flexShrink: 0,
                 padding: '5px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
@@ -585,6 +580,17 @@ export default function TripPlannerPage(): React.ReactElement | null {
 
       {/* Offset by navbar + tab bar (44px) */}
       <div style={{ position: 'fixed', top: 'calc(var(--nav-h) + 44px)', left: 0, right: 0, bottom: 0, overflow: 'hidden', overscrollBehavior: 'contain' }}>
+        {activeTab === 'plan' && (
+          <TripAssistantPanel
+            key={String(tripId)}
+            tripId={tripId}
+            tripTitle={trip.title}
+            selectedDayId={selectedDayId}
+            selectedPlaceId={selectedPlaceId}
+            selectedAssignmentId={selectedAssignmentId}
+            activeTab={activeTab}
+          />
+        )}
 
         {activeTab === 'plan' && (
           <div style={{ position: 'absolute', inset: 0 }}>

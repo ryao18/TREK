@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bombadil TREK UI"
+  short_description: "Author and refine TREK-focused Bombadil UI specs."
+  default_prompt: "Use this skill to create or tighten Bombadil specs for TREK UI workflows, emphasizing planner, bookings, packing, budget, and collab flows while avoiding uploads and generic actions."

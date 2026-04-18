@@ -18,6 +18,8 @@ This skill is for:
 
 Do not treat upstream as authoritative in overlap areas. In overlap areas, preserve protected features first and integrate upstream additively.
 
+When working on `local_testing`, also preserve the branch-specific local runtime behavior. That branch is intentionally optimized for plain local testing, not production-safe defaults.
+
 ## Protected Features
 
 These features are protected by default and must not be overridden during upstream merges unless the user explicitly says to replace them.
@@ -34,6 +36,41 @@ These features are protected by default and must not be overridden during upstre
    - do not collapse it back to trip-level shared ownership
 
 If the user adds more protected features later, append them to this list and treat them with the same priority.
+
+## Branch-Specific Guardrails
+
+### `local_testing`
+
+When merging into `local_testing`, preserve the local-run behavior unless the user explicitly asks to change it.
+
+Required local-testing invariants:
+
+- local Docker runs must work over plain `http://localhost:3000`
+- no forced HTTPS redirect in the local-testing path
+- auth cookies must work on non-HTTPS localhost
+- local auth bypass must remain available for automation and Bombadil-style testing
+- login-page behavior must still cooperate with local auth bypass instead of trapping the user on `/login`
+
+Files to inspect first on `local_testing`:
+
+- `docker-compose.yml`
+- `.env.example`
+- `server/src/middleware/auth.ts`
+- `server/src/services/authService.ts`
+- `client/src/pages/LoginPage.tsx`
+- `client/src/types.ts`
+
+Expected local-testing defaults and behavior:
+
+- `FORCE_HTTPS=false`
+- `COOKIE_SECURE=false`
+- `ALLOWED_ORIGINS=http://localhost:3000`
+- `APP_URL=http://localhost:3000`
+- `LOCAL_AUTH_BYPASS` remains supported
+- app config still exposes `local_auth_bypass`
+- login flow still redirects correctly when bypass is enabled
+
+Do not "fix" these back to upstream production-oriented defaults on `local_testing` unless the user explicitly asks for that branch behavior to change.
 
 ## Core Rule
 
@@ -148,6 +185,11 @@ Targeted verification checklist:
   - ownership is still per-user
   - route/service mutations still enforce per-user access
   - upstream packing enhancements do not flatten ownership
+
+- `local_testing`:
+  - compose/env defaults still allow plain local HTTP runs
+  - bypass auth still works end-to-end
+  - local login route still redirects correctly when bypass is active
 
 If test tooling is available, run targeted tests for these areas. If it is not available, state that clearly and fall back to static verification.
 

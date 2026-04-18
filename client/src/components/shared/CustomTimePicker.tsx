@@ -18,9 +18,10 @@ interface CustomTimePickerProps {
   onChange: (value: string) => void
   placeholder?: string
   style?: React.CSSProperties
+  dataBombadil?: string
 }
 
-export default function CustomTimePicker({ value, onChange, placeholder = '00:00', style = {} }: CustomTimePickerProps) {
+export default function CustomTimePicker({ value, onChange, placeholder = '00:00', style = {}, dataBombadil }: CustomTimePickerProps) {
   const is12h = useSettingsStore(s => s.settings.time_format) === '12h'
   const [open, setOpen] = useState(false)
   const [inputFocused, setInputFocused] = useState(false)
@@ -124,6 +125,7 @@ export default function CustomTimePicker({ value, onChange, placeholder = '00:00
       }}>
         <input
           type="text"
+          data-bombadil={dataBombadil}
           value={inputFocused ? value : formatDisplay(value, is12h)}
           onChange={handleInput}
           onFocus={() => setInputFocused(true)}

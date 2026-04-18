@@ -78,6 +78,11 @@ export const tripsApi = {
   get: (id: number | string) => apiClient.get(`/trips/${id}`).then(r => r.data),
   update: (id: number | string, data: Record<string, unknown>) => apiClient.put(`/trips/${id}`, data).then(r => r.data),
   delete: (id: number | string) => apiClient.delete(`/trips/${id}`).then(r => r.data),
+  assistantQuery: (id: number | string, data: {
+    message: string
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>
+    context?: Record<string, unknown>
+  }) => apiClient.post(`/trips/${id}/assistant/query`, data).then(r => r.data),
   uploadCover: (id: number | string, formData: FormData) => apiClient.post(`/trips/${id}/cover`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data),
   archive: (id: number | string) => apiClient.put(`/trips/${id}`, { is_archived: true }).then(r => r.data),
   unarchive: (id: number | string) => apiClient.put(`/trips/${id}`, { is_archived: false }).then(r => r.data),

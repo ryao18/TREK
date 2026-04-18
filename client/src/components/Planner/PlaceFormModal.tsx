@@ -272,6 +272,7 @@ export default function PlaceFormModal({
             value={form.name}
             onChange={e => handleChange('name', e.target.value)}
             required
+            data-bombadil="planner-place-name"
             placeholder={t('places.formNamePlaceholder')}
             className="form-input"
           />
@@ -284,6 +285,7 @@ export default function PlaceFormModal({
             value={form.description}
             onChange={e => handleChange('description', e.target.value)}
             rows={2}
+            data-bombadil="planner-place-description"
             placeholder={t('places.formDescriptionPlaceholder')}
             className="form-input" style={{ resize: 'none' }}
           />
@@ -296,6 +298,7 @@ export default function PlaceFormModal({
             type="text"
             value={form.address}
             onChange={e => handleChange('address', e.target.value)}
+            data-bombadil="planner-place-address"
             placeholder={t('places.formAddressPlaceholder')}
             className="form-input"
           />
@@ -433,6 +436,7 @@ export default function PlaceFormModal({
           <button
             type="submit"
             disabled={isSaving || hasTimeError}
+            data-bombadil="planner-place-submit"
             className="px-6 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-60 font-medium"
           >
             {isSaving ? t('common.saving') : place ? t('common.update') : t('common.add')}
@@ -482,6 +486,7 @@ function TimeSection({ form, handleChange, assignmentId, dayAssignments, hasTime
           <CustomTimePicker
             value={form.place_time}
             onChange={v => handleChange('place_time', v)}
+            dataBombadil="planner-place-start-time"
           />
         </div>
         <div>
@@ -489,6 +494,7 @@ function TimeSection({ form, handleChange, assignmentId, dayAssignments, hasTime
           <CustomTimePicker
             value={form.end_time}
             onChange={v => handleChange('end_time', v)}
+            dataBombadil="planner-place-end-time"
           />
         </div>
       </div>

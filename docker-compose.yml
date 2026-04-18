@@ -21,11 +21,12 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-} # Recommended. Generate with: openssl rand -hex 32. If unset, falls back to data/.jwt_secret (existing installs) or auto-generates a key (fresh installs).
       - TZ=${TZ:-UTC} # Timezone for logs, reminders and scheduled tasks (e.g. Europe/Berlin)
       - LOG_LEVEL=${LOG_LEVEL:-info} # info = concise user actions; debug = verbose admin-level details
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000} # Comma-separated origins for CORS and email notification links
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-} # Comma-separated origins for CORS and email notification links
       - FORCE_HTTPS=${FORCE_HTTPS:-false} # Redirect HTTP to HTTPS when behind a TLS-terminating proxy
       - COOKIE_SECURE=${COOKIE_SECURE:-false} # Set to true when serving behind HTTPS so auth cookies are marked Secure
       - ALLOW_INTERNAL_NETWORK=${ALLOW_INTERNAL_NETWORK:-false} # Set to true if Immich or other services are hosted on your local network (RFC-1918 IPs). Loopback and link-local addresses remain blocked regardless.
-      - APP_URL=${APP_URL:-http://localhost:3000} # Public base URL — required when OIDC is enabled (must match the redirect URI registered with your IdP); also used as base URL for links in email notifications
+      - APP_URL=${APP_URL:-} # Public base URL — required when OIDC is enabled (must match the redirect URI registered with your IdP); also used as base URL for links in email notifications
+      - TRUST_PROXY=${TRUST_PROXY:-} # Trusted proxy count for X-Forwarded-For / X-Forwarded-Proto. Required when forcing HTTPS behind a proxy
       - LOCAL_AUTH_BYPASS=${LOCAL_AUTH_BYPASS:-false} # Local-only shortcut: treat requests as an authenticated admin without login
       - AI_ASSISTANT_LOCAL_BASE_URL=${AI_ASSISTANT_LOCAL_BASE_URL:-http://127.0.0.1:1234/v1} # OpenAI-compatible local model base URL (LM Studio, etc.)
       - AI_ASSISTANT_LOCAL_MODEL=${AI_ASSISTANT_LOCAL_MODEL:-} # Model id exposed by the local LLM server

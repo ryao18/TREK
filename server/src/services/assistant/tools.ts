@@ -90,7 +90,7 @@ export function getTripPlaces(tripId: number) {
 
   return {
     total: places.length,
-    items: places.slice(0, 20).map((place) => ({
+    items: places.map((place) => ({
       id: place.id,
       name: place.name,
       address: place.address || null,
@@ -132,7 +132,7 @@ export function getReservationsSummary(tripId: number) {
     total: reservations.length,
     by_status: byStatus,
     by_type: byType,
-    items: reservations.slice(0, 10).map((reservation) => ({
+    items: reservations.map((reservation) => ({
       id: reservation.id,
       title: reservation.title,
       status: reservation.status,
@@ -195,7 +195,7 @@ export function getTodoSummary(tripId: number) {
     total: items.length,
     checked: items.filter(item => item.checked).length,
     by_category: byCategory,
-    items: items.slice(0, 10).map((item) => ({
+    items: items.map((item) => ({
       id: item.id,
       name: item.name,
       checked: !!item.checked,

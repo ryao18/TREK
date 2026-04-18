@@ -69,6 +69,13 @@ Phase 2 should add draftable actions with explicit confirmation:
 - move assignment between days
 - update assignment section
 
+Phase 2 should also add hosted-model provider support behind the same assistant interface:
+
+- OpenAI API
+- Anthropic API
+- Gemini API
+- Perplexity API
+
 Phase 3 can add guided trip-management flows:
 
 - repair a thin itinerary
@@ -339,9 +346,11 @@ The current preferred MVP shape is:
 
 The current preferred interaction model is:
 
-- right-side slide-in panel in the trip planner
+- right-side assistant panel in the trip planner
 - closed by default for MVP unless we decide to surface it with a first-run affordance
-- expandable to a normal working width, then minimizable to a small edge tab or icon rail state
+- expandable to a large working width, then minimizable to a narrower but still usable chat panel
+- close should return the assistant to its launcher button state
+- minimize should preserve a working chat UI rather than collapsing to a non-interactive preview
 - independent from the existing planner sidebars so users can continue planning while the assistant stays open
 - conversation state remains available while switching planner tabs within the same trip session
 
@@ -358,6 +367,14 @@ Recommended panel contents:
 - optional quick prompt chips at the top when the conversation is empty
 - prompt composer anchored to the bottom
 - loading indicator for in-flight responses
+
+Implemented Phase 1 interaction details:
+
+- `Enter` submits the current message
+- `Shift+Enter` inserts a newline
+- reopening or expanding the assistant should scroll the transcript to the newest messages
+- minimized state should keep the message history and composer available
+- the assistant currently appears only on the `plan` tab
 
 Recommended MVP non-goals for the panel:
 
@@ -475,6 +492,12 @@ The design should therefore support:
 - hosted-only mode
 - hybrid mode with local-first and hosted fallback
 
+Hosted-provider note:
+
+- hosted support should be implemented without changing the trip assistant UI, route contract, or tool contracts
+- TREK should remain the orchestrator and grounding layer even when a hosted model is used
+- provider-specific request/response formats should be normalized in the server provider layer
+
 ### Recommended Provider Interface
 
 Add a thin provider abstraction in the server assistant layer.
@@ -487,6 +510,14 @@ Example responsibilities:
 - report provider and model metadata
 - support timeout and fallback behavior
 
+Recommended future provider set:
+
+- `local`
+- `openai`
+- `anthropic`
+- `gemini`
+- `perplexity`
+
 Suggested configuration model:
 
 - `provider`: `local`, `openai`, `anthropic`, or future providers
@@ -497,6 +528,35 @@ Suggested configuration model:
 - `max_tokens`
 
 The assistant route should depend on this interface rather than any specific SDK.
+
+Recommended normalized interface:
+
+- provider input:
+  - `systemPrompt`
+  - `userPrompt`
+  - `temperature`
+  - `maxTokens`
+- provider output:
+  - `provider`
+  - `model`
+  - `content`
+  - optional normalized token usage
+
+Suggested server file layout for future hosted support:
+
+- `server/src/services/assistant/provider.ts`
+- `server/src/services/assistant/providers/base.ts`
+- `server/src/services/assistant/providers/factory.ts`
+- `server/src/services/assistant/providers/local.ts`
+- `server/src/services/assistant/providers/openai.ts`
+- `server/src/services/assistant/providers/anthropic.ts`
+- `server/src/services/assistant/providers/gemini.ts`
+- `server/src/services/assistant/providers/perplexity.ts`
+
+Implementation rule:
+
+- the orchestrator should never depend on provider-specific payload shapes
+- only the provider adapters should know OpenAI, Anthropic, Gemini, or Perplexity request formats
 
 Phase 1 constraint:
 
@@ -542,6 +602,17 @@ This keeps the architecture consistent across both local and hosted models.
 ### Non-Goal
 
 Do not couple assistant behavior to one specific model vendor or SDK.
+
+Secret handling rule:
+
+- hosted-provider API keys must remain server-side only
+- they should be treated as deployment secrets or secret environment variables
+- they must never be exposed to the client
+- examples include:
+  - `OPENAI_API_KEY`
+  - `ANTHROPIC_API_KEY`
+  - `GEMINI_API_KEY`
+  - `PERPLEXITY_API_KEY`
 
 The tool contracts and response schema should remain stable even if the backing LLM changes.
 
@@ -713,6 +784,9 @@ The current vertical slice implementation includes:
 - selected-day-aware context loading for assistant queries
 - follow-up prompt chips rendered from assistant responses
 - per-trip session persistence for panel state and recent chat messages
+- enter-to-send and shift-enter newline handling
+- reopen-to-bottom chat scrolling
+- open / minimize / close behavior aligned to the final Phase 1 chat UX
 
 ### Current Constraints Encountered
 
@@ -722,9 +796,11 @@ The current vertical slice implementation includes:
 - verification in this workspace is incomplete because the client build currently fails before app compilation when `sharp` is unavailable and there is no runnable local TypeScript CLI in the checked-in toolchain here
 - because LM Studio will be started manually for personal use, the chat UX should handle missing/offline local-model states cleanly instead of depending on extra setup or health-check UI
 
-### Still Not Complete For Phase 1
+### Phase 1 Status
 
-Phase 1 should not yet be considered complete. Remaining work still includes:
+Phase 1 feature work is implemented.
+
+The remaining gap is verification/signoff rather than missing product behavior:
 
 - targeted validation once the workspace toolchain can build/typecheck cleanly
 - any final refinement needed after local-model use against real trips

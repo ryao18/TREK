@@ -25,6 +25,7 @@ Current implementation status:
 - the Phase 1 vertical slice is now underway
 - the first implementation target is panel shell + endpoint contract + local-provider server path
 - the first version should prove the interaction model before deeper tool coverage or write-ready confirmations
+- place-specific general-knowledge questions should only be answered from stored TREK data; if TREK only knows that a place exists in the trip, the assistant should say it lacks trusted descriptive information instead of inventing travel facts
 
 ## Why This Shape
 
@@ -57,6 +58,7 @@ The assistant cannot:
 - create, edit, delete, reorder, or move trip data
 - make hidden assumptions when data is missing
 - fabricate bookings, participants, or costs
+- answer general world-knowledge place questions as if TREK has internet/search access when that data is not actually stored in the trip
 
 ### Future Phases
 

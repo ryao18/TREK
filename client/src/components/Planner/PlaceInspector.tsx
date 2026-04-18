@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getAuthUrl } from '../../api/authUrl'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
+import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp, Ticket } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -611,8 +611,8 @@ export default function PlaceInspector({
             <ActionButton
               onClick={() => onAddReservation(place.id, assignmentInDay?.id || null)}
               variant="ghost"
-              icon={<Plus size={13} />}
-              label={<span className="hidden sm:inline">{t('reservations.addManual')}</span>}
+              icon={<Ticket size={13} />}
+              label={t('reservations.addManual')}
             />
           )}
           {googleDetails?.google_maps_url && (

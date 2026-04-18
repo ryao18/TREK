@@ -628,7 +628,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
             selectedPlaceId={selectedPlaceId}
             selectedAssignmentId={selectedAssignmentId}
             activeTab={activeTab}
-            hasBlockingOverlay={!!showDayDetail && !selectedPlace}
+            hasBlockingOverlay={!!showDayDetail || !!selectedPlace}
           />
         )}
 

@@ -483,6 +483,20 @@ export default function TripPlannerPage(): React.ReactElement | null {
     return da.map(a => a.place).filter(p => p?.lat && p?.lng)
   }, [selectedDayId, assignments])
 
+  const lastAutoFitSignature = useRef<string>('')
+  useEffect(() => {
+    if (activeTab !== 'plan') return
+
+    const fitPlaces = dayPlaces.length > 0 ? dayPlaces : mapPlaces
+    if (fitPlaces.length === 0) return
+
+    const signature = `${tripId}:${selectedDayId || 'all'}:${fitPlaces.map((place) => place.id).join(',')}`
+    if (lastAutoFitSignature.current === signature) return
+
+    lastAutoFitSignature.current = signature
+    setFitKey((key) => key + 1)
+  }, [activeTab, tripId, selectedDayId, mapPlaces, dayPlaces])
+
   const mapTileUrl = settings.map_tile_url || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
   const defaultCenter = [settings.default_lat || 48.8566, settings.default_lng || 2.3522]
   const defaultZoom = settings.default_zoom || 10
@@ -589,6 +603,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
             selectedPlaceId={selectedPlaceId}
             selectedAssignmentId={selectedAssignmentId}
             activeTab={activeTab}
+            hasBlockingOverlay={!!showDayDetail && !selectedPlace}
           />
         )}
 

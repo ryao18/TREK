@@ -27,6 +27,7 @@ interface TripAssistantPanelProps {
   selectedPlaceId: number | null
   selectedAssignmentId: number | null
   activeTab: string
+  hasBlockingOverlay?: boolean
 }
 
 const QUICK_PROMPTS = [
@@ -61,6 +62,7 @@ export default function TripAssistantPanel({
   selectedPlaceId,
   selectedAssignmentId,
   activeTab,
+  hasBlockingOverlay = false,
 }: TripAssistantPanelProps): React.ReactElement {
   const messagesRef = React.useRef<HTMLDivElement | null>(null)
   const formRef = React.useRef<HTMLFormElement | null>(null)
@@ -115,6 +117,12 @@ export default function TripAssistantPanel({
       })
     }
   }, [messages, isLoading, panelState])
+
+  React.useEffect(() => {
+    if (hasBlockingOverlay && panelState === 'open') {
+      setPanelState('minimized')
+    }
+  }, [hasBlockingOverlay, panelState])
 
   const shellStyle = useMemo<React.CSSProperties>(() => {
     if (isMobile) {

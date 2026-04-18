@@ -150,20 +150,24 @@ export function getReservationsSummary(tripId: number) {
     byStatus[status] = (byStatus[status] || 0) + 1;
     byType[type] = (byType[type] || 0) + 1;
   }
+  const unscheduledCount = reservations.filter((reservation) => reservation.place_id && !reservation.assignment_id).length;
 
   return {
     total: reservations.length,
     by_status: byStatus,
     by_type: byType,
+    unscheduled_count: unscheduledCount,
     items: reservations.map((reservation) => ({
       id: reservation.id,
       title: reservation.title,
       status: reservation.status,
       type: reservation.type,
       day_number: reservation.day_number ?? null,
+      assignment_id: reservation.assignment_id ?? null,
       reservation_time: reservation.reservation_time ?? null,
       reservation_end_time: reservation.reservation_end_time ?? null,
       place_name: reservation.place_name || reservation.accommodation_name || null,
+      is_unscheduled: !!reservation.place_id && !reservation.assignment_id,
       confirmation_number: reservation.confirmation_number || null,
     })),
   };

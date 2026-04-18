@@ -66,6 +66,7 @@ export default function TripAssistantPanel({
 }: TripAssistantPanelProps): React.ReactElement {
   const messagesRef = React.useRef<HTMLDivElement | null>(null)
   const formRef = React.useRef<HTMLFormElement | null>(null)
+  const autoMinimizedRef = React.useRef(false)
   const [panelState, setPanelState] = useState<AssistantPanelState>(() => {
     try {
       return (sessionStorage.getItem(`trip-assistant-panel-${tripId}`) as AssistantPanelState) || 'closed'
@@ -120,7 +121,14 @@ export default function TripAssistantPanel({
 
   React.useEffect(() => {
     if (hasBlockingOverlay && panelState === 'open') {
+      autoMinimizedRef.current = true
       setPanelState('minimized')
+      return
+    }
+
+    if (!hasBlockingOverlay && panelState === 'minimized' && autoMinimizedRef.current) {
+      autoMinimizedRef.current = false
+      setPanelState('open')
     }
   }, [hasBlockingOverlay, panelState])
 

@@ -13,8 +13,40 @@ import {
   updateReservation,
   deleteReservation,
 } from '../services/reservationService';
+import { placeExists, getAssignmentForTrip } from '../services/assignmentService';
 
 const router = express.Router({ mergeParams: true });
+
+function resolveReservationLinks(
+  tripId: string | number,
+  input: { place_id?: number | null; assignment_id?: number | null; day_id?: number | null },
+) {
+  let resolvedPlaceId = input.place_id ?? null;
+  let resolvedAssignmentId = input.assignment_id ?? null;
+  let resolvedDayId = input.day_id ?? null;
+
+  if (resolvedPlaceId != null && !placeExists(resolvedPlaceId, tripId)) {
+    return { error: 'Place not found' };
+  }
+
+  if (resolvedAssignmentId != null) {
+    const assignment = getAssignmentForTrip(resolvedAssignmentId, tripId);
+    if (!assignment) {
+      return { error: 'Assignment not found' };
+    }
+    if (resolvedPlaceId != null && Number(resolvedPlaceId) !== Number(assignment.place_id)) {
+      return { error: 'Assignment does not match selected place' };
+    }
+    resolvedPlaceId = Number(assignment.place_id);
+    resolvedDayId = Number(assignment.day_id);
+  }
+
+  return {
+    place_id: resolvedPlaceId,
+    assignment_id: resolvedAssignmentId,
+    day_id: resolvedDayId,
+  };
+}
 
 router.get('/', authenticate, (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
@@ -39,10 +71,12 @@ router.post('/', authenticate, (req: Request, res: Response) => {
     return res.status(403).json({ error: 'No permission' });
 
   if (!title) return res.status(400).json({ error: 'Title is required' });
+  const resolvedLinks = resolveReservationLinks(tripId, { place_id, assignment_id, day_id });
+  if ('error' in resolvedLinks) return res.status(400).json({ error: resolvedLinks.error });
 
   const { reservation, accommodationCreated } = createReservation(tripId, {
     title, reservation_time, reservation_end_time, location,
-    confirmation_number, notes, day_id, place_id, assignment_id,
+    confirmation_number, notes, day_id: resolvedLinks.day_id, place_id: resolvedLinks.place_id, assignment_id: resolvedLinks.assignment_id,
     status, type, accommodation_id, metadata, create_accommodation
   });
 
@@ -111,10 +145,19 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
 
   const current = getReservation(id, tripId);
   if (!current) return res.status(404).json({ error: 'Reservation not found' });
+  const resolvedLinks = resolveReservationLinks(tripId, {
+    place_id: place_id !== undefined ? place_id : current.place_id,
+    assignment_id: assignment_id !== undefined ? assignment_id : current.assignment_id,
+    day_id: day_id !== undefined ? day_id : (assignment_id !== undefined && !assignment_id ? null : current.day_id),
+  });
+  if ('error' in resolvedLinks) return res.status(400).json({ error: resolvedLinks.error });
 
   const { reservation, accommodationChanged } = updateReservation(id, tripId, {
     title, reservation_time, reservation_end_time, location,
-    confirmation_number, notes, day_id, place_id, assignment_id,
+    confirmation_number, notes,
+    day_id: resolvedLinks.day_id,
+    place_id: resolvedLinks.place_id,
+    assignment_id: resolvedLinks.assignment_id,
     status, type, accommodation_id, metadata, create_accommodation
   }, current);
 

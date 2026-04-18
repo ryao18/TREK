@@ -45,6 +45,7 @@ function buildAssignmentOptions(days, assignments, t, locale) {
         searchLabel: place.name,
         groupLabel,
         dayDate: day.date || null,
+        placeId: place.id,
       })
     }
   }
@@ -60,13 +61,15 @@ interface ReservationModalProps {
   places: Place[]
   assignments: AssignmentsMap
   selectedDayId: number | null
+  prefillPlaceId?: number | null
+  prefillAssignmentId?: number | null
   files?: TripFile[]
   onFileUpload?: (fd: FormData) => Promise<void>
   onFileDelete: (fileId: number) => Promise<void>
   accommodations?: Accommodation[]
 }
 
-export function ReservationModal({ isOpen, onClose, onSave, reservation, days, places, assignments, selectedDayId, files = [], onFileUpload, onFileDelete, accommodations = [] }: ReservationModalProps) {
+export function ReservationModal({ isOpen, onClose, onSave, reservation, days, places, assignments, selectedDayId, prefillPlaceId = null, prefillAssignmentId = null, files = [], onFileUpload, onFileDelete, accommodations = [] }: ReservationModalProps) {
   const { id: tripId } = useParams<{ id: string }>()
   const loadFiles = useTripStore(s => s.loadFiles)
   const toast = useToast()
@@ -84,7 +87,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
   const [form, setForm] = useState({
     title: '', type: 'other', status: 'pending',
     reservation_time: '', reservation_end_time: '', end_date: '', location: '', confirmation_number: '',
-    notes: '', assignment_id: '', accommodation_id: '',
+    notes: '', place_id: '', assignment_id: '', accommodation_id: '',
     price: '', budget_category: '',
     meta_airline: '', meta_flight_number: '', meta_departure_airport: '', meta_arrival_airport: '',
     meta_departure_timezone: '', meta_arrival_timezone: '',
@@ -128,6 +131,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         location: reservation.location || '',
         confirmation_number: reservation.confirmation_number || '',
         notes: reservation.notes || '',
+        place_id: reservation.place_id || '',
         assignment_id: reservation.assignment_id || '',
         accommodation_id: reservation.accommodation_id || '',
         meta_airline: meta.airline || '',
@@ -148,21 +152,40 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         budget_category: (meta.budget_category && budgetItems.some(i => i.category === meta.budget_category)) ? meta.budget_category : '',
       })
     } else {
+      const prefillAssignment = assignmentOptions.find((option) => String(option.value) === String(prefillAssignmentId))
+      const prefillPlace = places.find((p) => String(p.id) === String(prefillPlaceId || prefillAssignment?.placeId || ''))
       setForm({
         title: '', type: 'other', status: 'pending',
         reservation_time: '', reservation_end_time: '', end_date: '', location: '', confirmation_number: '',
-        notes: '', assignment_id: '', accommodation_id: '',
+        notes: '', place_id: prefillPlace?.id || '', assignment_id: prefillAssignmentId || '', accommodation_id: '',
         price: '', budget_category: '',
         meta_airline: '', meta_flight_number: '', meta_departure_airport: '', meta_arrival_airport: '',
         meta_departure_timezone: '', meta_arrival_timezone: '',
         meta_train_number: '', meta_platform: '', meta_seat: '',
         meta_check_in_time: '', meta_check_out_time: '',
+        hotel_place_id: '', hotel_start_day: '', hotel_end_day: '',
       })
+      if (prefillPlace || prefillAssignment?.dayDate) {
+        setForm(prev => ({
+          ...prev,
+          title: prefillPlace?.name || prev.title,
+          location: prefillPlace?.address || prev.location,
+          reservation_time: prefillAssignment?.dayDate || prev.reservation_time,
+        }))
+      }
       setPendingFiles([])
     }
-  }, [reservation, isOpen, selectedDayId])
+  }, [reservation, isOpen, selectedDayId, prefillPlaceId, prefillAssignmentId, assignmentOptions, places])
 
   const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }))
+  const nonHotelPlaceOptions = useMemo(() => [
+    { value: '', label: t('reservations.noPlace') },
+    ...places.map((p) => ({ value: p.id, label: p.name })),
+  ], [places, t])
+  const filteredAssignmentOptions = useMemo(() => {
+    if (!form.place_id) return assignmentOptions
+    return assignmentOptions.filter((option) => option.disabled || !option.placeId || String(option.placeId) === String(form.place_id))
+  }, [assignmentOptions, form.place_id])
 
   // Validate that end datetime is after start datetime
   const isEndBeforeStart = (() => {
@@ -228,6 +251,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         reservation_end_time: form.type === 'hotel' ? null : combinedEndTime,
         location: form.location, confirmation_number: form.confirmation_number,
         notes: form.notes,
+        place_id: form.type === 'hotel' ? null : (form.place_id || null),
         assignment_id: form.assignment_id || null,
         accommodation_id: form.type === 'hotel' ? (form.accommodation_id || null) : null,
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
@@ -334,9 +358,34 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
             placeholder={t('reservations.titlePlaceholder')} style={inputStyle} />
         </div>
 
-        {/* Assignment Picker (hidden for hotels) */}
-        {form.type !== 'hotel' && assignmentOptions.length > 0 && (
+        {/* Place + assignment picker (hidden for hotels) */}
+        {form.type !== 'hotel' && (
         <div>
+            <div style={{ flex: 1, minWidth: 0, marginBottom: 10 }}>
+              <label style={labelStyle}>{t('reservations.place')}</label>
+              <CustomSelect
+                value={form.place_id}
+                onChange={value => {
+                  const selectedPlace = places.find((p) => String(p.id) === String(value))
+                  setForm(prev => {
+                    const next: any = { ...prev, place_id: value }
+                    const selectedAssignment = assignmentOptions.find((option) => String(option.value) === String(prev.assignment_id))
+                    if (selectedAssignment?.placeId && String(selectedAssignment.placeId) !== String(value)) {
+                      next.assignment_id = ''
+                    }
+                    if (selectedPlace) {
+                      if (!prev.title) next.title = selectedPlace.name
+                      if (!prev.location && selectedPlace.address) next.location = selectedPlace.address
+                    }
+                    return next
+                  })
+                }}
+                placeholder={t('reservations.place')}
+                options={nonHotelPlaceOptions}
+                searchable
+                size="sm"
+              />
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <label style={labelStyle}>
                 <Link2 size={10} style={{ display: 'inline', verticalAlign: '-1px', marginRight: 3 }} />
@@ -345,19 +394,18 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
               <CustomSelect
                 value={form.assignment_id}
                 onChange={value => {
-                  set('assignment_id', value)
                   const opt = assignmentOptions.find(o => o.value === value)
-                  if (opt?.dayDate) {
-                    setForm(prev => {
-                      if (prev.reservation_time) return prev
-                      return { ...prev, reservation_time: opt.dayDate }
-                    })
-                  }
+                  setForm(prev => {
+                    const next: any = { ...prev, assignment_id: value }
+                    if (opt?.placeId) next.place_id = opt.placeId
+                    if (opt?.dayDate && !prev.reservation_time) next.reservation_time = opt.dayDate
+                    return next
+                  })
                 }}
                 placeholder={t('reservations.pickAssignment')}
                 options={[
                   { value: '', label: t('reservations.noAssignment') },
-                  ...assignmentOptions,
+                  ...filteredAssignmentOptions,
                 ]}
                 searchable
                 size="sm"

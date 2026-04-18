@@ -1647,21 +1647,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                                     color: confirmed ? '#16a34a' : '#d97706',
                                   }}>
                                     {(() => { const RI = RES_ICONS[res.type] || Ticket; return <RI size={8} /> })()}
-                                    <span className="hidden sm:inline">{confirmed ? t('planner.resConfirmed') : t('planner.resPending')}</span>
-                                    {res.reservation_time?.includes('T') && (
-                                      <span style={{ fontWeight: 400 }}>
-                                        {new Date(res.reservation_time).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: timeFormat === '12h' })}
-                                        {res.reservation_end_time && ` – ${res.reservation_end_time}`}
-                                      </span>
-                                    )}
-                                    {(() => {
-                                      const meta = typeof res.metadata === 'string' ? JSON.parse(res.metadata || '{}') : (res.metadata || {})
-                                      if (!meta) return null
-                                      if (meta.airline && meta.flight_number) return <span style={{ fontWeight: 400 }}>{meta.airline} {meta.flight_number}</span>
-                                      if (meta.flight_number) return <span style={{ fontWeight: 400 }}>{meta.flight_number}</span>
-                                      if (meta.train_number) return <span style={{ fontWeight: 400 }}>{meta.train_number}</span>
-                                      return null
-                                    })()}
+                                    <span>{confirmed ? t('planner.resConfirmed') : t('planner.resPending')}</span>
                                   </div>
                                 )
                               })()}

@@ -183,9 +183,12 @@ export interface Reservation {
   notes: string | null
   url: string | null
   day_id?: number | null
+  day_number?: number | null
   place_id?: number | null
+  place_name?: string | null
   assignment_id?: number | null
   accommodation_id?: number | null
+  accommodation_name?: string | null
   day_plan_position?: number | null
   metadata?: Record<string, string> | string | null
   created_at: string

@@ -73,6 +73,7 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
   const confirmed = r.status === 'confirmed'
   const attachedFiles = files.filter(f => f.reservation_id === r.id || (f.linked_reservation_ids || []).includes(r.id))
   const linked = r.assignment_id ? assignmentLookup[r.assignment_id] : null
+  const unscheduledPlace = !linked && r.place_name
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const handleToggle = async () => {
@@ -199,9 +200,9 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
               </div>
             )
           })()}
-          {/* Row 2: Location + Assignment */}
-          {(r.location || linked || r.accommodation_name) && (
-            <div className={`grid grid-cols-1 ${r.location && linked ? 'sm:grid-cols-2' : ''} gap-2`} style={{ paddingTop: 6, borderTop: '1px solid var(--border-faint)' }}>
+          {/* Row 2: Location + Place / Assignment */}
+          {(r.location || linked || unscheduledPlace || r.accommodation_name) && (
+            <div className={`grid grid-cols-1 ${(r.location && (linked || unscheduledPlace)) ? 'sm:grid-cols-2' : ''} gap-2`} style={{ paddingTop: 6, borderTop: '1px solid var(--border-faint)' }}>
               {r.location && (
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{t('reservations.locationAddress')}</div>
@@ -229,6 +230,15 @@ function ReservationCard({ r, tripId, onEdit, onDelete, files = [], onNavigateTo
                       {linked.dayTitle || t('dayplan.dayN', { n: linked.dayNumber })} — {linked.placeName}
                       {linked.startTime ? ` · ${linked.startTime}${linked.endTime ? ' – ' + linked.endTime : ''}` : ''}
                     </span>
+                  </div>
+                </div>
+              )}
+              {unscheduledPlace && (
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 3 }}>{t('reservations.place')}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 7, background: 'var(--bg-secondary)', fontSize: 11, color: 'var(--text-muted)' }}>
+                    <MapPin size={10} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.place_name} • Unscheduled</span>
                   </div>
                 </div>
               )}

@@ -78,6 +78,29 @@ export function getDayPlan(tripId: number, dayId: number) {
   };
 }
 
+export function getDayWeatherContext(tripId: number, dayId: number) {
+  const data = listDays(tripId);
+  const day = data.days.find((entry: any) => Number(entry.id) === Number(dayId));
+  if (!day) return null;
+
+  const tripPlaces = listPlaces(String(tripId), {}) as any[];
+  const dayAssignments = (day.assignments || []) as any[];
+  const assignedGeoPlace = dayAssignments.find((assignment) => assignment.place?.lat != null && assignment.place?.lng != null)?.place || null;
+  const fallbackGeoPlace = tripPlaces.find((place) => place.lat != null && place.lng != null) || null;
+  const geoPlace = assignedGeoPlace || fallbackGeoPlace;
+
+  return {
+    id: day.id,
+    day_number: day.day_number,
+    date: day.date || null,
+    title: day.title || null,
+    lat: geoPlace?.lat ?? null,
+    lng: geoPlace?.lng ?? null,
+    place_name: assignedGeoPlace?.name || null,
+    coordinate_source: assignedGeoPlace ? 'assigned_place' : (fallbackGeoPlace ? 'trip_fallback' : null),
+  };
+}
+
 export function getTripPlaces(tripId: number) {
   const places = listPlaces(String(tripId), {}) as any[];
   const assignedRows = db.prepare(`
@@ -90,7 +113,7 @@ export function getTripPlaces(tripId: number) {
 
   return {
     total: places.length,
-    items: places.slice(0, 20).map((place) => ({
+    items: places.map((place) => ({
       id: place.id,
       name: place.name,
       address: place.address || null,
@@ -132,7 +155,7 @@ export function getReservationsSummary(tripId: number) {
     total: reservations.length,
     by_status: byStatus,
     by_type: byType,
-    items: reservations.slice(0, 10).map((reservation) => ({
+    items: reservations.map((reservation) => ({
       id: reservation.id,
       title: reservation.title,
       status: reservation.status,
@@ -195,7 +218,7 @@ export function getTodoSummary(tripId: number) {
     total: items.length,
     checked: items.filter(item => item.checked).length,
     by_category: byCategory,
-    items: items.slice(0, 10).map((item) => ({
+    items: items.map((item) => ({
       id: item.id,
       name: item.name,
       checked: !!item.checked,

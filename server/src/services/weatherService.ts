@@ -297,8 +297,8 @@ export async function getDetailedWeather(
   const dateStr = targetDate.toISOString().slice(0, 10);
   const descriptions = lang === 'de' ? WMO_DESCRIPTION_DE : WMO_DESCRIPTION_EN;
 
-  // Climate / archive path (> 16 days out)
-  if (diffDays > 16) {
+  // Climate / archive path (> 15 days out)
+  if (diffDays > 15) {
     const refYear = targetDate.getFullYear() - 1;
     const refDateStr = `${refYear}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
 
@@ -364,7 +364,7 @@ export async function getDetailedWeather(
     return result;
   }
 
-  // Forecast path (<= 16 days)
+  // Forecast path (<= 15 days)
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}`
     + `&hourly=temperature_2m,precipitation_probability,precipitation,weathercode,windspeed_10m,relativehumidity_2m`
     + `&daily=temperature_2m_max,temperature_2m_min,weathercode,sunrise,sunset,precipitation_probability_max,precipitation_sum,windspeed_10m_max`
@@ -374,7 +374,71 @@ export async function getDetailedWeather(
   const data = await response.json() as OpenMeteoForecast;
 
   if (!response.ok || data.error) {
-    throw new ApiError(response.status || 500, data.reason || 'Open-Meteo API error');
+    const reason = data.reason || 'Open-Meteo API error';
+    if (/out of allowed range/i.test(reason) && diffDays > -1) {
+      const refYear = targetDate.getFullYear() - 1;
+      const refDateStr = `${refYear}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+      const fallbackUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
+        + `&start_date=${refDateStr}&end_date=${refDateStr}`
+        + `&hourly=temperature_2m,precipitation,weathercode,windspeed_10m,relativehumidity_2m`
+        + `&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_sum,windspeed_10m_max,sunrise,sunset`
+        + `&timezone=auto`;
+      const fallbackResponse = await fetch(fallbackUrl);
+      const fallbackData = await fallbackResponse.json() as OpenMeteoForecast;
+      if (!fallbackResponse.ok || fallbackData.error) {
+        throw new ApiError(fallbackResponse.status || 500, fallbackData.reason || reason);
+      }
+
+      const daily = fallbackData.daily;
+      const hourly = fallbackData.hourly;
+      if (!daily || !daily.time || daily.time.length === 0) {
+        return { temp: 0, main: '', description: '', type: '', error: 'no_forecast' };
+      }
+
+      const idx = 0;
+      const code = daily.weathercode?.[idx];
+      const avgMax = daily.temperature_2m_max[idx];
+      const avgMin = daily.temperature_2m_min[idx];
+
+      const hourlyData: HourlyEntry[] = [];
+      if (hourly?.time) {
+        for (let i = 0; i < hourly.time.length; i++) {
+          const hour = new Date(hourly.time[i]).getHours();
+          const hCode = hourly.weathercode?.[i];
+          hourlyData.push({
+            hour,
+            temp: Math.round(hourly.temperature_2m[i]),
+            precipitation: hourly.precipitation?.[i] || 0,
+            precipitation_probability: 0,
+            main: WMO_MAP[hCode!] || 'Clouds',
+            wind: Math.round(hourly.windspeed_10m?.[i] || 0),
+            humidity: hourly.relativehumidity_2m?.[i] || 0,
+          });
+        }
+      }
+
+      let sunrise: string | null = null, sunset: string | null = null;
+      if (daily.sunrise?.[idx]) sunrise = daily.sunrise[idx].split('T')[1]?.slice(0, 5);
+      if (daily.sunset?.[idx]) sunset = daily.sunset[idx].split('T')[1]?.slice(0, 5);
+
+      const result: WeatherResult = {
+        type: 'climate',
+        temp: Math.round((avgMax + avgMin) / 2),
+        temp_max: Math.round(avgMax),
+        temp_min: Math.round(avgMin),
+        main: WMO_MAP[code!] || estimateCondition((avgMax + avgMin) / 2, daily.precipitation_sum?.[idx] || 0),
+        description: descriptions[code!] || '',
+        precipitation_sum: Math.round((daily.precipitation_sum?.[idx] || 0) * 10) / 10,
+        wind_max: Math.round(daily.windspeed_10m_max?.[idx] || 0),
+        sunrise,
+        sunset,
+        hourly: hourlyData,
+      };
+
+      setCache(ck, result, TTL_CLIMATE_MS);
+      return result;
+    }
+    throw new ApiError(response.status || 500, reason);
   }
 
   const daily = data.daily;

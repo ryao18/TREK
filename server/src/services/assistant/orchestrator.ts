@@ -2,6 +2,7 @@ import { AssistantQueryInput, AssistantResponse } from './types';
 import {
   getBudgetSummary,
   getDayPlan,
+  getDayWeatherContext,
   getPackingSummary,
   getReservationsSummary,
   getTodoSummary,
@@ -11,20 +12,113 @@ import {
   getTripPlaces,
 } from './tools';
 import { completeWithLocalModel } from './provider';
+import { getDetailedWeather } from '../weatherService';
+import { getUserSettings } from '../settingsService';
 
 type ToolName =
   | 'get_trip_overview'
   | 'get_trip_days'
   | 'get_trip_places'
   | 'get_day_plan'
+  | 'get_day_weather_context'
   | 'get_reservations_summary'
   | 'get_budget_summary'
   | 'get_packing_summary'
   | 'get_todo_summary'
   | 'get_trip_members';
 
+type ResolvedIntentKind =
+  | 'unknown'
+  | 'place_knowledge'
+  | 'unplanned_places_full'
+  | 'planning_status'
+  | 'packing_status'
+  | 'budget_summary'
+  | 'reservations_status'
+  | 'open_todo_status'
+  | 'busiest_day'
+  | 'day_weather'
+  | 'day_plan';
+
+interface ResolvedIntent {
+  kind: ResolvedIntentKind;
+  dayNumber: number | null;
+}
+
+function normalizeAssistantQuery(message: string): string {
+  return String(message || '')
+    .toLowerCase()
+    .replace(/[?!.,;:]+/g, ' ')
+    .replace(/\blistall\b/g, 'list all')
+    .replace(/\baout\b/g, 'about')
+    .replace(/\bweahter\b/g, 'weather')
+    .replace(/\bwaehter\b/g, 'weather')
+    .replace(/\bwether\b/g, 'weather')
+    .replace(/\bhich\b/g, 'which')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isWeatherFollowUpQuery(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bhow about day\s+\d{1,2}\b|\bwhat about day\s+\d{1,2}\b|^day\s+\d{1,2}$/.test(lower);
+}
+
+function isWeatherConversation(history?: AssistantQueryInput['history']): boolean {
+  const recent = (history || []).slice(-2);
+  return recent.some((entry) => /\bweather\b|\bforecast\b|\btemperature\b|\brain\b/.test(normalizeAssistantQuery(entry.content)));
+}
+
+function isGenericFollowUpQuery(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /^(how about|what about|and then|and)\b/.test(lower)
+    || /^day\s+\d{1,2}$/.test(lower)
+    || /^this day$/.test(lower)
+    || /^today$/.test(lower)
+    || /^selected day$/.test(lower);
+}
+
+function inferIntentKindFromMessage(message: string, selectedDayId?: number | null): ResolvedIntentKind {
+  if (isPlaceKnowledgeQuestion(message)) return 'place_knowledge';
+  if (isExplicitUnplannedPlaceListRequest(message)) return 'unplanned_places_full';
+  if (isPlanningStatusRequest(message)) return 'planning_status';
+  if (isPackingStatusRequest(message)) return 'packing_status';
+  if (isBudgetSummaryRequest(message)) return 'budget_summary';
+  if (isReservationsStatusRequest(message)) return 'reservations_status';
+  if (isOpenTodoStatusRequest(message)) return 'open_todo_status';
+  if (isBusiestDayRequest(message)) return 'busiest_day';
+  if (isDayWeatherRequest(message, selectedDayId)) return 'day_weather';
+  if (isDayPlanRequest(message, selectedDayId)) return 'day_plan';
+  return 'unknown';
+}
+
+function inferPriorIntent(history?: AssistantQueryInput['history'], selectedDayId?: number | null): ResolvedIntentKind {
+  const entries = [...(history || [])].reverse();
+  for (const entry of entries) {
+    const kind = inferIntentKindFromMessage(entry.content, selectedDayId);
+    if (kind !== 'unknown') return kind;
+  }
+  return 'unknown';
+}
+
+function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
+  const dayNumber = extractRequestedDayNumber(input.message);
+  const directKind = inferIntentKindFromMessage(input.message, input.context?.selected_day_id);
+  if (directKind !== 'unknown') {
+    return { kind: directKind, dayNumber };
+  }
+
+  const normalized = normalizeAssistantQuery(input.message);
+  const priorKind = inferPriorIntent(input.history, input.context?.selected_day_id);
+  if (priorKind !== 'unknown' && (isGenericFollowUpQuery(normalized) || (dayNumber && priorKind !== 'busiest_day'))) {
+    return { kind: priorKind, dayNumber };
+  }
+
+  return { kind: 'unknown', dayNumber };
+}
+
 function selectTools(message: string, selectedDayId?: number | null): ToolName[] {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   const tools = new Set<ToolName>(['get_trip_overview']);
 
   if (selectedDayId || /\bday\b|\bitinerary\b|\bbusiest\b|\bplan\b|\bplanned\b/.test(lower)) {
@@ -69,6 +163,7 @@ function buildContext(tripId: number, tools: ToolName[]) {
     if (tool === 'get_trip_overview') context.get_trip_overview = getTripOverview(tripId);
     if (tool === 'get_trip_days') context.get_trip_days = getTripDays(tripId);
     if (tool === 'get_trip_places') context.get_trip_places = getTripPlaces(tripId);
+    if (tool === 'get_day_weather_context') context.get_day_weather_context = null;
     if (tool === 'get_reservations_summary') context.get_reservations_summary = getReservationsSummary(tripId);
     if (tool === 'get_budget_summary') context.get_budget_summary = getBudgetSummary(tripId);
     if (tool === 'get_packing_summary') context.get_packing_summary = getPackingSummary(tripId);
@@ -79,38 +174,157 @@ function buildContext(tripId: number, tools: ToolName[]) {
 }
 
 function isOperationalPlaceQuestion(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return /\bon our itinerary\b|\bitinerary\b|\bday\b|\bplanned\b|\bunplanned\b|\bplan\b|\breservation\b|\bbooking\b|\bnotes\b|\baddress\b|\bcoordinates\b|\bwhere\b|\bwhen\b|\bdid we\b|\bdo we\b/.test(lower);
 }
 
 function isFullListRequest(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return /\bfull list\b|\ball\b|\blist everything\b|\bshow all\b|\bevery\b/.test(lower);
 }
 
 function shouldIncludeFullPlaceList(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return isFullListRequest(lower) && /\bplace\b|\bplaces\b|\blocation\b|\blocations\b|\bactivity\b|\bactivities\b/.test(lower);
 }
 
 function shouldIncludeFullReservationList(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return isFullListRequest(lower) && /\breservation\b|\breservations\b|\bbooking\b|\bbookings\b|\bhotel\b|\bflight\b|\btrain\b/.test(lower);
 }
 
 function shouldIncludeFullPackingList(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return isFullListRequest(lower) && /\bpacking\b|\bpack\b|\bluggage\b|\bbag\b|\bitems\b/.test(lower);
 }
 
 function shouldIncludeFullTodoList(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return isFullListRequest(lower) && /\btodo\b|\bto-do\b|\btask\b|\btasks\b|\bchecklist\b/.test(lower);
 }
 
 function shouldIncludeFullBudgetList(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   return isFullListRequest(lower) && /\bbudget\b|\bexpense\b|\bexpenses\b|\bcost\b|\bcosts\b|\bspend\b|\bspent\b/.test(lower);
+}
+
+function isPlanningStatusRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwhat still needs planning\b|\bwhat needs planning\b|\bwhat remains to plan\b|\bwhat is left to plan\b/.test(lower);
+}
+
+function isExplicitUnplannedPlaceListRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return isFullListRequest(lower)
+    && /\bplace\b|\bplaces\b|\blocation\b|\blocations\b|\bactivity\b|\bactivities\b/.test(lower)
+    && /\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower);
+}
+
+function isPackingStatusRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwho still needs to pack\b|\bwho has not packed\b|\bwho hasn't packed\b|\bwho needs to pack\b/.test(lower);
+}
+
+function isBudgetSummaryRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bsummarize our budget\b|\bbudget summary\b|\bwhat is our budget\b|\bhow much have we spent\b|\bhow much is assigned\b/.test(lower);
+}
+
+function isReservationsStatusRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwhat reservations do we have\b|\blist reservations\b|\bshow reservations\b|\bwhich reservations are missing\b|\bwhat reservations are missing\b/.test(lower);
+}
+
+function isOpenTodoStatusRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwhat todos are still open\b|\bwhat to-?dos are still open\b|\bwhat tasks are still open\b|\bopen todos\b|\bopen tasks\b/.test(lower);
+}
+
+function isBusiestDayRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwhich day is the busiest\b|\bwhat day is the busiest\b|\bbusiest day\b/.test(lower);
+}
+
+function isDayWeatherRequest(message: string, selectedDayId?: number | null, history?: AssistantQueryInput['history']): boolean {
+  const lower = normalizeAssistantQuery(message);
+  const asksWeather = /\bweather\b|\bforecast\b|\btemperature\b|\brain\b/.test(lower);
+  if (selectedDayId && asksWeather && /\bthis day\b|\btoday\b|\bselected day\b/.test(lower)) {
+    return true;
+  }
+  if (isWeatherFollowUpQuery(lower) && isWeatherConversation(history)) {
+    return true;
+  }
+  return asksWeather && /\bday\s+\d{1,2}\b|\bthis day\b|\btoday\b|\bselected day\b/.test(lower);
+}
+
+function extractRequestedDayNumber(message: string): number | null {
+  const match = normalizeAssistantQuery(message).match(/\bday\s+(\d{1,2})\b/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function isDayPlanRequest(message: string, selectedDayId?: number | null): boolean {
+  const lower = normalizeAssistantQuery(message);
+  if (selectedDayId && /\bthis day\b|\btoday\b|\bselected day\b|\bwhat'?s planned\b|\bwhat is planned\b|\bwhat do we have\b/.test(lower)) {
+    return true;
+  }
+  return /\bwhat'?s planned for day\b|\bwhat is planned for day\b|\bwhat'?s on day\b|\bwhat is on day\b/.test(lower);
+}
+
+function formatAmount(value: number, currency?: string | null): string {
+  const amount = Number.isFinite(value) ? value : 0;
+  return currency ? `${amount} ${currency}` : String(amount);
+}
+
+function roundTo(value: number, places = 1): number {
+  const factor = 10 ** places;
+  return Math.round(value * factor) / factor;
+}
+
+function formatTemperature(value: number, unit: 'celsius' | 'fahrenheit'): string {
+  if (unit === 'fahrenheit') {
+    return `${roundTo((value * 9) / 5 + 32, 1)} F`;
+  }
+  return `${roundTo(value, 1)} C`;
+}
+
+function formatPrecipitationMm(value: number, unit: 'celsius' | 'fahrenheit'): string {
+  if (unit === 'fahrenheit') {
+    return `${roundTo(value / 25.4, 2)} in`;
+  }
+  return `${roundTo(value, 1)} mm`;
+}
+
+function formatWindKmh(value: number, unit: 'celsius' | 'fahrenheit'): string {
+  if (unit === 'fahrenheit') {
+    return `${roundTo(value * 0.621371, 1)} mph`;
+  }
+  return `${roundTo(value, 1)} km/h`;
+}
+
+function makeDeterministicResponse(
+  content: string,
+  options?: Partial<Pick<AssistantResponse, 'citations' | 'suggested_actions' | 'warnings' | 'missing_data' | 'follow_up_prompts'>> & {
+    tools_used?: string[];
+  },
+): AssistantResponse {
+  return {
+    message: {
+      role: 'assistant',
+      content,
+    },
+    citations: options?.citations || [],
+    suggested_actions: options?.suggested_actions || [],
+    warnings: options?.warnings || [],
+    missing_data: options?.missing_data || [],
+    follow_up_prompts: options?.follow_up_prompts || [],
+    meta: {
+      provider: 'deterministic',
+      model: 'none',
+      tools_used: options?.tools_used || [],
+    },
+  };
 }
 
 function trimContextForPrompt(context: Record<string, unknown>, input: AssistantQueryInput) {
@@ -173,7 +387,7 @@ function addSelectedDayContext(context: Record<string, unknown>, tripId: number,
 }
 
 function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unknown>) {
-  const history = (input.history || []).slice(-6).map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n');
+  const history = (input.history || []).slice(-10).map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n');
   const plannerContext = JSON.stringify(input.context || {}, null, 2);
   const serializedTools = JSON.stringify(trimContextForPrompt(toolContext, input), null, 2);
 
@@ -182,7 +396,13 @@ function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unk
     'Answer only from the provided TREK trip data.',
     'Do not invent reservations, participants, dates, or costs.',
     'State when data is missing or incomplete.',
-    'Keep answers concise and practical.',
+    'Keep answers concise and practical in plain text.',
+    'Prefer short plain bullet lists or short paragraphs.',
+    'Do not use Markdown emphasis, Markdown headings, or code formatting.',
+    'Do not use markdown tables unless the user explicitly asks for a table.',
+    'Do not add a title or heading unless it improves clarity.',
+    'Use TREK terms exactly: days, places, reservations, packing, to-dos, budget.',
+    'Do not turn factual status into advice unless the user explicitly asks what to do next.',
     'Do not suggest that you made any direct changes.',
     'If the provided data is only partial, say it is partial instead of fabricating placeholder rows or missing item details.',
   ].join(' ');
@@ -311,13 +531,13 @@ function buildFollowUpPrompts(toolContext: Record<string, unknown>, selectedDayI
 
 function extractMentionedPlaceName(message: string, toolContext: Record<string, unknown>): string | null {
   const places = ((toolContext.get_trip_places as any)?.items || []) as Array<{ name?: string }>;
-  const lower = message.toLowerCase();
-  const matched = places.find((place) => place.name && lower.includes(String(place.name).toLowerCase()));
+  const normalizedMessage = normalizeAssistantQuery(message);
+  const matched = places.find((place) => place.name && normalizedMessage.includes(normalizeAssistantQuery(String(place.name))));
   return matched?.name || null;
 }
 
 function isPlaceKnowledgeQuestion(message: string): boolean {
-  const lower = message.toLowerCase();
+  const lower = normalizeAssistantQuery(message);
   if (isOperationalPlaceQuestion(lower)) return false;
   return /\btell me about\b|\bdescribe\b|\bwhat kind of place\b|\bwhat kind of attraction\b|\bwhat is this place\b|\bwhat's this place\b/.test(lower)
     || /^(what is|what's)\s+.+\??$/.test(lower);
@@ -362,12 +582,430 @@ function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: R
   };
 }
 
+function buildUnplannedPlacesListResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{
+    id?: number;
+    name?: string;
+    has_assignment?: boolean;
+    category_name?: string | null;
+    address?: string | null;
+  }>;
+  const unplannedPlaces = places.filter((place) => !place.has_assignment);
+
+  if (unplannedPlaces.length === 0) {
+    return {
+      message: {
+        role: 'assistant',
+        content: 'All places and activities in this trip are already assigned to a day.',
+      },
+      citations: [],
+      suggested_actions: [{ type: 'add_place', label: 'Add a place or activity', enabled: false, reason: 'Phase 1 is read-only' }],
+      warnings: [],
+      missing_data: [],
+      follow_up_prompts: [
+        'Which day is the busiest?',
+        'What still needs planning?',
+        'Summarize this trip',
+      ],
+      meta: {
+        provider: 'deterministic',
+        model: 'none',
+        tools_used: ['get_trip_places'],
+      },
+    };
+  }
+
+  const lines = unplannedPlaces.map((place, index) => {
+    const details = place.category_name || place.address ? ` | ${place.category_name || place.address}` : '';
+    return `${index + 1}. ${place.name || 'Unknown place'} | no day assigned${details}`;
+  });
+
+  return {
+    message: {
+      role: 'assistant',
+      content: `Unplanned places and activities (${unplannedPlaces.length})\n\n${lines.join('\n')}`,
+    },
+    citations: [],
+    suggested_actions: [{ type: 'add_place', label: 'Add a place or activity', enabled: false, reason: 'Phase 1 is read-only' }],
+    warnings: [],
+    missing_data: [],
+    follow_up_prompts: [
+      'Which day is the busiest?',
+      'What still needs planning?',
+      'Summarize this trip',
+    ],
+    meta: {
+      provider: 'deterministic',
+      model: 'none',
+      tools_used: ['get_trip_places'],
+    },
+  };
+}
+
+function buildPlanningStatusResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{ id?: number; name?: string; has_assignment?: boolean }>;
+  const reservations = (toolContext.get_reservations_summary as any)?.total ?? 0;
+  const todoSummary = (toolContext.get_todo_summary as any) || {};
+  const openTodos = Math.max(0, Number(todoSummary.total || 0) - Number(todoSummary.checked || 0));
+  const budget = (toolContext.get_budget_summary as any) || {};
+  const packing = (toolContext.get_packing_summary as any) || {};
+  const unplannedPlaces = places.filter((place) => !place.has_assignment).length;
+  const uncheckedPacking = Math.max(0, Number(packing.total || 0) - Number(packing.checked || 0));
+  const budgetAmount = formatAmount(Number(budget.total_amount || 0), budget.currency || null);
+
+  const lines = ['Still needing planning:'];
+  if (unplannedPlaces > 0) lines.push(`- ${unplannedPlaces} places/activities still have no day assignment`);
+  if (reservations === 0) lines.push('- no reservations have been added yet');
+  else lines.push(`- ${reservations} reservations are already recorded`);
+  if (Number(todoSummary.total || 0) === 0) lines.push('- no to-dos have been added yet');
+  else if (openTodos === 0) lines.push('- all to-dos are completed');
+  else lines.push(`- ${openTodos} to-do items are still open`);
+  lines.push(`- budget total is ${budgetAmount}`);
+  if (uncheckedPacking > 0) lines.push(`- ${uncheckedPacking} packing items are still unchecked`);
+  else if (Number(packing.total || 0) > 0) lines.push('- packing is fully checked off');
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    citations: [],
+    suggested_actions: buildSuggestedActions('plan', toolContext),
+    follow_up_prompts: [
+      'Which places are still unplanned?',
+      'Who still needs to pack?',
+      'Summarize our budget',
+    ],
+    tools_used: ['get_trip_places', 'get_reservations_summary', 'get_todo_summary', 'get_budget_summary', 'get_packing_summary'],
+  });
+}
+
+function buildPackingStatusResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const packing = (toolContext.get_packing_summary as any) || {};
+  const owners = Object.entries(packing.by_owner || {}) as Array<[string, { total: number; checked: number }]>;
+  const remaining = owners.filter(([, stats]) => Number(stats.total || 0) > Number(stats.checked || 0));
+
+  if (Number(packing.total || 0) === 0 || owners.length === 0) {
+    return makeDeterministicResponse('No packing items have been added for this trip yet.', {
+      suggested_actions: buildSuggestedActions('packing', toolContext),
+      follow_up_prompts: ['What still needs planning?', 'Summarize this trip'],
+      tools_used: ['get_packing_summary'],
+    });
+  }
+
+  if (remaining.length === 0) {
+    return makeDeterministicResponse('Everyone is fully packed based on the current packing list.', {
+      suggested_actions: buildSuggestedActions('packing', toolContext),
+      follow_up_prompts: ['What still needs planning?', 'Summarize this trip'],
+      tools_used: ['get_packing_summary'],
+    });
+  }
+
+  const lines = ['Still needing to pack:'];
+  for (const [owner, stats] of remaining) {
+    lines.push(`- ${owner}: ${stats.total - stats.checked} unchecked of ${stats.total}`);
+  }
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    suggested_actions: buildSuggestedActions('packing', toolContext),
+    follow_up_prompts: ['What still needs planning?', 'Which places are still unplanned?'],
+    tools_used: ['get_packing_summary'],
+  });
+}
+
+function buildBudgetSummaryResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const budget = (toolContext.get_budget_summary as any) || {};
+  const lines = ['Budget summary:'];
+  lines.push(`- total: ${formatAmount(Number(budget.total_amount || 0), budget.currency || null)}`);
+  lines.push(`- items: ${Number(budget.total_items || 0)}`);
+
+  const categories = Object.entries(budget.by_category || {}) as Array<[string, { total: number; amount: number }]>;
+  if (categories.length) {
+    for (const [category, stats] of categories.slice(0, 6)) {
+      lines.push(`- ${category}: ${formatAmount(Number(stats.amount || 0), budget.currency || null)} across ${Number(stats.total || 0)} items`);
+    }
+  } else {
+    lines.push('- no budget items have been added yet');
+  }
+
+  const settlement = (budget.settlement || []) as Array<{ from?: string; to?: string; amount?: number }>;
+  if (settlement.length) {
+    for (const flow of settlement.slice(0, 4)) {
+      lines.push(`- ${flow.from || 'Unknown'} owes ${flow.to || 'Unknown'} ${formatAmount(Number(flow.amount || 0), budget.currency || null)}`);
+    }
+  }
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    suggested_actions: buildSuggestedActions('budget', toolContext),
+    follow_up_prompts: ['What still needs planning?', 'Which reservations still need confirmation?'],
+    tools_used: ['get_budget_summary'],
+  });
+}
+
+function buildReservationsStatusResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const reservations = (toolContext.get_reservations_summary as any) || {};
+  const items = (reservations.items || []) as Array<any>;
+
+  if (!Number(reservations.total || 0)) {
+    return makeDeterministicResponse('No reservations are recorded for this trip yet.', {
+      suggested_actions: buildSuggestedActions('reservation', toolContext),
+      follow_up_prompts: ['What still needs planning?', 'Which places are still unplanned?'],
+      tools_used: ['get_reservations_summary'],
+    });
+  }
+
+  const lines = [`Reservations (${reservations.total}):`];
+  for (const reservation of items) {
+    const when = reservation.day_number ? ` | Day ${reservation.day_number}` : '';
+    const status = reservation.status ? ` | ${reservation.status}` : '';
+    const type = reservation.type ? ` | ${reservation.type}` : '';
+    lines.push(`- ${reservation.title || 'Untitled reservation'}${type}${status}${when}`);
+  }
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    suggested_actions: buildSuggestedActions('reservation', toolContext),
+    follow_up_prompts: ['What still needs planning?', 'Summarize this trip'],
+    tools_used: ['get_reservations_summary'],
+  });
+}
+
+function buildOpenTodoStatusResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const todo = (toolContext.get_todo_summary as any) || {};
+  const items = ((todo.items || []) as Array<any>).filter((item) => !item.checked);
+
+  if (!items.length) {
+    return makeDeterministicResponse('No open to-do items are recorded for this trip.', {
+      suggested_actions: buildSuggestedActions('todo', toolContext),
+      follow_up_prompts: ['What still needs planning?', 'Who still needs to pack?'],
+      tools_used: ['get_todo_summary'],
+    });
+  }
+
+  const lines = [`Open to-dos (${items.length}):`];
+  for (const item of items) {
+    const category = item.category ? ` | ${item.category}` : '';
+    const due = item.due_date ? ` | due ${item.due_date}` : '';
+    lines.push(`- ${item.name || 'Untitled task'}${category}${due}`);
+  }
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    suggested_actions: buildSuggestedActions('todo', toolContext),
+    follow_up_prompts: ['What still needs planning?', 'Which places are still unplanned?'],
+    tools_used: ['get_todo_summary'],
+  });
+}
+
+function buildBusiestDayResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const days = ((toolContext.get_trip_days as any[]) || []) as Array<any>;
+  if (!days.length) {
+    return makeDeterministicResponse('No days are recorded for this trip yet.', {
+      follow_up_prompts: ['What still needs planning?', 'Summarize this trip'],
+      tools_used: ['get_trip_days'],
+    });
+  }
+
+  const busiest = [...days].sort((a, b) => (Number(b.assignment_count || 0) - Number(a.assignment_count || 0)) || (Number(a.day_number || 0) - Number(b.day_number || 0)))[0];
+  const lines = [
+    `Busiest day: Day ${busiest.day_number}${busiest.date ? ` (${busiest.date})` : ''}`,
+    `- assignments: ${Number(busiest.assignment_count || 0)}`,
+    `- notes: ${Number(busiest.note_count || 0)}`,
+  ];
+  const placeNames = (busiest.place_names || []).filter(Boolean) as string[];
+  if (placeNames.length) {
+    lines.push(`- places: ${placeNames.join(', ')}`);
+  }
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    follow_up_prompts: ['What still needs planning?', 'Which places are still unplanned?'],
+    tools_used: ['get_trip_days'],
+  });
+}
+
+function buildDayPlanResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const dayPlan = (toolContext.get_day_plan as any) || null;
+  if (!dayPlan?.id) {
+    return makeDeterministicResponse('That day does not have any plan data in TREK yet.', {
+      follow_up_prompts: ['What still needs planning?', 'Which day is the busiest?'],
+      tools_used: ['get_day_plan'],
+    });
+  }
+
+  const assignments = (dayPlan.assignments || []) as Array<any>;
+  const lines = [`Day ${dayPlan.day_number}${dayPlan.date ? ` (${dayPlan.date})` : ''}:`];
+  if (!assignments.length) {
+    lines.push('- no places are assigned yet');
+  } else {
+    for (const assignment of assignments) {
+      const section = assignment.day_section ? ` | ${assignment.day_section}` : '';
+      const time = assignment.place_time ? ` | ${assignment.place_time}${assignment.end_time ? `-${assignment.end_time}` : ''}` : '';
+      lines.push(`- ${assignment.place_name || 'Unknown place'}${section}${time}`);
+    }
+  }
+  if (Number(dayPlan.note_count || 0) > 0) {
+    lines.push(`- notes: ${Number(dayPlan.note_count || 0)}`);
+  }
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    follow_up_prompts: ['Which day is the busiest?', 'What still needs planning?'],
+    tools_used: ['get_day_plan'],
+  });
+}
+
+async function buildDayWeatherResponse(tripId: number, dayId: number | null, userId: number): Promise<AssistantResponse> {
+  if (!dayId) {
+    return makeDeterministicResponse('Pick a day or ask for a specific day number to get weather for that day.', {
+      follow_up_prompts: ['What is the weather on day 1?', 'Which day is the busiest?'],
+      tools_used: ['get_day_weather_context'],
+    });
+  }
+
+  const dayWeatherContext = getDayWeatherContext(tripId, dayId);
+  if (!dayWeatherContext) {
+    return makeDeterministicResponse('That day does not exist in this trip.', {
+      follow_up_prompts: ['What still needs planning?', 'Summarize this trip'],
+      tools_used: ['get_day_weather_context'],
+    });
+  }
+
+  if (!dayWeatherContext.date) {
+    return makeDeterministicResponse(`I don't have a date set for Day ${dayWeatherContext.day_number}, so I can't look up weather yet.`, {
+      missing_data: [`Day ${dayWeatherContext.day_number} has no date.`],
+      follow_up_prompts: ['What is planned for this day?', 'What still needs planning?'],
+      tools_used: ['get_day_weather_context'],
+    });
+  }
+
+  if (dayWeatherContext.lat == null || dayWeatherContext.lng == null) {
+    return makeDeterministicResponse(`I don't have coordinates for Day ${dayWeatherContext.day_number}, so I can't look up weather yet.`, {
+      missing_data: [`No mapped place with coordinates was found for Day ${dayWeatherContext.day_number}.`],
+      follow_up_prompts: ['What is planned for this day?', 'Which places are still unplanned?'],
+      tools_used: ['get_day_weather_context'],
+    });
+  }
+
+  try {
+    const userSettings = getUserSettings(userId);
+    const temperatureUnit = userSettings.temperature_unit === 'celsius' ? 'celsius' : 'fahrenheit';
+    const weather = await getDetailedWeather(String(dayWeatherContext.lat), String(dayWeatherContext.lng), dayWeatherContext.date, 'en');
+    if (weather.error) {
+      return makeDeterministicResponse(`I don't have weather information available for Day ${dayWeatherContext.day_number} right now.`, {
+        warnings: ['Weather data is unavailable for that day.'],
+        tools_used: ['get_day_weather_context'],
+      });
+    }
+
+    const lines = [`Weather for Day ${dayWeatherContext.day_number}${dayWeatherContext.date ? ` (${dayWeatherContext.date})` : ''}:`];
+    if (dayWeatherContext.place_name) {
+      lines.push(`- location: ${dayWeatherContext.place_name}`);
+    } else if (dayWeatherContext.coordinate_source === 'trip_fallback') {
+      lines.push('- location: trip-level fallback coordinates (no place is assigned to this day yet)');
+    }
+    lines.push(`- conditions: ${weather.description || weather.main || 'Unavailable'}`);
+    lines.push(`- temperature: ${formatTemperature(weather.temp, temperatureUnit)}${weather.temp_min != null && weather.temp_max != null ? ` (${formatTemperature(weather.temp_min, temperatureUnit)} to ${formatTemperature(weather.temp_max, temperatureUnit)})` : ''}`);
+    if (weather.precipitation_probability_max != null) {
+      lines.push(`- precipitation chance: ${weather.precipitation_probability_max}%`);
+    }
+    if (weather.precipitation_sum != null) {
+      lines.push(`- precipitation: ${formatPrecipitationMm(weather.precipitation_sum, temperatureUnit)}`);
+    }
+    if (weather.wind_max != null) {
+      lines.push(`- wind: ${formatWindKmh(weather.wind_max, temperatureUnit)}`);
+    }
+
+    return makeDeterministicResponse(lines.join('\n'), {
+      follow_up_prompts: ['What is planned for this day?', 'Which day is the busiest?'],
+      tools_used: ['get_day_weather_context'],
+    });
+  } catch {
+    return makeDeterministicResponse(`I couldn't fetch weather for Day ${dayWeatherContext.day_number} right now.`, {
+      warnings: ['Weather lookup failed.'],
+      tools_used: ['get_day_weather_context'],
+    });
+  }
+}
+
 export async function runAssistantQuery(input: AssistantQueryInput): Promise<AssistantResponse> {
+  const resolvedIntent = resolveAssistantIntent(input);
   const tools = new Set<ToolName>(selectTools(input.message, input.context?.selected_day_id));
-  if (isPlaceKnowledgeQuestion(input.message)) {
+  if (resolvedIntent.kind === 'place_knowledge') {
     tools.add('get_trip_places');
   }
-  const toolContext = addSelectedDayContext(buildContext(input.tripId, Array.from(tools)), input.tripId, input.context?.selected_day_id);
+  if (resolvedIntent.kind === 'unplanned_places_full') {
+    tools.add('get_trip_places');
+  }
+  if (resolvedIntent.kind === 'planning_status') {
+    tools.add('get_trip_places');
+    tools.add('get_reservations_summary');
+    tools.add('get_todo_summary');
+    tools.add('get_budget_summary');
+    tools.add('get_packing_summary');
+  }
+  if (resolvedIntent.kind === 'packing_status') {
+    tools.add('get_packing_summary');
+  }
+  if (resolvedIntent.kind === 'budget_summary') {
+    tools.add('get_budget_summary');
+  }
+  if (resolvedIntent.kind === 'reservations_status') {
+    tools.add('get_reservations_summary');
+  }
+  if (resolvedIntent.kind === 'open_todo_status') {
+    tools.add('get_todo_summary');
+  }
+  if (resolvedIntent.kind === 'busiest_day') {
+    tools.add('get_trip_days');
+  }
+  if (resolvedIntent.kind === 'day_weather') {
+    tools.add('get_trip_days');
+  }
+  if (resolvedIntent.kind === 'day_plan') {
+    tools.add('get_trip_days');
+  }
+
+  const explicitDayNumber = resolvedIntent.dayNumber;
+  let selectedDayId = input.context?.selected_day_id ?? null;
+  if (explicitDayNumber) {
+    const tripDays = getTripDays(input.tripId) as Array<{ id: number; day_number: number }>;
+    const matchedDay = tripDays.find((day) => Number(day.day_number) === Number(explicitDayNumber));
+    if (matchedDay?.id) {
+      selectedDayId = matchedDay.id;
+      if (resolvedIntent.kind === 'day_plan') tools.add('get_day_plan');
+      if (resolvedIntent.kind === 'day_weather') tools.add('get_day_weather_context');
+    } else {
+      selectedDayId = null;
+    }
+  } else if (selectedDayId) {
+    if (resolvedIntent.kind === 'day_plan') {
+      tools.add('get_day_plan');
+    }
+    if (resolvedIntent.kind === 'day_weather') {
+      tools.add('get_day_weather_context');
+    }
+  }
+  const toolContext = addSelectedDayContext(buildContext(input.tripId, Array.from(tools)), input.tripId, selectedDayId);
+  if (resolvedIntent.kind === 'unplanned_places_full') {
+    return buildUnplannedPlacesListResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'planning_status') {
+    return buildPlanningStatusResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'packing_status') {
+    return buildPackingStatusResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'budget_summary') {
+    return buildBudgetSummaryResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'reservations_status') {
+    return buildReservationsStatusResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'open_todo_status') {
+    return buildOpenTodoStatusResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'busiest_day') {
+    return buildBusiestDayResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'day_weather') {
+    return await buildDayWeatherResponse(input.tripId, selectedDayId, input.userId);
+  }
+  if (resolvedIntent.kind === 'day_plan') {
+    return buildDayPlanResponse(toolContext);
+  }
   const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
   if (guardedResponse) return guardedResponse;
   const prompt = buildPrompt(input, toolContext);
@@ -379,10 +1017,10 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (!overview?.trip?.start_date || !overview?.trip?.end_date) {
     missingData.push('Trip dates are incomplete.');
   }
-  if (tools.includes('get_trip_places') && typeof (toolContext.get_trip_places as any)?.total === 'number' && (toolContext.get_trip_places as any).total === 0) {
+  if (tools.has('get_trip_places') && typeof (toolContext.get_trip_places as any)?.total === 'number' && (toolContext.get_trip_places as any).total === 0) {
     warnings.push('No places were found for this trip.');
   }
-  if (tools.includes('get_reservations_summary') && !(toolContext.get_reservations_summary as any)?.total) {
+  if (tools.has('get_reservations_summary') && !(toolContext.get_reservations_summary as any)?.total) {
     warnings.push('No reservations were found for this trip.');
   }
 
@@ -391,7 +1029,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       role: 'assistant',
       content: result.content,
     },
-    citations: buildCitations(toolContext, tools),
+    citations: buildCitations(toolContext, Array.from(tools)),
     suggested_actions: buildSuggestedActions(input.message, toolContext),
     warnings,
     missing_data: missingData,

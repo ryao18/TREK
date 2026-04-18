@@ -21,6 +21,7 @@ import TodoListPanel from '../components/Todo/TodoListPanel'
 import FileManager from '../components/Files/FileManager'
 import BudgetPanel from '../components/Budget/BudgetPanel'
 import CollabPanel from '../components/Collab/CollabPanel'
+import TripAssistantPanel from '../components/Assistant/TripAssistantPanel'
 import Navbar from '../components/Layout/Navbar'
 import { useToast } from '../components/shared/Toast'
 import { Map, X, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Ticket, PackageCheck, Wallet, FolderOpen, Camera, Users } from 'lucide-react'
@@ -585,6 +586,16 @@ export default function TripPlannerPage(): React.ReactElement | null {
 
       {/* Offset by navbar + tab bar (44px) */}
       <div style={{ position: 'fixed', top: 'calc(var(--nav-h) + 44px)', left: 0, right: 0, bottom: 0, overflow: 'hidden', overscrollBehavior: 'contain' }}>
+        {activeTab === 'plan' && (
+          <TripAssistantPanel
+            tripId={tripId}
+            tripTitle={trip.title}
+            selectedDayId={selectedDayId}
+            selectedPlaceId={selectedPlaceId}
+            selectedAssignmentId={selectedAssignmentId}
+            activeTab={activeTab}
+          />
+        )}
 
         {activeTab === 'plan' && (
           <div style={{ position: 'absolute', inset: 0 }}>

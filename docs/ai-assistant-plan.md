@@ -8,6 +8,24 @@ The first shipped version should be read-only. It should answer questions about 
 
 Later versions can add narrow write actions with explicit confirmation.
 
+## Current Planning Status
+
+The current implementation focus is confirmed:
+
+- build only Phase 1 first
+- use a local LLM only
+- keep the assistant read-only
+- make the UI feel like a ChatGPT-style chatbot
+- place it in the trip planner as a minimizable side panel rather than a separate page
+
+This means the first milestone is not just server tooling. The first shipped experience must already look like the long-term assistant product, even though write actions remain disabled.
+
+Current implementation status:
+
+- the Phase 1 vertical slice is now underway
+- the first implementation target is panel shell + endpoint contract + local-provider server path
+- the first version should prove the interaction model before deeper tool coverage or write-ready confirmations
+
 ## Why This Shape
 
 TREK already has strong structured trip data:
@@ -114,10 +132,19 @@ A trip-scoped chat panel in the client.
 Responsibilities:
 
 - capture user prompt
+- render a conversational message history
 - show grounded answer cards
 - show citations / source entities
 - show suggested actions as previews
+- support open / close / minimize behavior
 - later host confirmation flows for writes
+
+Phase 1 UX clarification:
+
+- the assistant should feel like a real chatbot similar to ChatGPT
+- it should live inside the trip planner experience
+- it should be minimizable so users can keep planning while chatting
+- it should not require navigating away to a dedicated assistant page
 
 ### Assistant Orchestrator
 
@@ -138,6 +165,12 @@ Typed read and write tools over existing services.
 This should be implemented as a dedicated assistant-facing tool registry rather than reusing raw client payloads directly.
 
 The current MCP implementation in [server/src/mcp/tools.ts](/C:/Users/richard/Documents/dev/TREK/server/src/mcp/tools.ts) is the best existing architectural reference.
+
+Important implementation clarification:
+
+- use MCP tool patterns as a reference
+- do not make the in-app assistant depend directly on the MCP server transport
+- the app assistant should call assistant-facing server services that reuse existing business logic
 
 ## MVP Tool Set
 
@@ -212,14 +245,125 @@ Suggested shape:
 - `suggested_actions`
 - `warnings`
 - `missing_data`
+- `meta`
 
 This gives the UI room to evolve later without changing the contract.
+
+Phase 1 response note:
+
+- the UI should render assistant replies as chat messages
+- structured fields should be attached to those messages rather than replacing the chat format
+- `meta` should be able to report provider, model, and tool usage for debugging
+
+### Phase 1 Request Shape
+
+Use a single-turn request format that still leaves room for future conversation memory.
+
+Suggested request shape:
+
+- `message`
+- `history`
+- `context`
+
+Suggested details:
+
+- `message`: the latest user prompt
+- `history`: a short recent window of prior chat messages
+- `context`: optional planner context such as selected day, selected place, selected assignment, or active tab
+
+Suggested example:
+
+```json
+{
+  "message": "What still needs planning before we leave?",
+  "history": [
+    { "role": "user", "content": "Summarize this trip" },
+    { "role": "assistant", "content": "..." }
+  ],
+  "context": {
+    "selected_day_id": 12,
+    "selected_place_id": null,
+    "selected_assignment_id": null,
+    "active_tab": "plan"
+  }
+}
+```
+
+Phase 1 conversation rule:
+
+- keep history short and bounded
+- do not rely on large persistent chat transcripts for correctness
+- regenerate grounded context from tools on every request
+
+### Phase 1 Message Response Shape
+
+The endpoint should return one assistant message object plus supporting structured fields.
+
+Suggested shape:
+
+```json
+{
+  "message": {
+    "role": "assistant",
+    "content": "You still need to finalize two reservations and assign packing for Alex."
+  },
+  "citations": [],
+  "suggested_actions": [],
+  "warnings": [],
+  "missing_data": [],
+  "follow_up_prompts": [],
+  "meta": {
+    "provider": "local",
+    "model": "local-model-name",
+    "tools_used": ["get_trip_overview", "get_reservations_summary", "get_packing_summary"]
+  }
+}
+```
+
+This keeps the UI chat-first while still exposing structured metadata.
 
 ## UX Recommendations
 
 ### MVP UI
 
 Place the assistant as a trip-scoped sidebar or panel.
+
+The current preferred MVP shape is:
+
+- a right-side assistant panel in the trip planner
+- collapsible / minimizable behavior
+- chat transcript, prompt input, and quick prompt chips
+- structured citations and warnings rendered under each assistant message when available
+
+### Phase 1 Panel Behavior
+
+The current preferred interaction model is:
+
+- right-side slide-in panel in the trip planner
+- closed by default for MVP unless we decide to surface it with a first-run affordance
+- expandable to a normal working width, then minimizable to a small edge tab or icon rail state
+- independent from the existing planner sidebars so users can continue planning while the assistant stays open
+- conversation state remains available while switching planner tabs within the same trip session
+
+Recommended states:
+
+- `closed`
+- `open`
+- `minimized`
+
+Recommended panel contents:
+
+- header with assistant title and minimize / close controls
+- scrollable chat transcript
+- optional quick prompt chips at the top when the conversation is empty
+- prompt composer anchored to the bottom
+- loading indicator for in-flight responses
+
+Recommended MVP non-goals for the panel:
+
+- no multi-thread conversation list
+- no cross-trip assistant memory
+- no floating freeform global assistant outside the trip experience
 
 Good quick prompts:
 
@@ -354,6 +498,11 @@ Suggested configuration model:
 
 The assistant route should depend on this interface rather than any specific SDK.
 
+Phase 1 constraint:
+
+- only the `local` provider should be wired initially
+- the provider interface should still be shaped so hosted providers can be added later without changing the route contract or UI
+
 ### Local Model Expectations
 
 A single RTX 4090 is enough for the Phase 1 read-only assistant if the system is designed correctly.
@@ -404,6 +553,32 @@ The tool contracts and response schema should remain stable even if the backing 
 - reuse existing service-layer queries where possible
 - normalize output shapes for LLM consumption
 
+Current guidance:
+
+- start with a minimal read-only tool set rather than implementing the entire future catalog up front
+- prefer compact context builders over passing full denormalized trip payloads into every request
+
+Recommended first tool slice:
+
+- `get_trip_overview(tripId)`
+- `get_trip_days(tripId)`
+- `get_reservations_summary(tripId)`
+- `get_packing_summary(tripId)`
+- `get_todo_summary(tripId)`
+
+Why this first slice:
+
+- it covers the most common Phase 1 user questions
+- it keeps context compact enough for a local model
+- it avoids prematurely building fine-grained day and budget tooling before the chat contract is proven
+
+Recommended second slice after the MVP shell works:
+
+- `get_day_plan(tripId, dayId)`
+- `get_trip_members(tripId)`
+- `get_budget_summary(tripId)`
+- `get_day_notes_summary(tripId, dayId?)`
+
 ### Milestone 2: Assistant Endpoint
 
 - add a trip-scoped assistant route
@@ -412,12 +587,36 @@ The tool contracts and response schema should remain stable even if the backing 
 - add a pluggable LLM provider interface
 - return structured answer payloads
 
+Recommended Phase 1 orchestration flow:
+
+1. accept trip-scoped request
+2. validate membership and planner context
+3. classify the user question into a small intent set
+4. call only the relevant read tools
+5. assemble compact structured context
+6. call the local provider
+7. return one assistant message plus structured metadata
+
 ### Milestone 3: Client UI
 
 - add assistant panel to the trip experience
 - add prompt input and quick actions
 - render answer blocks and citations
 - render suggested actions as non-executable previews
+
+Current guidance:
+
+- the client should prioritize a polished chatbot shell early
+- conversation state should start local to the assistant panel instead of being merged into the main trip Zustand store
+- the first UI target should be [client/src/pages/TripPlannerPage.tsx](/Users/rich/Documents/dev/TREK/client/src/pages/TripPlannerPage.tsx)
+
+Recommended build order:
+
+1. add the panel shell and state management in the planner page
+2. wire the assistant API client
+3. render a static mock transcript to validate layout and panel behavior
+4. connect real assistant responses
+5. add citations, warnings, and suggested-action rendering
 
 ### Milestone 4: Validation
 
@@ -448,6 +647,87 @@ Client:
 - [client/src/api/client.ts](/C:/Users/richard/Documents/dev/TREK/client/src/api/client.ts)
 - a new assistant panel component under `client/src/components`
 - whichever trip page or sidebar owns trip-level utility panels
+
+More specific likely targets based on current code inspection:
+
+Server:
+
+- [server/src/routes/trips.ts](/Users/rich/Documents/dev/TREK/server/src/routes/trips.ts) or a new sibling route mounted under `/api/trips/:tripId`
+- [server/src/app.ts](/Users/rich/Documents/dev/TREK/server/src/app.ts) for route registration
+- new files under `server/src/services/assistant`
+
+Client:
+
+- [client/src/pages/TripPlannerPage.tsx](/Users/rich/Documents/dev/TREK/client/src/pages/TripPlannerPage.tsx) as the host experience
+- [client/src/api/client.ts](/Users/rich/Documents/dev/TREK/client/src/api/client.ts) for the assistant query method
+- a new `client/src/components/Assistant/TripAssistantPanel.tsx`
+
+## Current Findings From Code Review
+
+The following has already been confirmed in the existing codebase:
+
+- [server/src/services/tripService.ts](/Users/rich/Documents/dev/TREK/server/src/services/tripService.ts) already exposes `getTripSummary`, which is a useful seed for `get_trip_overview`
+- [server/src/mcp/tools.ts](/Users/rich/Documents/dev/TREK/server/src/mcp/tools.ts) demonstrates the typed-tool pattern we should mirror
+- [client/src/api/client.ts](/Users/rich/Documents/dev/TREK/client/src/api/client.ts) already follows the trip-scoped API style we should extend
+- [client/src/pages/TripPlannerPage.tsx](/Users/rich/Documents/dev/TREK/client/src/pages/TripPlannerPage.tsx) already owns the trip shell, tabs, and side panels, making it the right home for the assistant panel
+
+Additional implementation finding:
+
+- the planner already has dense left and right panel behavior on desktop, so the assistant should be implemented as an overlay panel anchored above planner content rather than becoming a third resizable sidebar
+
+## Current Blockers and Open Decisions
+
+There are no hard technical blockers yet, but there are a few decisions to lock before implementation:
+
+- how much recent conversation history to send per request
+- what the local provider config surface should look like in app settings or environment
+
+The following decisions are now tentatively locked for implementation unless a better constraint appears during build:
+
+- the assistant will be a ChatGPT-style minimizable side panel in `TripPlannerPage`
+- the API will be chat-first and return one assistant message plus structured metadata
+- the initial tool set will be a small read-only slice centered on overview, days, reservations, packing, and todos
+
+Known engineering caution:
+
+- `getTripSummary` is useful, but it is probably too broad to dump into every prompt unchanged
+- we should shape smaller assistant-specific context payloads to keep the local model responsive
+
+Likely next blockers once implementation starts:
+
+- fitting the assistant panel cleanly alongside the planner's existing right-side UI without crowding mobile layouts
+- deciding whether local provider configuration belongs purely in server env vars for Phase 1 or also needs user-visible settings
+- tuning the amount of structured context so the local model stays fast while still producing grounded answers
+
+## Implementation Progress Log
+
+### In Progress
+
+The current vertical slice implementation includes:
+
+- trip-scoped assistant endpoint at `POST /api/trips/:tripId/assistant/query`
+- assistant service files under `server/src/services/assistant`
+- local OpenAI-compatible provider path for LM Studio style backends
+- assistant panel component in the trip planner UI
+- client API wiring in `client/src/api/client.ts`
+- selected-day-aware context loading for assistant queries
+- follow-up prompt chips rendered from assistant responses
+- per-trip session persistence for panel state and recent chat messages
+
+### Current Constraints Encountered
+
+- desktop planner space is already crowded, so the assistant panel should overlay instead of joining the existing resizable panel system
+- mobile should use a full-screen sheet variant instead of the desktop floating panel dimensions
+- local provider configuration is still env-driven in the first slice; no user-facing configuration UI has been added yet
+- verification in this workspace is incomplete because the client build currently fails before app compilation when `sharp` is unavailable and there is no runnable local TypeScript CLI in the checked-in toolchain here
+- because LM Studio will be started manually for personal use, the chat UX should handle missing/offline local-model states cleanly instead of depending on extra setup or health-check UI
+
+### Still Not Complete For Phase 1
+
+Phase 1 should not yet be considered complete. Remaining work still includes:
+
+- targeted validation once the workspace toolchain can build/typecheck cleanly
+- any final refinement needed after local-model use against real trips
 
 ## Risks
 

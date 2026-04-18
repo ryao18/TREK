@@ -106,6 +106,16 @@ export default function TripAssistantPanel({
     }
   }, [panelState])
 
+  React.useEffect(() => {
+    if (panelState !== 'closed') {
+      requestAnimationFrame(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+        }
+      })
+    }
+  }, [messages, isLoading, panelState])
+
   const shellStyle = useMemo<React.CSSProperties>(() => {
     if (isMobile) {
       return {

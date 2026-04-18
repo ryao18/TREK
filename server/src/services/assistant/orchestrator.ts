@@ -78,41 +78,81 @@ function buildContext(tripId: number, tools: ToolName[]) {
   return context;
 }
 
-function trimContextForPrompt(context: Record<string, unknown>) {
+function isOperationalPlaceQuestion(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /\bon our itinerary\b|\bitinerary\b|\bday\b|\bplanned\b|\bunplanned\b|\bplan\b|\breservation\b|\bbooking\b|\bnotes\b|\baddress\b|\bcoordinates\b|\bwhere\b|\bwhen\b|\bdid we\b|\bdo we\b/.test(lower);
+}
+
+function isFullListRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  return /\bfull list\b|\ball\b|\blist everything\b|\bshow all\b|\bevery\b/.test(lower);
+}
+
+function shouldIncludeFullPlaceList(message: string): boolean {
+  const lower = message.toLowerCase();
+  return isFullListRequest(lower) && /\bplace\b|\bplaces\b|\blocation\b|\blocations\b|\bactivity\b|\bactivities\b/.test(lower);
+}
+
+function shouldIncludeFullReservationList(message: string): boolean {
+  const lower = message.toLowerCase();
+  return isFullListRequest(lower) && /\breservation\b|\breservations\b|\bbooking\b|\bbookings\b|\bhotel\b|\bflight\b|\btrain\b/.test(lower);
+}
+
+function shouldIncludeFullPackingList(message: string): boolean {
+  const lower = message.toLowerCase();
+  return isFullListRequest(lower) && /\bpacking\b|\bpack\b|\bluggage\b|\bbag\b|\bitems\b/.test(lower);
+}
+
+function shouldIncludeFullTodoList(message: string): boolean {
+  const lower = message.toLowerCase();
+  return isFullListRequest(lower) && /\btodo\b|\bto-do\b|\btask\b|\btasks\b|\bchecklist\b/.test(lower);
+}
+
+function shouldIncludeFullBudgetList(message: string): boolean {
+  const lower = message.toLowerCase();
+  return isFullListRequest(lower) && /\bbudget\b|\bexpense\b|\bexpenses\b|\bcost\b|\bcosts\b|\bspend\b|\bspent\b/.test(lower);
+}
+
+function trimContextForPrompt(context: Record<string, unknown>, input: AssistantQueryInput) {
   const next = { ...context } as any;
+  const includeFullPlaceList = shouldIncludeFullPlaceList(input.message);
+  const includeFullReservationList = shouldIncludeFullReservationList(input.message);
+  const includeFullPackingList = shouldIncludeFullPackingList(input.message);
+  const includeFullTodoList = shouldIncludeFullTodoList(input.message);
+  const includeFullBudgetList = shouldIncludeFullBudgetList(input.message);
   if (Array.isArray(next.get_trip_days)) {
     next.get_trip_days = next.get_trip_days.slice(0, 14);
   }
   if (next.get_trip_places?.items) {
     next.get_trip_places = {
       ...next.get_trip_places,
-      items: next.get_trip_places.items.slice(0, 12),
+      items: includeFullPlaceList ? next.get_trip_places.items : next.get_trip_places.items.slice(0, 20),
     };
   }
   if (next.get_reservations_summary?.items) {
     next.get_reservations_summary = {
       ...next.get_reservations_summary,
-      items: next.get_reservations_summary.items.slice(0, 8),
+      items: includeFullReservationList ? next.get_reservations_summary.items : next.get_reservations_summary.items.slice(0, 8),
     };
   }
   if (next.get_packing_summary?.sample_items) {
     next.get_packing_summary = {
       ...next.get_packing_summary,
-      sample_items: next.get_packing_summary.sample_items.slice(0, 6),
+      sample_items: includeFullPackingList ? next.get_packing_summary.sample_items : next.get_packing_summary.sample_items.slice(0, 6),
     };
   }
   if (next.get_todo_summary?.items) {
     next.get_todo_summary = {
       ...next.get_todo_summary,
-      items: next.get_todo_summary.items.slice(0, 8),
+      items: includeFullTodoList ? next.get_todo_summary.items : next.get_todo_summary.items.slice(0, 8),
     };
   }
   if (next.get_budget_summary?.items) {
     next.get_budget_summary = {
       ...next.get_budget_summary,
-      items: next.get_budget_summary.items.slice(0, 6),
-      per_person: (next.get_budget_summary.per_person || []).slice(0, 6),
-      settlement: (next.get_budget_summary.settlement || []).slice(0, 6),
+      items: includeFullBudgetList ? next.get_budget_summary.items : next.get_budget_summary.items.slice(0, 6),
+      per_person: includeFullBudgetList ? (next.get_budget_summary.per_person || []) : (next.get_budget_summary.per_person || []).slice(0, 6),
+      settlement: includeFullBudgetList ? (next.get_budget_summary.settlement || []) : (next.get_budget_summary.settlement || []).slice(0, 6),
     };
   }
   if (next.get_day_plan?.assignments) {
@@ -135,7 +175,7 @@ function addSelectedDayContext(context: Record<string, unknown>, tripId: number,
 function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unknown>) {
   const history = (input.history || []).slice(-6).map(message => `${message.role.toUpperCase()}: ${message.content}`).join('\n');
   const plannerContext = JSON.stringify(input.context || {}, null, 2);
-  const serializedTools = JSON.stringify(trimContextForPrompt(toolContext), null, 2);
+  const serializedTools = JSON.stringify(trimContextForPrompt(toolContext, input), null, 2);
 
   const systemPrompt = [
     'You are TREK, a read-only trip assistant.',
@@ -144,6 +184,7 @@ function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unk
     'State when data is missing or incomplete.',
     'Keep answers concise and practical.',
     'Do not suggest that you made any direct changes.',
+    'If the provided data is only partial, say it is partial instead of fabricating placeholder rows or missing item details.',
   ].join(' ');
 
   const userPrompt = [
@@ -268,9 +309,67 @@ function buildFollowUpPrompts(toolContext: Record<string, unknown>, selectedDayI
   return Array.from(new Set(prompts)).slice(0, 4);
 }
 
+function extractMentionedPlaceName(message: string, toolContext: Record<string, unknown>): string | null {
+  const places = ((toolContext.get_trip_places as any)?.items || []) as Array<{ name?: string }>;
+  const lower = message.toLowerCase();
+  const matched = places.find((place) => place.name && lower.includes(String(place.name).toLowerCase()));
+  return matched?.name || null;
+}
+
+function isPlaceKnowledgeQuestion(message: string): boolean {
+  const lower = message.toLowerCase();
+  if (isOperationalPlaceQuestion(lower)) return false;
+  return /\btell me about\b|\bdescribe\b|\bwhat kind of place\b|\bwhat kind of attraction\b|\bwhat is this place\b|\bwhat's this place\b/.test(lower)
+    || /^(what is|what's)\s+.+\??$/.test(lower);
+}
+
+function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse | null {
+  if (!isPlaceKnowledgeQuestion(input.message)) return null;
+
+  const placeName = extractMentionedPlaceName(input.message, toolContext);
+  if (!placeName) return null;
+
+  const places = ((toolContext.get_trip_places as any)?.items || []) as Array<{
+    id?: number;
+    name?: string;
+    address?: string | null;
+    category_name?: string | null;
+  }>;
+  const place = places.find((entry) => entry.name === placeName);
+
+  const hasDescriptiveData = Boolean(place?.category_name || place?.address);
+  if (hasDescriptiveData) return null;
+
+  return {
+    message: {
+      role: 'assistant',
+      content: `I can tell that ${placeName} is in your trip data, but I do not have trusted descriptive information about it in TREK right now. I can still help with itinerary details like which day it appears on, whether it is planned, or whether it has related notes or reservations.`,
+    },
+    citations: place ? [{ type: 'place', id: place.id ?? null, label: placeName }] : [],
+    suggested_actions: [],
+    warnings: ['This question needs descriptive place data that is not currently stored in TREK.'],
+    missing_data: [`No trusted description is stored for ${placeName}.`],
+    follow_up_prompts: [
+      `Did we go to ${placeName}?`,
+      `What day is ${placeName} on?`,
+      `Is ${placeName} planned yet?`,
+    ],
+    meta: {
+      provider: 'guardrail',
+      model: 'none',
+      tools_used: ['get_trip_places'],
+    },
+  };
+}
+
 export async function runAssistantQuery(input: AssistantQueryInput): Promise<AssistantResponse> {
-  const tools = selectTools(input.message, input.context?.selected_day_id);
-  const toolContext = addSelectedDayContext(buildContext(input.tripId, tools), input.tripId, input.context?.selected_day_id);
+  const tools = new Set<ToolName>(selectTools(input.message, input.context?.selected_day_id));
+  if (isPlaceKnowledgeQuestion(input.message)) {
+    tools.add('get_trip_places');
+  }
+  const toolContext = addSelectedDayContext(buildContext(input.tripId, Array.from(tools)), input.tripId, input.context?.selected_day_id);
+  const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
+  if (guardedResponse) return guardedResponse;
   const prompt = buildPrompt(input, toolContext);
   const result = await completeWithLocalModel(prompt);
 
@@ -301,7 +400,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       provider: result.provider,
       model: result.model,
       tools_used: Array.from(new Set([
-        ...tools,
+        ...Array.from(tools),
         ...(toolContext.get_trip_places ? ['get_trip_places'] : []),
         ...(toolContext.get_day_plan ? ['get_day_plan'] : []),
       ])),

@@ -582,6 +582,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
       <div style={{ position: 'fixed', top: 'calc(var(--nav-h) + 44px)', left: 0, right: 0, bottom: 0, overflow: 'hidden', overscrollBehavior: 'contain' }}>
         {activeTab === 'plan' && (
           <TripAssistantPanel
+            key={String(tripId)}
             tripId={tripId}
             tripTitle={trip.title}
             selectedDayId={selectedDayId}

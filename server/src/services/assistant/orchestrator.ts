@@ -967,6 +967,8 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       selectedDayId = matchedDay.id;
       if (resolvedIntent.kind === 'day_plan') tools.add('get_day_plan');
       if (resolvedIntent.kind === 'day_weather') tools.add('get_day_weather_context');
+    } else {
+      selectedDayId = null;
     }
   } else if (selectedDayId) {
     if (resolvedIntent.kind === 'day_plan') {

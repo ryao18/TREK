@@ -114,76 +114,32 @@ export default function TripAssistantPanel({
   }, [isMobile])
 
   const closedButtonStyle = useMemo<React.CSSProperties>(() => {
-    if (isMobile) {
-      return {
-        position: 'absolute',
-        right: 12,
-        bottom: 12,
-        zIndex: 35,
-        border: 'none',
-        borderRadius: 999,
-        padding: '12px 16px',
-        background: '#000',
-        color: '#fff',
-        cursor: 'pointer',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        fontFamily: 'inherit',
-        fontSize: 14,
-        fontWeight: 600,
-      }
-    }
-
     return {
       position: 'absolute',
       right: 12,
-      top: 12,
+      bottom: isMobile ? 12 : 18,
       zIndex: 35,
-      border: '1px solid var(--border-faint)',
       borderRadius: 14,
-      padding: '10px 14px',
-      background: 'var(--sidebar-bg)',
-      color: 'var(--text-primary)',
+      border: 'none',
+      padding: isMobile ? '12px 16px' : '11px 15px',
+      background: '#000',
+      color: '#fff',
       cursor: 'pointer',
-      boxShadow: 'var(--sidebar-shadow)',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
       display: 'flex',
       alignItems: 'center',
-      gap: 8,
+      gap: 10,
       fontFamily: 'inherit',
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: 600,
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
     }
   }, [isMobile])
 
   const minimizedButtonStyle = useMemo<React.CSSProperties>(() => {
-    if (isMobile) {
-      return {
-        position: 'absolute',
-        right: 12,
-        bottom: 12,
-        zIndex: 35,
-        border: '1px solid var(--border-faint)',
-        borderRadius: 14,
-        width: 52,
-        height: 52,
-        background: 'var(--sidebar-bg)',
-        color: 'var(--text-primary)',
-        cursor: 'pointer',
-        boxShadow: 'var(--sidebar-shadow)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }
-    }
-
     return {
       position: 'absolute',
       right: 12,
-      top: 12,
+      bottom: isMobile ? 12 : 18,
       zIndex: 35,
       border: '1px solid var(--border-faint)',
       borderRadius: 14,
@@ -196,8 +152,8 @@ export default function TripAssistantPanel({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
+      backdropFilter: isMobile ? undefined : 'blur(20px)',
+      WebkitBackdropFilter: isMobile ? undefined : 'blur(20px)',
     }
   }, [isMobile])
 

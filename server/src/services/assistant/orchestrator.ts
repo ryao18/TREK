@@ -8,12 +8,14 @@ import {
   getTripDays,
   getTripMembersSummary,
   getTripOverview,
+  getTripPlaces,
 } from './tools';
 import { completeWithLocalModel } from './provider';
 
 type ToolName =
   | 'get_trip_overview'
   | 'get_trip_days'
+  | 'get_trip_places'
   | 'get_day_plan'
   | 'get_reservations_summary'
   | 'get_budget_summary'
@@ -27,6 +29,9 @@ function selectTools(message: string, selectedDayId?: number | null): ToolName[]
 
   if (selectedDayId || /\bday\b|\bitinerary\b|\bbusiest\b|\bplan\b|\bplanned\b/.test(lower)) {
     tools.add('get_trip_days');
+  }
+  if (/\bplace\b|\bplaces\b|\blocation\b|\blocations\b|\bactivity\b|\bactivities\b|\badded so far\b/.test(lower)) {
+    tools.add('get_trip_places');
   }
   if (selectedDayId && /\bthis day\b|\btoday\b|\bselected day\b|\bday\b|\bitinerary\b|\bplan\b/.test(lower)) {
     tools.add('get_day_plan');
@@ -48,6 +53,7 @@ function selectTools(message: string, selectedDayId?: number | null): ToolName[]
   }
   if (tools.size === 1) {
     tools.add('get_trip_days');
+    tools.add('get_trip_places');
     tools.add('get_reservations_summary');
     tools.add('get_budget_summary');
     tools.add('get_packing_summary');
@@ -62,6 +68,7 @@ function buildContext(tripId: number, tools: ToolName[]) {
   for (const tool of tools) {
     if (tool === 'get_trip_overview') context.get_trip_overview = getTripOverview(tripId);
     if (tool === 'get_trip_days') context.get_trip_days = getTripDays(tripId);
+    if (tool === 'get_trip_places') context.get_trip_places = getTripPlaces(tripId);
     if (tool === 'get_reservations_summary') context.get_reservations_summary = getReservationsSummary(tripId);
     if (tool === 'get_budget_summary') context.get_budget_summary = getBudgetSummary(tripId);
     if (tool === 'get_packing_summary') context.get_packing_summary = getPackingSummary(tripId);
@@ -75,6 +82,12 @@ function trimContextForPrompt(context: Record<string, unknown>) {
   const next = { ...context } as any;
   if (Array.isArray(next.get_trip_days)) {
     next.get_trip_days = next.get_trip_days.slice(0, 14);
+  }
+  if (next.get_trip_places?.items) {
+    next.get_trip_places = {
+      ...next.get_trip_places,
+      items: next.get_trip_places.items.slice(0, 12),
+    };
   }
   if (next.get_reservations_summary?.items) {
     next.get_reservations_summary = {
@@ -163,6 +176,12 @@ function buildCitations(toolContext: Record<string, unknown>, tools: ToolName[])
       citations.push({ type: 'reservation', id: reservation.id, label: reservation.title });
     }
   }
+  if (tools.includes('get_trip_places')) {
+    const places = (toolContext.get_trip_places as any)?.items || [];
+    for (const place of places.slice(0, 4)) {
+      citations.push({ type: 'place', id: place.id, label: place.name });
+    }
+  }
   if (tools.includes('get_budget_summary')) {
     const budget = toolContext.get_budget_summary as any;
     if (typeof budget?.total_amount === 'number') {
@@ -210,6 +229,9 @@ function buildSuggestedActions(message: string, toolContext: Record<string, unkn
   if (/\bpack\b|\bpacking\b/.test(lower)) {
     return [{ type: 'add_packing_item', label: 'Add a packing item', enabled: false, reason: 'Phase 1 is read-only' }];
   }
+  if (/\bplace\b|\bplaces\b|\bactivity\b|\bactivities\b/.test(lower)) {
+    return [{ type: 'add_place', label: 'Add a place or activity', enabled: false, reason: 'Phase 1 is read-only' }];
+  }
   if (/\btodo\b|\btask\b|\bchecklist\b/.test(lower)) {
     return [{ type: 'create_todo_item', label: 'Create a to-do item', enabled: false, reason: 'Phase 1 is read-only' }];
   }
@@ -236,6 +258,9 @@ function buildFollowUpPrompts(toolContext: Record<string, unknown>, selectedDayI
   if ((toolContext.get_packing_summary as any)?.total) {
     prompts.push('Who still needs to pack?');
   }
+  if ((toolContext.get_trip_places as any)?.total) {
+    prompts.push('Which places are still unplanned?');
+  }
   if (typeof (toolContext.get_budget_summary as any)?.total_amount === 'number') {
     prompts.push('Summarize our budget');
   }
@@ -254,6 +279,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   const overview = toolContext.get_trip_overview as any;
   if (!overview?.trip?.start_date || !overview?.trip?.end_date) {
     missingData.push('Trip dates are incomplete.');
+  }
+  if (tools.includes('get_trip_places') && typeof (toolContext.get_trip_places as any)?.total === 'number' && (toolContext.get_trip_places as any).total === 0) {
+    warnings.push('No places were found for this trip.');
   }
   if (tools.includes('get_reservations_summary') && !(toolContext.get_reservations_summary as any)?.total) {
     warnings.push('No reservations were found for this trip.');
@@ -274,6 +302,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       model: result.model,
       tools_used: Array.from(new Set([
         ...tools,
+        ...(toolContext.get_trip_places ? ['get_trip_places'] : []),
         ...(toolContext.get_day_plan ? ['get_day_plan'] : []),
       ])),
     },

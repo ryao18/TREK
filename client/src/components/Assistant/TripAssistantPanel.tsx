@@ -113,6 +113,94 @@ export default function TripAssistantPanel({
     return panelBaseStyle
   }, [isMobile])
 
+  const closedButtonStyle = useMemo<React.CSSProperties>(() => {
+    if (isMobile) {
+      return {
+        position: 'absolute',
+        right: 12,
+        bottom: 12,
+        zIndex: 35,
+        border: 'none',
+        borderRadius: 999,
+        padding: '12px 16px',
+        background: '#000',
+        color: '#fff',
+        cursor: 'pointer',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        fontFamily: 'inherit',
+        fontSize: 14,
+        fontWeight: 600,
+      }
+    }
+
+    return {
+      position: 'absolute',
+      right: 12,
+      top: 12,
+      zIndex: 35,
+      border: '1px solid var(--border-faint)',
+      borderRadius: 14,
+      padding: '10px 14px',
+      background: 'var(--sidebar-bg)',
+      color: 'var(--text-primary)',
+      cursor: 'pointer',
+      boxShadow: 'var(--sidebar-shadow)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      fontFamily: 'inherit',
+      fontSize: 13,
+      fontWeight: 600,
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+    }
+  }, [isMobile])
+
+  const minimizedButtonStyle = useMemo<React.CSSProperties>(() => {
+    if (isMobile) {
+      return {
+        position: 'absolute',
+        right: 12,
+        bottom: 12,
+        zIndex: 35,
+        border: '1px solid var(--border-faint)',
+        borderRadius: 14,
+        width: 52,
+        height: 52,
+        background: 'var(--sidebar-bg)',
+        color: 'var(--text-primary)',
+        cursor: 'pointer',
+        boxShadow: 'var(--sidebar-shadow)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }
+    }
+
+    return {
+      position: 'absolute',
+      right: 12,
+      top: 12,
+      zIndex: 35,
+      border: '1px solid var(--border-faint)',
+      borderRadius: 14,
+      width: 52,
+      height: 52,
+      background: 'var(--sidebar-bg)',
+      color: 'var(--text-primary)',
+      cursor: 'pointer',
+      boxShadow: 'var(--sidebar-shadow)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+    }
+  }, [isMobile])
+
   async function sendMessage(raw: string) {
     const message = raw.trim()
     if (!message || isLoading) return
@@ -177,25 +265,7 @@ export default function TripAssistantPanel({
       <button
         onClick={() => setPanelState('open')}
         title="Open AI assistant"
-        style={{
-          position: 'absolute',
-          right: 12,
-          bottom: 12,
-          zIndex: 35,
-          border: 'none',
-          borderRadius: 999,
-          padding: '12px 16px',
-          background: '#000',
-          color: '#fff',
-          cursor: 'pointer',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          fontFamily: 'inherit',
-          fontSize: 14,
-          fontWeight: 600,
-        }}
+        style={closedButtonStyle}
       >
         <Sparkles size={16} />
         Assistant
@@ -208,23 +278,7 @@ export default function TripAssistantPanel({
       <button
         onClick={() => setPanelState('open')}
         title="Expand AI assistant"
-        style={{
-          position: 'absolute',
-          right: 12,
-          top: 12,
-          zIndex: 35,
-          border: '1px solid var(--border-faint)',
-          borderRadius: 14,
-          width: 52,
-          height: 52,
-          background: 'var(--sidebar-bg)',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          boxShadow: 'var(--sidebar-shadow)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+        style={minimizedButtonStyle}
       >
         <MessageCircle size={18} />
       </button>

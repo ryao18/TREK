@@ -6,7 +6,8 @@ import { listItems as listTodoItems } from '../todoService';
 import { calculateSettlement, getPerPersonSummary, listBudgetItems } from '../budgetService';
 import { listPlaces } from '../placeService';
 import { db } from '../../db/database';
-import { searchNearbyPlaces, searchPlaces } from '../mapsService';
+import { getMapsKey, getPlaceDetails, searchNearbyPlaces, searchPlaces } from '../mapsService';
+import { getPlaceExternalData, persistPlaceGooglePlaceId, upsertPlaceExternalData } from '../placeExternalDataService';
 
 function toIsoDate(value: unknown): string | null {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
@@ -119,6 +120,9 @@ export function getTripPlaces(tripId: number) {
       name: place.name,
       address: place.address || null,
       category_name: place.category?.name || null,
+      google_place_id: place.google_place_id || null,
+      website: place.website || null,
+      phone: place.phone || null,
       lat: place.lat ?? null,
       lng: place.lng ?? null,
       has_coordinates: place.lat != null && place.lng != null,
@@ -164,10 +168,15 @@ export function getReservationsSummary(tripId: number) {
       status: reservation.status,
       type: reservation.type,
       day_number: reservation.day_number ?? null,
+      place_id: reservation.place_id ?? null,
       assignment_id: reservation.assignment_id ?? null,
       reservation_time: reservation.reservation_time ?? null,
       reservation_end_time: reservation.reservation_end_time ?? null,
       place_name: reservation.place_name || reservation.accommodation_name || null,
+      accommodation_place_id: reservation.accommodation_place_id ?? null,
+      accommodation_name: reservation.accommodation_name || null,
+      accommodation_check_in: reservation.accommodation_check_in ?? null,
+      accommodation_check_out: reservation.accommodation_check_out ?? null,
       is_unscheduled: !!reservation.place_id && !reservation.assignment_id,
       confirmation_number: reservation.confirmation_number || null,
     })),
@@ -315,6 +324,187 @@ function scorePlaceMatch(place: any, anchorText: string): number {
   return matchedTokens > 0 ? matchedTokens * 10 : 0;
 }
 
+function extractPlaceLookupText(value: string): string {
+  const normalized = String(value || '')
+    .replace(/[?!]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+
+  const patterns = [
+    /^(?:what kind of(?:\s+of)*\s+food|what cuisine|what kind of place|what type of place)\s+is\s+(.+)$/i,
+    /^(?:what is|what's)\s+the\s+(?:rating|review count|website|phone number|telephone)\s+(?:for|of)\s+(.+)$/i,
+    /^(?:what are|what're|what is|what's)\s+the\s+(?:hours|rating|review count|website|phone number|telephone)\s+(?:for|of)\s+(.+)$/i,
+    /^(?:does|is)\s+(.+?)\s+have\s+(?:a\s+)?website$/i,
+    /^(?:what is|what's)\s+(.+?)$/i,
+    /^(?:what are|what's)\s+(.+?)'s\s+hours$/i,
+    /^(?:what are|what're|what is|what's)\s+the?\s*hours\s+of\s+(.+)$/i,
+    /^(?:when does|what time does)\s+(.+?)\s+(?:open|close)$/i,
+    /^(?:is)\s+(.+?)\s+open(?:\s+right\s+now)?$/i,
+    /^(?:of|for)\s+(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  return normalized;
+}
+
+function isGenericPlaceReferenceMessage(value: string): boolean {
+  const normalized = normalizeForAssistantLookup(value);
+  return normalized === 'this place'
+    || normalized === 'here'
+    || normalized === 'this spot'
+    || normalized === 'this location'
+    || normalized === 'this venue';
+}
+
+function resolveSavedTripPlaceFromHistory(places: any[], history?: Array<{ role: string; content: string }>): any | null {
+  const entries = [...(history || [])].reverse();
+  for (const entry of entries) {
+    if (!entry || entry.role !== 'user' || typeof entry.content !== 'string') continue;
+    const candidateText = extractPlaceLookupText(entry.content);
+    if (!candidateText || isGenericPlaceReferenceMessage(candidateText)) continue;
+    const bestSavedPlace = places
+      .map((place) => ({ place, score: scorePlaceMatch(place, candidateText) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)[0];
+    if (bestSavedPlace?.score >= 70) return bestSavedPlace.place;
+  }
+  return null;
+}
+
+export function resolveSavedTripPlace(params: {
+  tripId: number;
+  message?: string | null;
+  selectedPlaceId?: number | null;
+  explicitPlaceName?: string | null;
+  history?: Array<{ role: string; content: string }>;
+}) {
+  const { tripId, message, selectedPlaceId = null, explicitPlaceName = null, history = [] } = params;
+  const places = listPlaces(String(tripId), {}) as any[];
+  const candidateText = explicitPlaceName || extractPlaceLookupText(message || '');
+  const bestSavedPlace = places
+    .map((place) => ({ place, score: scorePlaceMatch(place, candidateText) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0];
+
+  if (bestSavedPlace?.score >= 70) return bestSavedPlace.place;
+
+  if (selectedPlaceId) {
+    const selected = places.find((place) => Number(place.id) === Number(selectedPlaceId));
+    if (selected) return selected;
+  }
+
+  if (isGenericPlaceReferenceMessage(candidateText)) {
+    const priorPlace = resolveSavedTripPlaceFromHistory(places, history);
+    if (priorPlace) return priorPlace;
+  }
+
+  return bestSavedPlace?.score >= 70 ? bestSavedPlace.place : null;
+}
+
+async function resolveGooglePlaceIdForSavedPlace(userId: number, place: any): Promise<string | null> {
+  if (place?.google_place_id) return String(place.google_place_id);
+
+  const searchQuery = [place?.name, place?.address].filter(Boolean).join(' ').trim();
+  if (!searchQuery) return null;
+
+  let candidates: any[] = [];
+  try {
+    if (place?.lat != null && place?.lng != null) {
+      const nearby = await searchNearbyPlaces(userId, Number(place.lat), Number(place.lng), String(place.name || searchQuery), 5, 'en');
+      candidates = nearby.places as any[];
+    } else {
+      const searched = await searchPlaces(userId, searchQuery, 'en');
+      candidates = searched.places as any[];
+    }
+  } catch {
+    return null;
+  }
+
+  const best = candidates
+    .map((candidate) => ({ candidate, score: scorePlaceMatch(candidate, searchQuery) }))
+    .sort((a, b) => b.score - a.score)[0];
+
+  if (!best || best.score < 70 || !best.candidate?.google_place_id) return null;
+  return String(best.candidate.google_place_id);
+}
+
+export async function findSavedPlaceLiveDetails(params: {
+  tripId: number;
+  userId: number;
+  message: string;
+  selectedPlaceId?: number | null;
+  explicitPlaceName?: string | null;
+  history?: Array<{ role: string; content: string }>;
+}) {
+  const { tripId, userId, message, selectedPlaceId = null, explicitPlaceName = null, history = [] } = params;
+  const place = resolveSavedTripPlace({ tripId, message, selectedPlaceId, explicitPlaceName, history });
+
+  if (!place) {
+    return {
+      available: false,
+      reason: 'place_not_found',
+      place: null,
+      externalData: null,
+      liveDetails: null,
+      usedLiveLookup: false,
+    };
+  }
+
+  const externalData = getPlaceExternalData(Number(place.id));
+  let googlePlaceId = place.google_place_id ? String(place.google_place_id) : null;
+  let liveDetails: Record<string, unknown> | null = null;
+  let usedLiveLookup = false;
+
+  if (!googlePlaceId) {
+    googlePlaceId = await resolveGooglePlaceIdForSavedPlace(userId, place);
+    if (googlePlaceId) {
+      persistPlaceGooglePlaceId(Number(place.id), googlePlaceId);
+    }
+  }
+
+  if (googlePlaceId) {
+    try {
+      const details = await getPlaceDetails(userId, googlePlaceId, 'en');
+      liveDetails = details.place as Record<string, unknown>;
+      usedLiveLookup = true;
+
+      upsertPlaceExternalData(Number(place.id), {
+        source: 'google_places',
+        external_types: Array.isArray(liveDetails.types) ? (liveDetails.types as string[]) : [],
+        website: typeof liveDetails.website === 'string' ? liveDetails.website : null,
+        phone: typeof liveDetails.phone === 'string' ? liveDetails.phone : null,
+        rating: typeof liveDetails.rating === 'number' ? liveDetails.rating : null,
+        rating_count: typeof liveDetails.rating_count === 'number' ? liveDetails.rating_count : null,
+      });
+    } catch {
+      liveDetails = null;
+    }
+  }
+
+  const refreshedExternalData = getPlaceExternalData(Number(place.id));
+  return {
+    available: true,
+    reason: googlePlaceId ? null : 'google_place_not_resolved',
+    place: {
+      id: place.id,
+      name: place.name || 'Unknown place',
+      address: place.address || null,
+      category_name: place.category?.name || null,
+      website: place.website || null,
+      phone: place.phone || null,
+      google_place_id: googlePlaceId || null,
+    },
+    externalData: refreshedExternalData,
+    liveDetails,
+    usedLiveLookup,
+  };
+}
+
 export async function findNearbyPlaces(params: {
   tripId: number;
   userId: number;
@@ -334,78 +524,14 @@ export async function findNearbyPlaces(params: {
     limit = 5,
   } = params;
 
-  const allPlaces = listPlaces(String(tripId), {}) as any[];
-  const normalizedAnchor = normalizeForAssistantLookup(anchorText);
-  const wantsContextualAnchor = isGenericAnchorReference(anchorText) || /\bday\s+\d{1,2}\b/.test(normalizedAnchor);
-
-  let anchor: Record<string, unknown> | null = null;
-
-  const useSelectedPlace = !normalizedAnchor || /\bthis place\b|\bhere\b/.test(normalizedAnchor);
-  if (selectedPlaceId && useSelectedPlace) {
-    const selectedPlace = allPlaces.find((place) => Number(place.id) === Number(selectedPlaceId));
-    if (selectedPlace?.lat != null && selectedPlace?.lng != null) {
-      anchor = {
-        source: 'selected_place',
-        trip_place_id: selectedPlace.id,
-        google_place_id: selectedPlace.google_place_id || null,
-        name: selectedPlace.name || 'Selected place',
-        address: selectedPlace.address || null,
-        lat: selectedPlace.lat,
-        lng: selectedPlace.lng,
-      };
-    }
-  }
-
-  if (!anchor && selectedDayId && (!normalizedAnchor || /\bthis day\b|\btoday\b|\bselected day\b|\bday\s+\d{1,2}\b/.test(normalizedAnchor))) {
-    const dayContext = getDayWeatherContext(tripId, selectedDayId);
-    if (dayContext?.lat != null && dayContext?.lng != null) {
-      anchor = {
-        source: 'selected_day',
-        trip_place_id: null,
-        google_place_id: null,
-        name: dayContext.place_name || `Day ${dayContext.day_number}`,
-        address: null,
-        lat: dayContext.lat,
-        lng: dayContext.lng,
-        day_number: dayContext.day_number,
-      };
-    }
-  }
-
-  if (!anchor && normalizedAnchor && !wantsContextualAnchor) {
-    const bestSavedPlace = [...allPlaces]
-      .map((place) => ({ place, score: scorePlaceMatch(place, normalizedAnchor) }))
-      .filter((entry) => entry.score > 0 && entry.place?.lat != null && entry.place?.lng != null)
-      .sort((a, b) => b.score - a.score)[0];
-
-    if (bestSavedPlace?.place) {
-      anchor = {
-        source: 'saved_place',
-        trip_place_id: bestSavedPlace.place.id,
-        google_place_id: bestSavedPlace.place.google_place_id || null,
-        name: bestSavedPlace.place.name || 'Saved place',
-        address: bestSavedPlace.place.address || null,
-        lat: bestSavedPlace.place.lat,
-        lng: bestSavedPlace.place.lng,
-      };
-    }
-  }
-
-  if (!anchor && normalizedAnchor && !wantsContextualAnchor) {
-    const searched = await searchPlaces(userId, anchorText || normalizedAnchor, 'en');
-    const first = (searched.places || []).find((place: any) => place.lat != null && place.lng != null) as any;
-    if (first) {
-      anchor = {
-        source: 'external_search',
-        trip_place_id: null,
-        google_place_id: first.google_place_id || null,
-        name: first.name || anchorText || normalizedAnchor,
-        address: first.address || null,
-        lat: first.lat,
-        lng: first.lng,
-      };
-    }
-  }
+  const anchor = await resolveNearbyAnchor({
+    tripId,
+    userId,
+    anchorText,
+    selectedDayId,
+    selectedPlaceId,
+    allowExternalSearch: true,
+  });
 
   if (!anchor) {
     return {
@@ -446,6 +572,97 @@ export async function findNearbyPlaces(params: {
       source: 'unavailable',
     };
   }
+}
+
+async function resolveNearbyAnchor(params: {
+  tripId: number;
+  userId: number;
+  anchorText?: string | null;
+  selectedDayId?: number | null;
+  selectedPlaceId?: number | null;
+  allowExternalSearch: boolean;
+}): Promise<Record<string, unknown> | null> {
+  const {
+    tripId,
+    userId,
+    anchorText,
+    selectedDayId = null,
+    selectedPlaceId = null,
+    allowExternalSearch,
+  } = params;
+
+  const allPlaces = listPlaces(String(tripId), {}) as any[];
+  const normalizedAnchor = normalizeForAssistantLookup(anchorText);
+  const wantsContextualAnchor = isGenericAnchorReference(anchorText) || /\bday\s+\d{1,2}\b/.test(normalizedAnchor);
+
+  const useSelectedPlace = !normalizedAnchor || /\bthis place\b|\bhere\b/.test(normalizedAnchor);
+  if (selectedPlaceId && useSelectedPlace) {
+    const selectedPlace = allPlaces.find((place) => Number(place.id) === Number(selectedPlaceId));
+    if (selectedPlace?.lat != null && selectedPlace?.lng != null) {
+      return {
+        source: 'selected_place',
+        trip_place_id: selectedPlace.id,
+        google_place_id: selectedPlace.google_place_id || null,
+        name: selectedPlace.name || 'Selected place',
+        address: selectedPlace.address || null,
+        lat: selectedPlace.lat,
+        lng: selectedPlace.lng,
+      };
+    }
+  }
+
+  if (selectedDayId && (!normalizedAnchor || /\bthis day\b|\btoday\b|\bselected day\b|\bday\s+\d{1,2}\b/.test(normalizedAnchor))) {
+    const dayContext = getDayWeatherContext(tripId, selectedDayId);
+    if (dayContext?.lat != null && dayContext?.lng != null) {
+      return {
+        source: 'selected_day',
+        trip_place_id: null,
+        google_place_id: null,
+        name: dayContext.place_name || `Day ${dayContext.day_number}`,
+        address: null,
+        lat: dayContext.lat,
+        lng: dayContext.lng,
+        day_number: dayContext.day_number,
+      };
+    }
+  }
+
+  if (normalizedAnchor && !wantsContextualAnchor) {
+    const bestSavedPlace = [...allPlaces]
+      .map((place) => ({ place, score: scorePlaceMatch(place, normalizedAnchor) }))
+      .filter((entry) => entry.score > 0 && entry.place?.lat != null && entry.place?.lng != null)
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (bestSavedPlace?.place) {
+      return {
+        source: 'saved_place',
+        trip_place_id: bestSavedPlace.place.id,
+        google_place_id: bestSavedPlace.place.google_place_id || null,
+        name: bestSavedPlace.place.name || 'Saved place',
+        address: bestSavedPlace.place.address || null,
+        lat: bestSavedPlace.place.lat,
+        lng: bestSavedPlace.place.lng,
+      };
+    }
+  }
+
+  if (allowExternalSearch && normalizedAnchor && !wantsContextualAnchor) {
+    const searched = await searchPlaces(userId, anchorText || normalizedAnchor, 'en');
+    const first = (searched.places || []).find((place: any) => place.lat != null && place.lng != null) as any;
+    if (first) {
+      return {
+        source: 'external_search',
+        trip_place_id: null,
+        google_place_id: first.google_place_id || null,
+        name: first.name || anchorText || normalizedAnchor,
+        address: first.address || null,
+        lat: first.lat,
+        lng: first.lng,
+      };
+    }
+  }
+
+  return null;
 }
 
 function formatSavedNearbyDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -503,33 +720,32 @@ export async function findSavedNearbyTripPlaces(params: {
     limit = 10,
   } = params;
 
-  const anchorResult = await findNearbyPlaces({
+  const anchor = await resolveNearbyAnchor({
     tripId,
     userId,
-    query: 'places',
     anchorText,
     selectedDayId,
     selectedPlaceId,
-    limit: 1,
+    allowExternalSearch: !!getMapsKey(userId),
   });
 
-  if (!anchorResult.available || !anchorResult.anchor) {
+  if (!anchor) {
     return {
       available: false,
-      reason: anchorResult.reason,
+      reason: 'anchor_not_found',
       query,
-      anchor: anchorResult.anchor,
+      anchor: null,
       results: [],
       source: 'trip_saved',
     };
   }
 
-  const anchorLat = Number((anchorResult.anchor as any).lat);
-  const anchorLng = Number((anchorResult.anchor as any).lng);
+  const anchorLat = Number((anchor as any).lat);
+  const anchorLng = Number((anchor as any).lng);
   const allPlaces = listPlaces(String(tripId), {}) as any[];
   const results = allPlaces
     .filter((place) => place.lat != null && place.lng != null)
-    .filter((place) => Number(place.id) !== Number((anchorResult.anchor as any).trip_place_id))
+    .filter((place) => Number(place.id) !== Number((anchor as any).trip_place_id))
     .filter((place) => matchesSavedNearbyCategory(place, query))
     .map((place) => ({
       id: place.id,
@@ -548,7 +764,7 @@ export async function findSavedNearbyTripPlaces(params: {
     available: true,
     reason: null,
     query,
-    anchor: anchorResult.anchor,
+    anchor,
     results,
     source: 'trip_saved',
   };

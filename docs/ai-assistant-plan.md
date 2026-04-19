@@ -45,12 +45,15 @@ What is implemented now:
 - reservation-aware summaries including unscheduled place-linked reservations
 - live external nearby-place lookup through typed AI chat prompts, including saved-place, selected-place, selected-day, and explicit day anchors
 - nearby-search follow-ups such as `show more` and `which one is closest`
+- persisted external place enrichment for saved trip places, starting with `google_place_id` plus stable Google-derived metadata
+- deterministic saved-place detail answers for typed questions about place type, cuisine/type, rating, website, phone, and live-only operational questions such as hours / open-now
 
 What is still left:
 
 - stronger verification and regression coverage for assistant-specific flows
 - better error observability so model/provider failures are surfaced more precisely
 - broader live external lookup and recommendation flows beyond the current nearby-place search path, still invoked through typed requests in the current AI chat panel
+- deeper saved-place external enrichment coverage and refinement beyond the initial Google-backed stable fields
 - future write-capable actions with explicit confirmation flows
 
 ## Why This Shape

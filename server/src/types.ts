@@ -73,6 +73,19 @@ export interface Place {
   updated_at?: string;
 }
 
+export interface PlaceExternalData {
+  place_id: number;
+  source: string;
+  types_json?: string | null;
+  website?: string | null;
+  phone?: string | null;
+  rating?: number | null;
+  rating_count?: number | null;
+  last_synced_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Category {
   id: number;
   name: string;

@@ -112,6 +112,19 @@ function createTables(db: Database.Database): void {
       PRIMARY KEY (place_id, tag_id)
     );
 
+    CREATE TABLE IF NOT EXISTS place_external_data (
+      place_id INTEGER PRIMARY KEY REFERENCES places(id) ON DELETE CASCADE,
+      source TEXT NOT NULL DEFAULT 'google_places',
+      types_json TEXT,
+      website TEXT,
+      phone TEXT,
+      rating REAL,
+      rating_count INTEGER,
+      last_synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS day_assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,

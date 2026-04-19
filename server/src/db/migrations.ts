@@ -952,6 +952,24 @@ function runMigrations(db: Database.Database): void {
         for (const d of matchingDays) ins.run(r.id, d.id, r.day_plan_position);
       }
     },
+    // Migration 76: Persist stable external place enrichment separately from user-authored place data
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS place_external_data (
+          place_id INTEGER PRIMARY KEY REFERENCES places(id) ON DELETE CASCADE,
+          source TEXT NOT NULL DEFAULT 'google_places',
+          types_json TEXT,
+          website TEXT,
+          phone TEXT,
+          rating REAL,
+          rating_count INTEGER,
+          last_synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_place_external_data_source ON place_external_data(source);
+      `);
+    },
   ];
 
   if (currentVersion < migrations.length) {

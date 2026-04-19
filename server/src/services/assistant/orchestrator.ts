@@ -12,6 +12,7 @@ import {
   getTripPlaces,
   findNearbyPlaces,
   findSavedNearbyTripPlaces,
+  findSavedPlaceLiveDetails,
 } from './tools';
 import { completeWithLocalModel } from './provider';
 import { getDetailedWeather } from '../weatherService';
@@ -35,6 +36,7 @@ type ResolvedIntentKind =
   | 'unknown'
   | 'live_search_meta'
   | 'nearby_places'
+  | 'place_live_detail'
   | 'place_knowledge'
   | 'trip_places_full'
   | 'unplanned_places_full'
@@ -54,6 +56,7 @@ interface ResolvedIntent {
   nearbyAnchor?: string | null;
   nearbyMode?: 'default' | 'show_more' | 'closest';
   nearbySource?: 'live' | 'saved_trip';
+  placeDetailKind?: 'type' | 'cuisine' | 'rating' | 'website' | 'phone' | 'hours' | 'open_now' | null;
 }
 
 function normalizeAssistantQuery(message: string): string {
@@ -163,9 +166,26 @@ function isLiveSearchMetaRequest(message: string): boolean {
   return /\bdo you have access to google maps\b|\bdo you have access to maps\b|\bdo you have access to external\b|\byou have access to google maps\b|\bhow did you find these places\b|\bwhere did you source these external results\b|\bwhere did you source these results\b|\bhow did you source these\b|\bhow did you get these results\b|\bwhere did these external results come from\b/.test(lower);
 }
 
+function extractPlaceDetailKind(message: string): ResolvedIntent['placeDetailKind'] {
+  const lower = normalizeAssistantQuery(message);
+  if (/\bopen now\b|\bopen right now\b|\bis it open\b/.test(lower)) return 'open_now';
+  if (/\bhours\b|\bopening hours\b|\bwhat time\b|\bwhen does .* open\b|\bwhen does .* close\b/.test(lower)) return 'hours';
+  if (/\brating\b|\breview count\b|\bhow many reviews\b/.test(lower)) return 'rating';
+  if (/\bwebsite\b|\bweb site\b|\burl\b/.test(lower)) return 'website';
+  if (/\bphone\b|\bphone number\b|\btelephone\b/.test(lower)) return 'phone';
+  if (/\bwhat kind of food\b|\bwhat cuisine\b|\bcuisine\b/.test(lower)) return 'cuisine';
+  if (/\bwhat kind of place\b|\bwhat type of place\b|\bwhat is this place\b|\bwhat's this place\b|\bis this a\b/.test(lower)) return 'type';
+  return null;
+}
+
+function isSavedPlaceLiveDetailQuestion(message: string): boolean {
+  return extractPlaceDetailKind(message) !== null;
+}
+
 function inferIntentKindFromMessage(message: string, selectedDayId?: number | null): ResolvedIntentKind {
   if (isLiveSearchMetaRequest(message)) return 'live_search_meta';
   if (isNearbyPlacesRequest(message)) return 'nearby_places';
+  if (isSavedPlaceLiveDetailQuestion(message)) return 'place_live_detail';
   if (isPlaceKnowledgeQuestion(message)) return 'place_knowledge';
   if (isExplicitTripPlaceListRequest(message)) return 'trip_places_full';
   if (isExplicitUnplannedPlaceListRequest(message)) return 'unplanned_places_full';
@@ -237,6 +257,7 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
       nearbyMode,
       nearbySource,
+      placeDetailKind: extractPlaceDetailKind(input.message),
     };
   }
 
@@ -249,6 +270,7 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       nearbyAnchor: nearbyRequest.anchorText || priorNearbyRequest.anchorText || null,
       nearbyMode,
       nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : 'live',
+      placeDetailKind: extractPlaceDetailKind(input.message),
     };
   }
 
@@ -261,6 +283,7 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
       nearbyMode,
       nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : 'live',
+      placeDetailKind: extractPlaceDetailKind(input.message),
     };
   }
 
@@ -271,6 +294,7 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
     nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
     nearbyMode,
     nearbySource,
+    placeDetailKind: extractPlaceDetailKind(input.message),
   };
 }
 
@@ -772,6 +796,7 @@ function extractMentionedPlaceName(message: string, toolContext: Record<string, 
 
 function isPlaceKnowledgeQuestion(message: string): boolean {
   const lower = normalizeAssistantQuery(message);
+  if (isSavedPlaceLiveDetailQuestion(lower)) return false;
   if (isOperationalPlaceQuestion(lower)) return false;
   return /\btell me about\b|\bdescribe\b|\bwhat kind of place\b|\bwhat kind of attraction\b|\bwhat is this place\b|\bwhat's this place\b/.test(lower)
     || /^(what is|what's)\s+.+\??$/.test(lower);
@@ -814,6 +839,164 @@ function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: R
       tools_used: ['get_trip_places'],
     },
   };
+}
+
+function formatExternalTypeLabel(type: string): string {
+  return String(type || '').replace(/_/g, ' ').trim().toLowerCase();
+}
+
+function filterUsefulExternalTypes(types: string[]): string[] {
+  const ignored = new Set(['point of interest', 'establishment', 'food', 'store']);
+  return types
+    .map(formatExternalTypeLabel)
+    .filter((type) => type.length > 0 && !ignored.has(type));
+}
+
+function buildSavedPlaceLiveDetailContent(
+  detailKind: NonNullable<ResolvedIntent['placeDetailKind']>,
+  data: {
+    place: any;
+    externalData: any;
+    liveDetails: Record<string, unknown> | null;
+    usedLiveLookup: boolean;
+  },
+): string {
+  const placeName = data.place.name || 'This place';
+  const externalTypes = filterUsefulExternalTypes([
+    ...((data.liveDetails?.types as string[]) || []),
+    ...((data.externalData?.external_types as string[]) || []),
+  ]);
+  const tripCategory = data.place.category_name || null;
+  const liveLabel = data.usedLiveLookup ? 'live external lookup' : 'saved external details';
+
+  if (detailKind === 'type') {
+    const bestType = externalTypes[0] || (tripCategory ? String(tripCategory).toLowerCase() : null);
+    const lines = [`Place details for ${placeName}`];
+    if (tripCategory) lines.push(`- trip category: ${tripCategory}`);
+    if (bestType) lines.push(`- ${liveLabel} type: ${bestType}`);
+    if (!bestType) lines.push('- a more specific place type is not available right now');
+    lines.push(`- source: ${liveLabel}`);
+    return lines.join('\n');
+  }
+
+  if (detailKind === 'cuisine') {
+    const cuisineLike = externalTypes.find((type) => /\brestaurant\b|\bcafe\b|\btea\b|\bcoffee\b|\bbakery\b|\bboba\b/.test(type) && type !== 'restaurant');
+    const lines = [`Place details for ${placeName}`];
+    if (tripCategory) lines.push(`- trip category: ${tripCategory}`);
+    if (cuisineLike) lines.push(`- ${liveLabel} cuisine/type: ${cuisineLike}`);
+    else if (tripCategory) {
+      lines.push(`- trip data identifies it as: ${tripCategory}`);
+      lines.push('- a more specific cuisine label is not available from external place data right now');
+    } else lines.push('- a specific cuisine label is not available right now');
+    lines.push(`- source: ${liveLabel}`);
+    return lines.join('\n');
+  }
+
+  if (detailKind === 'rating') {
+    const rating = data.liveDetails?.rating ?? data.externalData?.rating ?? null;
+    const count = data.liveDetails?.rating_count ?? data.externalData?.rating_count ?? null;
+    if (rating == null) return `I don't have a rating for ${placeName} right now.`;
+    return [
+      `Place details for ${placeName}`,
+      `- rating: ${rating}${typeof count === 'number' ? ` (${count} reviews)` : ''}`,
+      `- source: ${liveLabel}`,
+    ].join('\n');
+  }
+
+  if (detailKind === 'website') {
+    const website = (typeof data.liveDetails?.website === 'string' && data.liveDetails.website)
+      || data.externalData?.website
+      || data.place.website
+      || null;
+    if (!website) return `I don't have a website for ${placeName} right now.`;
+    return [
+      `Place details for ${placeName}`,
+      `- website: ${website}`,
+      `- source: ${data.liveDetails?.website ? liveLabel : (data.place.website ? 'trip data' : 'saved external details')}`,
+    ].join('\n');
+  }
+
+  if (detailKind === 'phone') {
+    const phone = (typeof data.liveDetails?.phone === 'string' && data.liveDetails.phone)
+      || data.externalData?.phone
+      || data.place.phone
+      || null;
+    if (!phone) return `I don't have a phone number for ${placeName} right now.`;
+    return [
+      `Place details for ${placeName}`,
+      `- phone: ${phone}`,
+      `- source: ${data.liveDetails?.phone ? liveLabel : (data.place.phone ? 'trip data' : 'saved external details')}`,
+    ].join('\n');
+  }
+
+  if (detailKind === 'hours') {
+    const hours = Array.isArray(data.liveDetails?.opening_hours) ? (data.liveDetails.opening_hours as string[]) : [];
+    if (!hours.length) return `I don't have live opening hours for ${placeName} right now.`;
+    return [
+      `Live place details for ${placeName}`,
+      ...hours.map((line) => `- ${line}`),
+      '- source: live external lookup',
+    ].join('\n');
+  }
+
+  if (detailKind === 'open_now') {
+    const openNow = data.liveDetails?.open_now;
+    if (typeof openNow !== 'boolean') return `I don't have live open-now status for ${placeName} right now.`;
+    return [
+      `Live place details for ${placeName}`,
+      `- open now: ${openNow ? 'yes' : 'no'}`,
+      '- source: live external lookup',
+    ].join('\n');
+  }
+
+  return `I couldn't determine which place detail to answer for ${placeName}.`;
+}
+
+async function buildSavedPlaceLiveDetailResponse(
+  input: AssistantQueryInput,
+  resolvedIntent: ResolvedIntent,
+): Promise<AssistantResponse> {
+  const detailKind = resolvedIntent.placeDetailKind;
+  if (!detailKind) {
+    return makeDeterministicResponse('I could not determine which place detail you wanted.', {
+      tools_used: ['get_trip_places'],
+    });
+  }
+
+  const detail = await findSavedPlaceLiveDetails({
+    tripId: input.tripId,
+    userId: input.userId,
+    message: input.message,
+    selectedPlaceId: input.context?.selected_place_id ?? null,
+  });
+
+  if (!detail.available || !detail.place) {
+    return makeDeterministicResponse('I could not determine which saved place you meant. Try naming the place directly or selecting a place first.', {
+      warnings: ['Saved-place detail lookup needs a clear saved place.'],
+      follow_up_prompts: ['What kind of food is Four Kings?', 'What is the rating for this place?'],
+      tools_used: ['get_trip_places'],
+    });
+  }
+
+  const content = buildSavedPlaceLiveDetailContent(detailKind, {
+    place: detail.place,
+    externalData: detail.externalData,
+    liveDetails: detail.liveDetails,
+    usedLiveLookup: detail.usedLiveLookup,
+  });
+
+  const warnings: string[] = [];
+  if (!detail.place.google_place_id) warnings.push('A confident Google place match was not saved for this place yet.');
+  if ((detailKind === 'hours' || detailKind === 'open_now') && !detail.liveDetails) {
+    warnings.push('Live operational details are unavailable right now.');
+  }
+
+  return makeDeterministicResponse(content, {
+    citations: [{ type: 'place', id: detail.place.id ?? null, label: detail.place.name || 'Saved place' }],
+    warnings,
+    follow_up_prompts: ['What is the rating for this place?', 'Does this place have a website?', 'What are this place\'s hours?'],
+    tools_used: ['get_trip_places'],
+  });
 }
 
 function buildLiveSearchMetaResponse(input: AssistantQueryInput): AssistantResponse {
@@ -1350,6 +1533,9 @@ async function buildDayWeatherResponse(tripId: number, dayId: number | null, use
 export async function runAssistantQuery(input: AssistantQueryInput): Promise<AssistantResponse> {
   const resolvedIntent = resolveAssistantIntent(input);
   const tools = new Set<ToolName>(selectTools(input.message, input.context?.selected_day_id));
+  if (resolvedIntent.kind === 'place_live_detail') {
+    tools.add('get_trip_places');
+  }
   if (resolvedIntent.kind === 'place_knowledge') {
     tools.add('get_trip_places');
   }
@@ -1449,6 +1635,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'nearby_places') {
     return await buildNearbyPlacesResponse(input, resolvedIntent, selectedDayId);
   }
+  if (resolvedIntent.kind === 'place_live_detail') {
+    return await buildSavedPlaceLiveDetailResponse(input, resolvedIntent);
+  }
   const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
   if (guardedResponse) return guardedResponse;
   const prompt = buildPrompt(input, toolContext);
@@ -1493,4 +1682,3 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
     },
   };
 }
-

@@ -412,7 +412,7 @@ export async function getPlaceDetails(userId: number, placeId: string, lang?: st
     method: 'GET',
     headers: {
       'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri,reviews,editorialSummary',
+      'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,websiteUri,nationalPhoneNumber,types,regularOpeningHours,googleMapsUri,reviews,editorialSummary',
     },
   });
 
@@ -434,6 +434,7 @@ export async function getPlaceDetails(userId: number, placeId: string, lang?: st
     rating_count: data.userRatingCount || null,
     website: data.websiteUri || null,
     phone: data.nationalPhoneNumber || null,
+    types: data.types || [],
     opening_hours: data.regularOpeningHours?.weekdayDescriptions || null,
     open_now: data.regularOpeningHours?.openNow ?? null,
     google_maps_url: data.googleMapsUri || null,

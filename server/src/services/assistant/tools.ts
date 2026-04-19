@@ -6,7 +6,8 @@ import { listItems as listTodoItems } from '../todoService';
 import { calculateSettlement, getPerPersonSummary, listBudgetItems } from '../budgetService';
 import { listPlaces } from '../placeService';
 import { db } from '../../db/database';
-import { searchNearbyPlaces, searchPlaces } from '../mapsService';
+import { getPlaceDetails, searchNearbyPlaces, searchPlaces } from '../mapsService';
+import { getPlaceExternalData, persistPlaceGooglePlaceId, upsertPlaceExternalData } from '../placeExternalDataService';
 
 function toIsoDate(value: unknown): string | null {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
@@ -119,6 +120,9 @@ export function getTripPlaces(tripId: number) {
       name: place.name,
       address: place.address || null,
       category_name: place.category?.name || null,
+      google_place_id: place.google_place_id || null,
+      website: place.website || null,
+      phone: place.phone || null,
       lat: place.lat ?? null,
       lng: place.lng ?? null,
       has_coordinates: place.lat != null && place.lng != null,
@@ -313,6 +317,127 @@ function scorePlaceMatch(place: any, anchorText: string): number {
   const haystack = `${name} ${address}`.trim();
   const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
   return matchedTokens > 0 ? matchedTokens * 10 : 0;
+}
+
+function resolveSavedTripPlace(params: {
+  tripId: number;
+  message?: string | null;
+  selectedPlaceId?: number | null;
+  explicitPlaceName?: string | null;
+}) {
+  const { tripId, message, selectedPlaceId = null, explicitPlaceName = null } = params;
+  const places = listPlaces(String(tripId), {}) as any[];
+
+  if (selectedPlaceId) {
+    const selected = places.find((place) => Number(place.id) === Number(selectedPlaceId));
+    if (selected) return selected;
+  }
+
+  const candidateText = explicitPlaceName || message || '';
+  const bestSavedPlace = places
+    .map((place) => ({ place, score: scorePlaceMatch(place, candidateText) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)[0];
+
+  return bestSavedPlace?.score >= 70 ? bestSavedPlace.place : null;
+}
+
+async function resolveGooglePlaceIdForSavedPlace(userId: number, place: any): Promise<string | null> {
+  if (place?.google_place_id) return String(place.google_place_id);
+
+  const searchQuery = [place?.name, place?.address].filter(Boolean).join(' ').trim();
+  if (!searchQuery) return null;
+
+  let candidates: any[] = [];
+  try {
+    if (place?.lat != null && place?.lng != null) {
+      const nearby = await searchNearbyPlaces(userId, Number(place.lat), Number(place.lng), String(place.name || searchQuery), 5, 'en');
+      candidates = nearby.places as any[];
+    } else {
+      const searched = await searchPlaces(userId, searchQuery, 'en');
+      candidates = searched.places as any[];
+    }
+  } catch {
+    return null;
+  }
+
+  const best = candidates
+    .map((candidate) => ({ candidate, score: scorePlaceMatch(candidate, searchQuery) }))
+    .sort((a, b) => b.score - a.score)[0];
+
+  if (!best || best.score < 70 || !best.candidate?.google_place_id) return null;
+  return String(best.candidate.google_place_id);
+}
+
+export async function findSavedPlaceLiveDetails(params: {
+  tripId: number;
+  userId: number;
+  message: string;
+  selectedPlaceId?: number | null;
+  explicitPlaceName?: string | null;
+}) {
+  const { tripId, userId, message, selectedPlaceId = null, explicitPlaceName = null } = params;
+  const place = resolveSavedTripPlace({ tripId, message, selectedPlaceId, explicitPlaceName });
+
+  if (!place) {
+    return {
+      available: false,
+      reason: 'place_not_found',
+      place: null,
+      externalData: null,
+      liveDetails: null,
+      usedLiveLookup: false,
+    };
+  }
+
+  const externalData = getPlaceExternalData(Number(place.id));
+  let googlePlaceId = place.google_place_id ? String(place.google_place_id) : null;
+  let liveDetails: Record<string, unknown> | null = null;
+  let usedLiveLookup = false;
+
+  if (!googlePlaceId) {
+    googlePlaceId = await resolveGooglePlaceIdForSavedPlace(userId, place);
+    if (googlePlaceId) {
+      persistPlaceGooglePlaceId(Number(place.id), googlePlaceId);
+    }
+  }
+
+  if (googlePlaceId) {
+    try {
+      const details = await getPlaceDetails(userId, googlePlaceId, 'en');
+      liveDetails = details.place as Record<string, unknown>;
+      usedLiveLookup = true;
+
+      upsertPlaceExternalData(Number(place.id), {
+        source: 'google_places',
+        external_types: Array.isArray(liveDetails.types) ? (liveDetails.types as string[]) : [],
+        website: typeof liveDetails.website === 'string' ? liveDetails.website : null,
+        phone: typeof liveDetails.phone === 'string' ? liveDetails.phone : null,
+        rating: typeof liveDetails.rating === 'number' ? liveDetails.rating : null,
+        rating_count: typeof liveDetails.rating_count === 'number' ? liveDetails.rating_count : null,
+      });
+    } catch {
+      liveDetails = null;
+    }
+  }
+
+  const refreshedExternalData = getPlaceExternalData(Number(place.id));
+  return {
+    available: true,
+    reason: googlePlaceId ? null : 'google_place_not_resolved',
+    place: {
+      id: place.id,
+      name: place.name || 'Unknown place',
+      address: place.address || null,
+      category_name: place.category?.name || null,
+      website: place.website || null,
+      phone: place.phone || null,
+      google_place_id: googlePlaceId || null,
+    },
+    externalData: refreshedExternalData,
+    liveDetails,
+    usedLiveLookup,
+  };
 }
 
 export async function findNearbyPlaces(params: {

@@ -37,6 +37,7 @@ type ResolvedIntentKind =
   | 'unknown'
   | 'live_search_meta'
   | 'nearby_places'
+  | 'place_comparison'
   | 'place_live_detail'
   | 'stay_detail'
   | 'subject_location'
@@ -182,6 +183,30 @@ function isLiveSearchMetaRequest(message: string): boolean {
   return /\bdo you have access to google maps\b|\bdo you have access to maps\b|\bdo you have access to external\b|\byou have access to google maps\b|\bhow did you find these places\b|\bwhere did you source these external results\b|\bwhere did you source these results\b|\bhow did you source these\b|\bhow did you get these results\b|\bwhere did these external results come from\b/.test(lower);
 }
 
+function isExplicitPlaceComparisonRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bhow close is\b.+\b(?:to|from)\b.+/.test(lower)
+    || /\bhow far is\b.+\b(?:to|from)\b.+/.test(lower)
+    || /\bwhat(?:'s| is) the distance\b.+\b(?:from|between)\b.+/.test(lower)
+    || /\bhow long\b.+\bto\b.+/.test(lower)
+    || /\bhow close is it\b.+\b(?:to|from)\b.+/.test(lower)
+    || /\bhow far is it\b.+\b(?:to|from)\b.+/.test(lower);
+}
+
+function isComparisonTravelModeFollowUp(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /^(?:how about|what about|and)\s+(?:walking|driving|public transit|transit)\b/.test(lower)
+    || /^(?:walking|driving|public transit|transit)$/.test(lower);
+}
+
+function isComparisonPlaceFollowUp(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /^(?:how about|what about|and)\s+(?:to\s+)?[^?]+$/.test(lower)
+    && !isComparisonTravelModeFollowUp(lower)
+    && !isCategoryPlaceListRequest(lower)
+    && !isSavedPlaceLiveDetailQuestion(lower);
+}
+
 function extractPlaceDetailKind(message: string): ResolvedIntent['placeDetailKind'] {
   const lower = normalizeAssistantQuery(message);
   if (/\bopen now\b|\bopen right now\b|\bis it open\b/.test(lower)) return 'open_now';
@@ -221,6 +246,7 @@ function isSavedPlaceLiveDetailQuestion(message: string): boolean {
 function inferIntentKindFromMessage(message: string, selectedDayId?: number | null): ResolvedIntentKind {
   if (isLiveSearchMetaRequest(message)) return 'live_search_meta';
   if (isNearbyPlacesRequest(message)) return 'nearby_places';
+  if (isExplicitPlaceComparisonRequest(message)) return 'place_comparison';
   if (isSavedPlaceLiveDetailQuestion(message)) return 'place_live_detail';
   if (isStayDetailRequest(message)) return 'stay_detail';
   if (isSubjectLocationRequest(message)) return 'subject_location';
@@ -321,6 +347,19 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
   }
 
   const normalized = normalizeAssistantQuery(input.message);
+  const hasActiveComparison = conversationState.activeComparisonOriginPlaceId != null && conversationState.activeComparisonDestinationPlaceId != null;
+  if (hasActiveComparison && (isComparisonTravelModeFollowUp(input.message) || isComparisonPlaceFollowUp(input.message))) {
+    return {
+      kind: 'place_comparison',
+      dayNumber,
+      nearbyQuery: nearbyRequest?.query || null,
+      nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+      nearbyMode,
+      nearbySource,
+      placeDetailKind: directPlaceDetailKind,
+      placeCategoryScope: conversationState.activePlaceCategoryScope,
+    };
+  }
   if (isCategoryPlaceListRequest(input.message) && conversationState.activePlaceCategoryScope) {
     return {
       kind: 'trip_places_filtered',
@@ -1775,6 +1814,93 @@ function formatDistanceMiles(distanceMeters: number | null | undefined): string 
   return `${roundTo(distanceMeters * 0.000621371, 1)} mi`;
 }
 
+function formatDistanceKm(distanceMeters: number | null | undefined): string | null {
+  if (distanceMeters == null || !Number.isFinite(distanceMeters)) return null;
+  return `${roundTo(distanceMeters / 1000, 1)} km`;
+}
+
+function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(earthRadiusMeters * c);
+}
+
+function estimateTravelMinutes(distanceKm: number, mode: 'walking' | 'driving' | 'transit'): number {
+  if (mode === 'walking') return Math.max(1, Math.round((distanceKm / 4.8) * 60));
+  if (mode === 'driving') return Math.max(2, Math.round((distanceKm / 22) * 60 + 1));
+  return Math.max(8, Math.round((distanceKm / 16) * 60 + 8));
+}
+
+function formatTravelModeLabel(mode: 'walking' | 'driving' | 'transit'): string {
+  if (mode === 'walking') return 'walking';
+  if (mode === 'driving') return 'driving';
+  return 'public transit';
+}
+
+function buildPlaceComparisonResponse(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse {
+  const conversationState = deriveAssistantConversationState(input);
+  const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{
+    id?: number;
+    name?: string;
+    address?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+  }>;
+
+  const origin = places.find((place) => Number(place.id) === Number(conversationState.activeComparisonOriginPlaceId)) || null;
+  const destination = places.find((place) => Number(place.id) === Number(conversationState.activeComparisonDestinationPlaceId)) || null;
+  if (!origin || !destination) {
+    return makeDeterministicResponse('I could not determine which two saved places to compare. Name both places directly or ask a comparison after a prior comparison is established.', {
+      follow_up_prompts: ['How close is Club Quarters to Four Kings?', 'How far is Antithesis SF office from Four Kings?'],
+      tools_used: ['get_trip_places'],
+    });
+  }
+  if (origin.lat == null || origin.lng == null || destination.lat == null || destination.lng == null) {
+    return makeDeterministicResponse(`I can't compare ${origin.name || 'the first place'} and ${destination.name || 'the second place'} because one of them is missing saved coordinates.`, {
+      missing_data: ['Both saved places need coordinates for deterministic distance comparison.'],
+      follow_up_prompts: ['Where is it?', 'Show all places'],
+      tools_used: ['get_trip_places'],
+    });
+  }
+
+  const distanceMeters = haversineDistanceMeters(Number(origin.lat), Number(origin.lng), Number(destination.lat), Number(destination.lng));
+  const distanceKm = distanceMeters / 1000;
+  const distanceKmText = formatDistanceKm(distanceMeters);
+  const distanceMilesText = formatDistanceMiles(distanceMeters);
+  const mode = conversationState.activeComparisonTravelMode;
+  const comparisonType = conversationState.activeComparisonType || (mode ? 'travel_time' : 'distance');
+  const lines = [`Comparison: ${origin.name || 'Origin'} to ${destination.name || 'Destination'}`];
+  if (distanceKmText || distanceMilesText) {
+    const combinedDistance = [distanceKmText, distanceMilesText].filter(Boolean).join(' / ');
+    lines.push(`- distance: ${combinedDistance}`);
+  }
+
+  if (comparisonType === 'travel_time' || mode) {
+    const activeMode = mode || 'walking';
+    const minutes = estimateTravelMinutes(distanceKm, activeMode);
+    lines.push(`- estimated ${formatTravelModeLabel(activeMode)} time: ${minutes} minutes`);
+  } else {
+    const walkingMinutes = estimateTravelMinutes(distanceKm, 'walking');
+    lines.push(`- estimated walking time: ${walkingMinutes} minutes`);
+  }
+
+  lines.push('- note: travel times are rough estimates from saved coordinates, not live routing.');
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    citations: [
+      { type: 'place', id: origin.id ?? null, label: origin.name || 'Origin' },
+      { type: 'place', id: destination.id ?? null, label: destination.name || 'Destination' },
+    ],
+    follow_up_prompts: ['How about driving?', 'And public transit?', 'How about to the Antithesis SF office?'],
+    tools_used: ['get_trip_places'],
+  });
+}
+
 async function buildNearbyPlacesResponse(input: AssistantQueryInput, resolvedIntent: ResolvedIntent, resolvedDayId: number | null): Promise<AssistantResponse> {
   const search = resolvedIntent.nearbySource === 'saved_trip'
     ? await findSavedNearbyTripPlaces({
@@ -2018,6 +2144,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'place_live_detail') {
     tools.add('get_trip_places');
   }
+  if (resolvedIntent.kind === 'place_comparison') {
+    tools.add('get_trip_places');
+  }
   if (resolvedIntent.kind === 'stay_detail') {
     tools.add('get_trip_places');
     tools.add('get_reservations_summary');
@@ -2153,6 +2282,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   }
   if (resolvedIntent.kind === 'nearby_places') {
     return await buildNearbyPlacesResponse(input, resolvedIntent, selectedDayId);
+  }
+  if (resolvedIntent.kind === 'place_comparison') {
+    return buildPlaceComparisonResponse(input, toolContext);
   }
   if (resolvedIntent.kind === 'place_live_detail') {
     return await buildSavedPlaceLiveDetailResponse(input, resolvedIntent);

@@ -14,6 +14,9 @@ export type PlaceCategoryScope =
   | 'activity'
   | 'other';
 
+export type ComparisonTravelMode = 'walking' | 'driving' | 'transit';
+export type ComparisonType = 'distance' | 'travel_time';
+
 export interface AssistantConversationState {
   previousPlaceId: number | null;
   previousPlaceName: string | null;
@@ -28,6 +31,12 @@ export interface AssistantConversationState {
   activeReservationId: number | null;
   activeReservationLabel: string | null;
   activeStayReservationId: number | null;
+  activeComparisonOriginPlaceId: number | null;
+  activeComparisonOriginPlaceName: string | null;
+  activeComparisonDestinationPlaceId: number | null;
+  activeComparisonDestinationPlaceName: string | null;
+  activeComparisonTravelMode: ComparisonTravelMode | null;
+  activeComparisonType: ComparisonType | null;
   activeSubjectKind: 'place' | 'reservation' | 'stay' | 'day' | 'result_set' | null;
   activeResultSetKind: 'trip_places_filtered' | 'trip_places_full' | 'unplanned_places' | null;
   activeResultSetPlaceIds: number[];
@@ -239,6 +248,174 @@ function resolveReservationFromState(
   };
 }
 
+interface ParsedComparisonRequest {
+  originText: string | null;
+  destinationText: string | null;
+  travelMode: ComparisonTravelMode | null;
+  comparisonType: ComparisonType | null;
+}
+
+interface DerivedComparisonState {
+  originPlaceId: number | null;
+  originPlaceName: string | null;
+  destinationPlaceId: number | null;
+  destinationPlaceName: string | null;
+  travelMode: ComparisonTravelMode | null;
+  comparisonType: ComparisonType | null;
+}
+
+function extractComparisonTravelMode(message: string): ComparisonTravelMode | null {
+  const lower = normalizeConversationQuery(message);
+  if (/\bwalk\b|\bwalking\b|\bon foot\b/.test(lower)) return 'walking';
+  if (/\bdrive\b|\bdriving\b|\bcar\b/.test(lower)) return 'driving';
+  if (/\bpublic transit\b|\btransit\b|\bbus\b|\btrain\b|\bsubway\b|\bmetro\b/.test(lower)) return 'transit';
+  return null;
+}
+
+function extractComparisonType(message: string): ComparisonType | null {
+  const lower = normalizeConversationQuery(message);
+  if (/\bhow long\b|\btravel time\b|\bminutes\b|\bminute\b|\bhours\b|\bhour\b/.test(lower)) return 'travel_time';
+  if (/\bhow close\b|\bhow far\b|\bdistance\b|\bclose is\b|\bfar is\b/.test(lower)) return 'distance';
+  return null;
+}
+
+function parseExplicitComparisonRequest(message: string): ParsedComparisonRequest | null {
+  const lower = normalizeConversationQuery(message);
+  const travelMode = extractComparisonTravelMode(lower);
+  const comparisonType = extractComparisonType(lower) || (travelMode ? 'travel_time' : null);
+  const patterns: Array<{ regex: RegExp; originIndex: number; destinationIndex: number }> = [
+    { regex: /^(?:how close|how far)\s+is\s+(.+?)\s+(?:to|from)\s+(.+)$/, originIndex: 1, destinationIndex: 2 },
+    { regex: /^(?:what is|what's)\s+the\s+distance\s+(?:from|between)\s+(.+?)\s+(?:to|and)\s+(.+)$/, originIndex: 1, destinationIndex: 2 },
+    { regex: /^(?:how long(?: would it take)?(?: to)?(?: walk| drive| get)?)\s+(?:from\s+)?(.+?)\s+(?:to)\s+(.+)$/, originIndex: 1, destinationIndex: 2 },
+    { regex: /^(?:what is|what's)\s+the\s+(?:walking|driving|transit)\s+time\s+(?:from\s+)?(.+?)\s+(?:to)\s+(.+)$/, originIndex: 1, destinationIndex: 2 },
+    { regex: /^(?:where is|show me)?\s*distance\s+from\s+(.+?)\s+to\s+(.+)$/, originIndex: 1, destinationIndex: 2 },
+    { regex: /^(?:how close|how far)\s+is\s+it\s+(?:to|from)\s+(.+)$/, originIndex: 0, destinationIndex: 1 },
+    { regex: /^(?:how long(?: would it take)?(?: to)?(?: walk| drive| get)?)\s+to\s+(.+)$/, originIndex: 0, destinationIndex: 1 },
+  ];
+
+  for (const pattern of patterns) {
+    const match = lower.match(pattern.regex);
+    if (!match) continue;
+    return {
+      originText: pattern.originIndex > 0 ? match[pattern.originIndex].trim() : null,
+      destinationText: match[pattern.destinationIndex]?.trim() || null,
+      travelMode,
+      comparisonType,
+    };
+  }
+
+  return null;
+}
+
+function parseComparisonFollowUp(message: string): { placeText?: string; side?: 'origin' | 'destination'; travelMode?: ComparisonTravelMode; comparisonType?: ComparisonType } | null {
+  const lower = normalizeConversationQuery(message);
+  const travelMode = extractComparisonTravelMode(lower);
+  const comparisonType = extractComparisonType(lower) || (travelMode ? 'travel_time' : null);
+  const toMatch = lower.match(/^(?:how about|what about|and)\s+(?:to\s+)?(.+)$/);
+  if (toMatch?.[1]) {
+    const candidate = toMatch[1].trim();
+    if (!candidate) return travelMode || comparisonType ? { travelMode: travelMode || undefined, comparisonType: comparisonType || undefined } : null;
+    if (!extractComparisonTravelMode(candidate) && !/^(walking|driving|public transit|transit)$/.test(candidate)) {
+      return {
+        placeText: candidate,
+        side: /\bto\b/.test(lower) ? 'destination' : 'origin',
+        travelMode: travelMode || undefined,
+        comparisonType: comparisonType || undefined,
+      };
+    }
+  }
+
+  if (travelMode || comparisonType) {
+    return {
+      travelMode: travelMode || undefined,
+      comparisonType: comparisonType || undefined,
+    };
+  }
+
+  return null;
+}
+
+function resolvePlaceTextToPlace(
+  tripId: number,
+  text: string | null | undefined,
+  selectedPlaceId: number | null,
+  history?: AssistantQueryInput['history'],
+): any | null {
+  if (!text) return null;
+  return resolveSavedTripPlace({
+    tripId,
+    message: null,
+    selectedPlaceId,
+    explicitPlaceName: text,
+    history,
+  }) as any;
+}
+
+function deriveComparisonState(
+  input: AssistantQueryInput,
+  currentResolvedPlace: any | null,
+  priorResolvedPlace: any | null,
+): DerivedComparisonState {
+  const entries = [...(input.history || [])].filter((entry) => entry.role === 'user');
+  let state: DerivedComparisonState = {
+    originPlaceId: null,
+    originPlaceName: null,
+    destinationPlaceId: null,
+    destinationPlaceName: null,
+    travelMode: null,
+    comparisonType: null,
+  };
+
+  const applyMessage = (message: string, allowPlaceFallback: boolean) => {
+    const explicit = parseExplicitComparisonRequest(message);
+    if (explicit) {
+      const fallbackPlace = allowPlaceFallback ? (priorResolvedPlace || currentResolvedPlace) : null;
+      const originPlace = explicit.originText
+        ? resolvePlaceTextToPlace(input.tripId, explicit.originText, input.context?.selected_place_id ?? null, input.history)
+        : (fallbackPlace || (state.originPlaceId != null
+          ? { id: state.originPlaceId, name: state.originPlaceName }
+          : null));
+      const destinationPlace = explicit.destinationText
+        ? resolvePlaceTextToPlace(input.tripId, explicit.destinationText, input.context?.selected_place_id ?? null, input.history)
+        : (state.destinationPlaceId != null ? { id: state.destinationPlaceId, name: state.destinationPlaceName } : null);
+
+      state = {
+        originPlaceId: originPlace?.id != null ? Number(originPlace.id) : state.originPlaceId,
+        originPlaceName: originPlace?.name ? String(originPlace.name) : state.originPlaceName,
+        destinationPlaceId: destinationPlace?.id != null ? Number(destinationPlace.id) : state.destinationPlaceId,
+        destinationPlaceName: destinationPlace?.name ? String(destinationPlace.name) : state.destinationPlaceName,
+        travelMode: explicit.travelMode || state.travelMode,
+        comparisonType: explicit.comparisonType || state.comparisonType || 'distance',
+      };
+      return;
+    }
+
+    const followUp = parseComparisonFollowUp(message);
+    if (!followUp) return;
+    const referencedPlace = followUp.placeText
+      ? resolvePlaceTextToPlace(input.tripId, followUp.placeText, input.context?.selected_place_id ?? null, input.history)
+      : null;
+    if (referencedPlace) {
+      if (followUp.side === 'destination') {
+        state.destinationPlaceId = Number(referencedPlace.id);
+        state.destinationPlaceName = String(referencedPlace.name || '');
+      } else {
+        state.originPlaceId = Number(referencedPlace.id);
+        state.originPlaceName = String(referencedPlace.name || '');
+      }
+    }
+    if (followUp.travelMode) state.travelMode = followUp.travelMode;
+    if (followUp.comparisonType) state.comparisonType = followUp.comparisonType;
+  };
+
+  for (const entry of entries) {
+    applyMessage(entry.content, false);
+  }
+  applyMessage(input.message, true);
+
+  return state;
+}
+
 export function deriveAssistantConversationState(
   input: AssistantQueryInput,
 ): AssistantConversationState {
@@ -281,6 +458,7 @@ export function deriveAssistantConversationState(
     resolvedPlace?.id != null ? Number(resolvedPlace.id) : null,
     resolvedPlace?.name ? String(resolvedPlace.name) : null,
   );
+  const comparisonState = deriveComparisonState(input, resolvedPlace, priorResolvedPlace);
   const categoryFromResolvedPlace = mapPlaceCategoryToScope(resolvedPlace?.category?.name || resolvedPlace?.category_name || null);
   const categoryFromMessage = extractPlaceCategoryScope(input.message);
   const categoryFromHistory = inferCategoryScopeFromHistory(input.history);
@@ -305,6 +483,12 @@ export function deriveAssistantConversationState(
     activeReservationId: reservationState.reservationId,
     activeReservationLabel: reservationState.reservationLabel,
     activeStayReservationId: reservationState.stayReservationId,
+    activeComparisonOriginPlaceId: comparisonState.originPlaceId,
+    activeComparisonOriginPlaceName: comparisonState.originPlaceName,
+    activeComparisonDestinationPlaceId: comparisonState.destinationPlaceId,
+    activeComparisonDestinationPlaceName: comparisonState.destinationPlaceName,
+    activeComparisonTravelMode: comparisonState.travelMode,
+    activeComparisonType: comparisonState.comparisonType,
     activeSubjectKind,
     activeResultSetKind: resultSet.kind,
     activeResultSetPlaceIds: resultSet.placeIds,

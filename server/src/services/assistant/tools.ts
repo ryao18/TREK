@@ -294,6 +294,13 @@ function normalizeForAssistantLookup(value: unknown): string {
     .trim();
 }
 
+function simplifyForFuzzyLookup(value: string): string {
+  return normalizeForAssistantLookup(value)
+    .replace(/(.)\1+/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isGenericAnchorReference(anchorText: string | null | undefined): boolean {
   const normalized = normalizeForAssistantLookup(anchorText);
   return !normalized
@@ -330,12 +337,22 @@ function levenshteinDistance(a: string, b: string): number {
 
 function fuzzyScore(text: string, query: string): number {
   if (!text || !query) return 0;
-  const distance = levenshteinDistance(text, query);
-  const maxLength = Math.max(text.length, query.length);
-  if (maxLength === 0) return 0;
-  const similarity = 1 - distance / maxLength;
-  if (similarity < 0.72) return 0;
-  return Math.round(similarity * 80);
+  const variants: Array<[string, string]> = [
+    [text, query],
+    [simplifyForFuzzyLookup(text), simplifyForFuzzyLookup(query)],
+  ];
+  let best = 0;
+  for (const [left, right] of variants) {
+    if (!left || !right) continue;
+    const distance = levenshteinDistance(left, right);
+    const maxLength = Math.max(left.length, right.length);
+    if (maxLength === 0) continue;
+    const similarity = 1 - distance / maxLength;
+    if (similarity >= 0.68) {
+      best = Math.max(best, Math.round(similarity * 85));
+    }
+  }
+  return best;
 }
 
 function scorePlaceMatch(place: any, anchorText: string): number {

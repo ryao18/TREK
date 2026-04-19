@@ -173,7 +173,7 @@ function extractPlaceDetailKind(message: string): ResolvedIntent['placeDetailKin
   if (/\brating\b|\breview count\b|\bhow many reviews\b/.test(lower)) return 'rating';
   if (/\bwebsite\b|\bweb site\b|\burl\b/.test(lower)) return 'website';
   if (/\bphone\b|\bphone number\b|\btelephone\b/.test(lower)) return 'phone';
-  if (/\bwhat kind of food\b|\bwhat cuisine\b|\bcuisine\b/.test(lower)) return 'cuisine';
+  if (/\bwhat kind of(?:\s+of)*\s+food\b|\bwhat cuisine\b|\bcuisine\b/.test(lower)) return 'cuisine';
   if (/\bwhat kind of place\b|\bwhat type of place\b|\bwhat is this place\b|\bwhat's this place\b|\bis this a\b/.test(lower)) return 'type';
   return null;
 }
@@ -651,8 +651,10 @@ function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unk
 
   const systemPrompt = [
     'You are TREK, a read-only trip assistant.',
-    'Answer only from the provided TREK trip data.',
+    'Answer from the provided TREK trip data by default.',
+    'When TREK provides live external place data or saved external enrichment through its tools, you may use it, but clearly identify it as external data rather than saved trip data.',
     'Do not invent reservations, participants, dates, or costs.',
+    'Do not invent external place details such as cuisine, hours, ratings, websites, or phone numbers.',
     'State when data is missing or incomplete.',
     'Keep answers concise and practical in plain text.',
     'Prefer short plain bullet lists or short paragraphs.',

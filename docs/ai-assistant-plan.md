@@ -22,10 +22,36 @@ This means the first milestone is not just server tooling. The first shipped exp
 
 Current implementation status:
 
-- the Phase 1 vertical slice is now underway
-- the first implementation target is panel shell + endpoint contract + local-provider server path
-- the first version should prove the interaction model before deeper tool coverage or write-ready confirmations
-- place-specific general-knowledge questions should only be answered from stored TREK data; if TREK only knows that a place exists in the trip, the assistant should say it lacks trusted descriptive information instead of inventing travel facts
+- the original Phase 1 vertical slice is implemented
+- the assistant is still read-only and local-model-first
+- the panel shell, endpoint contract, provider path, and planner integration are all in place
+- assistant capabilities are intended to be used from the existing AI chat panel via typed prompts, not via separate assistant-specific UI entry points
+- several high-frequency question types now bypass the LLM and are answered deterministically from TREK data
+- place-specific general-knowledge questions are still intentionally constrained unless TREK has stored data or we later add explicit live maps/search tools
+
+What is implemented now:
+
+- trip-scoped assistant endpoint at `POST /api/trips/:tripId/assistant/query`
+- local OpenAI-compatible provider path for LM Studio style backends
+- planner-integrated chat panel with `closed`, `open`, and `minimized` states
+- per-trip session persistence for panel state and recent messages
+- quick prompts, follow-up prompts, citations, warnings, and missing-data surfaces
+- short bounded history window with prompt-side alignment
+- plain-text response style rules instead of markdown-heavy formatting
+- centralized query normalization for common typo variants
+- intent resolution for follow-up queries like `how about day 1`
+- deterministic handlers for common structured queries
+- deterministic day weather lookup with unit conversion from user settings
+- reservation-aware summaries including unscheduled place-linked reservations
+- live external nearby-place lookup through typed AI chat prompts, including saved-place, selected-place, selected-day, and explicit day anchors
+- nearby-search follow-ups such as `show more` and `which one is closest`
+
+What is still left:
+
+- stronger verification and regression coverage for assistant-specific flows
+- better error observability so model/provider failures are surfaced more precisely
+- broader live external lookup and recommendation flows beyond the current nearby-place search path, still invoked through typed requests in the current AI chat panel
+- future write-capable actions with explicit confirmation flows
 
 ## Why This Shape
 
@@ -774,9 +800,9 @@ Likely next blockers once implementation starts:
 
 ## Implementation Progress Log
 
-### In Progress
+### Implemented
 
-The current vertical slice implementation includes:
+The current implementation includes:
 
 - trip-scoped assistant endpoint at `POST /api/trips/:tripId/assistant/query`
 - assistant service files under `server/src/services/assistant`
@@ -789,6 +815,32 @@ The current vertical slice implementation includes:
 - enter-to-send and shift-enter newline handling
 - reopen-to-bottom chat scrolling
 - open / minimize / close behavior aligned to the final Phase 1 chat UX
+- automatic minimize behavior when planner overlays would cover the assistant
+
+Implemented deterministic assistant behaviors:
+
+- `Summarize this trip`
+- `What still needs planning?`
+- `Which places are still unplanned?`
+- full-list unplanned-place queries like `list all unplanned places`
+- `Who still needs to pack?`
+- `Summarize our budget`
+- reservation status / reservation summary questions
+- open to-do queries
+- `Which day is the busiest?`
+- day-plan queries like `what's planned for day 3`
+- day-weather queries like `weather on day 6`
+
+Implemented assistant reliability improvements:
+
+- plain-text response rules for remaining LLM-backed answers
+- no markdown emphasis / headings / tables by default
+- centralized `normalizeAssistantQuery()` handling common typos
+- `resolveAssistantIntent()` for follow-up reuse of recent intent
+- history cap alignment across the route and prompt builder
+- unit-aware weather formatting for Fahrenheit / US-friendly output
+- better handling when a day has no assigned place but weather uses fallback coordinates
+- fixes for deterministic response correctness around to-dos, packing, and explicit day selection
 
 ### Current Constraints Encountered
 
@@ -806,6 +858,17 @@ The remaining gap is verification/signoff rather than missing product behavior:
 
 - targeted validation once the workspace toolchain can build/typecheck cleanly
 - any final refinement needed after local-model use against real trips
+
+### Still Planned
+
+The following items are still intentionally not implemented:
+
+- hosted provider adapters such as OpenAI, Anthropic, Gemini, or Perplexity
+- assistant write actions, previews, and confirmation flows
+- internet-backed assistant tools for live search or recommendations
+- generalized external place lookup such as Google Maps / Places queries near a saved place
+- conversation compaction or summarization beyond the current short bounded history window
+- broader automated test coverage dedicated to assistant orchestration and UI flows
 
 ## Risks
 

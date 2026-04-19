@@ -153,6 +153,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
   }
   const { leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight } = useResizablePanels()
   const { selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment } = usePlaceSelection()
+  const [assistantPanelState, setAssistantPanelState] = useState<'closed' | 'open' | 'minimized'>('closed')
   const [showDayDetail, setShowDayDetail] = useState<Day | null>(null)
   const [showPlaceForm, setShowPlaceForm] = useState<boolean>(false)
   const [editingPlace, setEditingPlace] = useState<Place | null>(null)
@@ -629,6 +630,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
             selectedAssignmentId={selectedAssignmentId}
             activeTab={activeTab}
             hasBlockingOverlay={!!showDayDetail || !!selectedPlace}
+            onPanelStateChange={setAssistantPanelState}
           />
         )}
 
@@ -777,7 +779,7 @@ export default function TripPlannerPage(): React.ReactElement | null {
             </div>
 
             {/* Mobile sidebar buttons — portal to body to escape Leaflet touch handling */}
-            {activeTab === 'plan' && !mobileSidebarOpen && !showPlaceForm && !showMembersModal && !showReservationModal && ReactDOM.createPortal(
+            {activeTab === 'plan' && assistantPanelState === 'closed' && !mobileSidebarOpen && !showPlaceForm && !showMembersModal && !showReservationModal && ReactDOM.createPortal(
               <div className="flex md:hidden" style={{ position: 'fixed', top: 'calc(var(--nav-h) + 44px + 12px)', left: 12, right: 12, justifyContent: 'space-between', zIndex: 100, pointerEvents: 'none' }}>
                 <button onClick={() => setMobileSidebarOpen('left')}
                   style={{ pointerEvents: 'auto', background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(12px)', border: '1px solid var(--border-primary)', borderRadius: 24, padding: '11px 24px', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 12px rgba(0,0,0,0.15)', minHeight: 44, fontFamily: 'inherit', touchAction: 'manipulation' }}>

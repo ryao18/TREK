@@ -84,6 +84,27 @@
 - **Auto-Backups** — Scheduled backups with configurable interval and retention
 - **Customizable** — Temperature units, time format (12h/24h), map tile sources, default coordinates
 
+## AI Assistant Status
+
+TREK includes a trip-scoped, read-only AI assistant in the planner.
+
+Current status:
+
+- local-model-first via an OpenAI-compatible backend such as LM Studio
+- planner-integrated chat panel with open / minimize / close states
+- deterministic answers for high-frequency trip questions such as planning status, packing status, budget summary, reservation summary, day plans, busiest day, unplanned places, and day weather
+- remaining freeform replies are constrained to plain-text, grounded trip-data answers
+- assistant capabilities are accessed through the existing AI chat panel by typing requests there, not through separate assistant controls
+- live nearby place lookup is available through typed chat prompts for places near a saved place or day, including follow-ups such as `show more` and `which one is closest`
+
+Still planned:
+
+- internet-backed assistant tools for live search and recommendations through typed chat requests
+- broader generalized external lookup and recommendation flows beyond the current nearby-place search path, still triggered from the current AI chat panel
+- future write-capable assistant actions with explicit confirmation
+
+See [docs/ai-assistant-plan.md](docs/ai-assistant-plan.md) for the current implementation status, completed work, and remaining roadmap.
+
 ## Tech Stack
 
 - **Backend**: Node.js 22 + Express + SQLite (`better-sqlite3`)

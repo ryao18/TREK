@@ -36,6 +36,12 @@ router.post('/query', authenticate, async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     const messageText = err instanceof Error ? err.message : 'Assistant query failed';
+    console.error('[assistant] route error', {
+      tripId,
+      userId: authReq.user.id,
+      error: messageText,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     const status = /not configured/i.test(messageText) ? 503 : 502;
     res.status(status).json({ error: messageText });
   }

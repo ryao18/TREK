@@ -10,10 +10,13 @@ import {
   getTripMembersSummary,
   getTripOverview,
   getTripPlaces,
+  findNearbyPlaces,
+  findSavedNearbyTripPlaces,
 } from './tools';
 import { completeWithLocalModel } from './provider';
 import { getDetailedWeather } from '../weatherService';
 import { getUserSettings } from '../settingsService';
+import { getMapsKey } from '../mapsService';
 
 type ToolName =
   | 'get_trip_overview'
@@ -25,11 +28,15 @@ type ToolName =
   | 'get_budget_summary'
   | 'get_packing_summary'
   | 'get_todo_summary'
-  | 'get_trip_members';
+  | 'get_trip_members'
+  | 'find_nearby_places';
 
 type ResolvedIntentKind =
   | 'unknown'
+  | 'live_search_meta'
+  | 'nearby_places'
   | 'place_knowledge'
+  | 'trip_places_full'
   | 'unplanned_places_full'
   | 'planning_status'
   | 'packing_status'
@@ -43,6 +50,10 @@ type ResolvedIntentKind =
 interface ResolvedIntent {
   kind: ResolvedIntentKind;
   dayNumber: number | null;
+  nearbyQuery?: string | null;
+  nearbyAnchor?: string | null;
+  nearbyMode?: 'default' | 'show_more' | 'closest';
+  nearbySource?: 'live' | 'saved_trip';
 }
 
 function normalizeAssistantQuery(message: string): string {
@@ -78,8 +89,85 @@ function isGenericFollowUpQuery(message: string): boolean {
     || /^selected day$/.test(lower);
 }
 
+function isNearbyShowMoreQuery(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /^more$/.test(lower)
+    || /^show more$/.test(lower)
+    || /^show me more$/.test(lower)
+    || /^show more results$/.test(lower)
+    || /^list more$/.test(lower)
+    || /^show more nearby places$/.test(lower);
+}
+
+function isNearbyClosestQuery(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwhich one is closest\b|\bwhich is closest\b|\bwhat is closest\b|\bclosest one\b|\bclosest result\b|\bnearest one\b|\bwhich one is nearest\b/.test(lower);
+}
+
+function normalizeNearbyQuery(query: string): string {
+  const normalized = normalizeAssistantQuery(query)
+    .replace(/^(show|find|list|what about|how about|show me|some)\s+/g, '')
+    .trim();
+
+  if (/\bplaces to visit\b|\bthings to do\b|\bplaces to see\b/.test(normalized)) return 'attractions';
+  if (/^visit$/.test(normalized)) return 'attractions';
+  return normalized;
+}
+
+function isSavedNearbyRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bsaved\b|\btrip\b|\btrek\b/.test(lower);
+}
+
+function parseNearbyClosestRequest(message: string): { query: string; anchorText: string | null } | null {
+  const lower = normalizeAssistantQuery(message);
+  const explicitAnchor = lower.match(/^(?:where is|what is|show me)?\s*the\s+(?:closest|nearest)\s+(.+?)\s+(?:to|near)\s+(.+)$/);
+  if (explicitAnchor) {
+    return {
+      query: normalizeNearbyQuery(explicitAnchor[1]),
+      anchorText: explicitAnchor[2].trim(),
+    };
+  }
+
+  const relativeTo = lower.match(/^(?:where is|what is|show me)?\s*closest\s+(.+?)\s+(?:to|near)\s+(.+)$/);
+  if (relativeTo) {
+    return {
+      query: normalizeNearbyQuery(relativeTo[1]),
+      anchorText: relativeTo[2].trim(),
+    };
+  }
+
+  const followUp = lower.match(/^(?:where is|what is|show me)?\s*the\s+(?:closest|nearest)\s+(.+)$/);
+  if (followUp) {
+    return {
+      query: normalizeNearbyQuery(followUp[1]),
+      anchorText: null,
+    };
+  }
+
+  return null;
+}
+
+function parseNearbyCategoryFollowUp(message: string): string | null {
+  const lower = normalizeAssistantQuery(message);
+  const stripped = lower.replace(/^(what about|how about|show me|find|list)\s+/g, '').trim();
+  if (!stripped) return null;
+  if (!/\b(shop|shops|restaurant|restaurants|cafe|cafes|coffee|boba|bubble tea|tea|grocery|groceries|store|stores|attraction|attractions|museum|museums|park|parks|pharmacy|pharmacies|places to visit|things to do|places to see)\b/.test(stripped)) {
+    return null;
+  }
+  return normalizeNearbyQuery(stripped);
+}
+
+function isLiveSearchMetaRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bdo you have access to google maps\b|\bdo you have access to maps\b|\bdo you have access to external\b|\byou have access to google maps\b|\bhow did you find these places\b|\bwhere did you source these external results\b|\bwhere did you source these results\b|\bhow did you source these\b|\bhow did you get these results\b|\bwhere did these external results come from\b/.test(lower);
+}
+
 function inferIntentKindFromMessage(message: string, selectedDayId?: number | null): ResolvedIntentKind {
+  if (isLiveSearchMetaRequest(message)) return 'live_search_meta';
+  if (isNearbyPlacesRequest(message)) return 'nearby_places';
   if (isPlaceKnowledgeQuestion(message)) return 'place_knowledge';
+  if (isExplicitTripPlaceListRequest(message)) return 'trip_places_full';
   if (isExplicitUnplannedPlaceListRequest(message)) return 'unplanned_places_full';
   if (isPlanningStatusRequest(message)) return 'planning_status';
   if (isPackingStatusRequest(message)) return 'packing_status';
@@ -101,20 +189,89 @@ function inferPriorIntent(history?: AssistantQueryInput['history'], selectedDayI
   return 'unknown';
 }
 
+function extractPriorNearbyRequest(history?: AssistantQueryInput['history']): { query: string; anchorText: string | null } | null {
+  const entries = [...(history || [])].reverse();
+  for (const entry of entries) {
+    if (entry.role !== 'user') continue;
+    const parsed = parseNearbyClosestRequest(entry.content) || parseNearbySearchRequest(entry.content);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function extractPriorNearbySource(history?: AssistantQueryInput['history']): 'live' | 'saved_trip' | null {
+  const entries = [...(history || [])].reverse();
+  for (const entry of entries) {
+    if (entry.role !== 'user') continue;
+    if ((parseNearbyClosestRequest(entry.content) || parseNearbySearchRequest(entry.content)) == null) continue;
+    return isSavedNearbyRequest(entry.content) ? 'saved_trip' : 'live';
+  }
+  return null;
+}
+
 function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
   const dayNumber = extractRequestedDayNumber(input.message);
   const directKind = inferIntentKindFromMessage(input.message, input.context?.selected_day_id);
+  const directClosestRequest = parseNearbyClosestRequest(input.message);
+  const directNearbyRequest = parseNearbySearchRequest(input.message);
+  const nearbyFollowUpQuery = parseNearbyCategoryFollowUp(input.message);
+  const priorNearbyRequest = extractPriorNearbyRequest(input.history);
+  const priorNearbySource = extractPriorNearbySource(input.history);
+  const nearbyMode = directClosestRequest || isNearbyClosestQuery(input.message)
+    ? 'closest'
+    : isNearbyShowMoreQuery(input.message)
+      ? 'show_more'
+      : 'default';
+  const nearbySource = isSavedNearbyRequest(input.message)
+    ? 'saved_trip'
+    : ((isNearbyShowMoreQuery(input.message) || isNearbyClosestQuery(input.message) || nearbyFollowUpQuery) ? (priorNearbySource || 'live') : 'live');
+  const nearbyRequest = directClosestRequest || directNearbyRequest || (nearbyFollowUpQuery && priorNearbyRequest ? {
+    query: nearbyFollowUpQuery,
+    anchorText: priorNearbyRequest.anchorText,
+  } : null);
   if (directKind !== 'unknown') {
-    return { kind: directKind, dayNumber };
+    return {
+      kind: directKind,
+      dayNumber,
+      nearbyQuery: nearbyRequest?.query || null,
+      nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+      nearbyMode,
+      nearbySource,
+    };
   }
 
   const normalized = normalizeAssistantQuery(input.message);
-  const priorKind = inferPriorIntent(input.history, input.context?.selected_day_id);
-  if (priorKind !== 'unknown' && (isGenericFollowUpQuery(normalized) || (dayNumber && priorKind !== 'busiest_day'))) {
-    return { kind: priorKind, dayNumber };
+  if (nearbyRequest && priorNearbyRequest && (nearbyFollowUpQuery || isNearbyShowMoreQuery(normalized) || isNearbyClosestQuery(normalized))) {
+    return {
+      kind: 'nearby_places',
+      dayNumber,
+      nearbyQuery: nearbyRequest.query,
+      nearbyAnchor: nearbyRequest.anchorText || priorNearbyRequest.anchorText || null,
+      nearbyMode,
+      nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : 'live',
+    };
   }
 
-  return { kind: 'unknown', dayNumber };
+  const priorKind = inferPriorIntent(input.history, input.context?.selected_day_id);
+  if (priorKind !== 'unknown' && (isGenericFollowUpQuery(normalized) || isNearbyShowMoreQuery(normalized) || isNearbyClosestQuery(normalized) || (dayNumber && priorKind !== 'busiest_day'))) {
+    return {
+      kind: priorKind,
+      dayNumber,
+      nearbyQuery: nearbyRequest?.query || priorNearbyRequest?.query || null,
+      nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+      nearbyMode,
+      nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : 'live',
+    };
+  }
+
+  return {
+    kind: 'unknown',
+    dayNumber,
+    nearbyQuery: nearbyRequest?.query || null,
+    nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+    nearbyMode,
+    nearbySource,
+  };
 }
 
 function selectTools(message: string, selectedDayId?: number | null): ToolName[] {
@@ -213,11 +370,54 @@ function isPlanningStatusRequest(message: string): boolean {
   return /\bwhat still needs planning\b|\bwhat needs planning\b|\bwhat remains to plan\b|\bwhat is left to plan\b/.test(lower);
 }
 
+function parseNearbySearchRequest(message: string): { query: string; anchorText: string | null } | null {
+  const lower = normalizeAssistantQuery(message);
+  const plainMatch = lower.match(/^what(?:'s| is)\s+near\s+(.+)$/);
+  if (plainMatch) {
+    return {
+      query: 'places',
+      anchorText: plainMatch[1].trim(),
+    };
+  }
+
+  const genericMatch = lower.match(/^(?:what(?:'s| is| are| are some)|which|find|show(?: me)?|list)\s+(.+?)\s+(?:are|is)?\s*near\s+(.+)$/);
+  if (genericMatch) {
+    return {
+      query: normalizeNearbyQuery(genericMatch[1]),
+      anchorText: genericMatch[2].trim(),
+    };
+  }
+
+  const terseMatch = lower.match(/^(.+?)\s+near\s+(.+)$/);
+  if (terseMatch && /\b(shop|shops|restaurant|restaurants|cafe|cafes|coffee|boba|bubble tea|tea|grocery|groceries|store|stores|grocery stores|attraction|attractions|museum|museums|park|parks|pharmacy|pharmacies|places|places to visit|things to do|places to see)\b/.test(terseMatch[1])) {
+    return {
+      query: normalizeNearbyQuery(terseMatch[1]),
+      anchorText: terseMatch[2].trim(),
+    };
+  }
+
+  return null;
+}
+
+function isNearbyPlacesRequest(message: string): boolean {
+  return parseNearbySearchRequest(message) !== null || parseNearbyClosestRequest(message) !== null;
+}
+
 function isExplicitUnplannedPlaceListRequest(message: string): boolean {
   const lower = normalizeAssistantQuery(message);
   return isFullListRequest(lower)
     && /\bplace\b|\bplaces\b|\blocation\b|\blocations\b|\bactivity\b|\bactivities\b/.test(lower)
     && /\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower);
+}
+
+function isExplicitTripPlaceListRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return isFullListRequest(lower)
+    && (
+      /\bplace\b|\bplaces\b|\blocation\b|\blocations\b/.test(lower)
+      || /\bthose\s+\d+\s+places\b/.test(lower)
+    )
+    && !/\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower);
 }
 
 function isPackingStatusRequest(message: string): boolean {
@@ -303,6 +503,40 @@ function formatWindKmh(value: number, unit: 'celsius' | 'fahrenheit'): string {
   return `${roundTo(value, 1)} km/h`;
 }
 
+function sanitizeAssistantPlainText(content: string): string {
+  const normalized = String(content || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (/^\|(?:\s*[-:]+\s*\|)+\s*$/.test(trimmed)) {
+        return '';
+      }
+      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+        return trimmed
+          .slice(1, -1)
+          .split('|')
+          .map((cell) => cell.trim())
+          .filter(Boolean)
+          .join(' | ');
+      }
+      return line;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+
+  return lines.trim();
+}
+
 function makeDeterministicResponse(
   content: string,
   options?: Partial<Pick<AssistantResponse, 'citations' | 'suggested_actions' | 'warnings' | 'missing_data' | 'follow_up_prompts'>> & {
@@ -312,7 +546,7 @@ function makeDeterministicResponse(
   return {
     message: {
       role: 'assistant',
-      content,
+      content: sanitizeAssistantPlainText(content),
     },
     citations: options?.citations || [],
     suggested_actions: options?.suggested_actions || [],
@@ -582,6 +816,32 @@ function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: R
   };
 }
 
+function buildLiveSearchMetaResponse(input: AssistantQueryInput): AssistantResponse {
+  const hasMapsKey = !!getMapsKey(input.userId);
+  const priorNearbyRequest = extractPriorNearbyRequest(input.history);
+  const liveSearchDescription = priorNearbyRequest?.query
+    ? `live external place results for queries like "${priorNearbyRequest.query}"`
+    : 'live external place results';
+  const lines = hasMapsKey
+    ? [
+      'Yes. For nearby-place questions, this assistant can use TREK\'s live Google Maps / Places integration.',
+      `That is how it found ${liveSearchDescription} even when those places are not saved in your trip.`,
+      'Those results are live external search results, not trip data.',
+    ]
+    : [
+      'Not right now. This assistant only uses live external place lookup when a Google Maps / Places key is configured for TREK.',
+      'Without that configuration, it can only answer from trip data.',
+    ];
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    warnings: hasMapsKey ? ['Live nearby-place results come from Google Maps / Places, not saved trip data.'] : [],
+    follow_up_prompts: hasMapsKey
+      ? ['Where did you source these external results?', 'What attractions are near this place?', 'Show me grocery stores near this place']
+      : ['What still needs planning?', 'Which places are still unplanned?'],
+    tools_used: hasMapsKey ? ['find_nearby_places'] : [],
+  });
+}
+
 function buildUnplannedPlacesListResponse(toolContext: Record<string, unknown>): AssistantResponse {
   const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{
     id?: number;
@@ -640,6 +900,36 @@ function buildUnplannedPlacesListResponse(toolContext: Record<string, unknown>):
       tools_used: ['get_trip_places'],
     },
   };
+}
+
+function buildTripPlacesListResponse(toolContext: Record<string, unknown>): AssistantResponse {
+  const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{
+    id?: number;
+    name?: string;
+    has_assignment?: boolean;
+    category_name?: string | null;
+    address?: string | null;
+  }>;
+
+  if (places.length === 0) {
+    return makeDeterministicResponse('No places are recorded for this trip yet.', {
+      suggested_actions: [{ type: 'add_place', label: 'Add a place or activity', enabled: false, reason: 'Phase 1 is read-only' }],
+      follow_up_prompts: ['What still needs planning?', 'Summarize this trip'],
+      tools_used: ['get_trip_places'],
+    });
+  }
+
+  const lines = places.map((place, index) => {
+    const status = place.has_assignment ? 'assigned to a day' : 'no day assigned';
+    const details = place.category_name || place.address ? ` | ${place.category_name || place.address}` : '';
+    return `${index + 1}. ${place.name || 'Unknown place'} | ${status}${details}`;
+  });
+
+  return makeDeterministicResponse(`All places in this trip (${places.length})\n\n${lines.join('\n')}`, {
+    suggested_actions: [{ type: 'add_place', label: 'Add a place or activity', enabled: false, reason: 'Phase 1 is read-only' }],
+    follow_up_prompts: ['Which places are still unplanned?', 'What still needs planning?', 'Summarize this trip'],
+    tools_used: ['get_trip_places'],
+  });
 }
 
 function buildPlanningStatusResponse(toolContext: Record<string, unknown>): AssistantResponse {
@@ -852,6 +1142,138 @@ function buildDayPlanResponse(toolContext: Record<string, unknown>): AssistantRe
   });
 }
 
+function formatDistanceMiles(distanceMeters: number | null | undefined): string | null {
+  if (distanceMeters == null || !Number.isFinite(distanceMeters)) return null;
+  return `${roundTo(distanceMeters * 0.000621371, 1)} mi`;
+}
+
+async function buildNearbyPlacesResponse(input: AssistantQueryInput, resolvedIntent: ResolvedIntent, resolvedDayId: number | null): Promise<AssistantResponse> {
+  const search = resolvedIntent.nearbySource === 'saved_trip'
+    ? await findSavedNearbyTripPlaces({
+      tripId: input.tripId,
+      userId: input.userId,
+      query: resolvedIntent.nearbyQuery || 'places',
+      anchorText: resolvedIntent.nearbyAnchor || null,
+      selectedDayId: resolvedDayId,
+      selectedPlaceId: input.context?.selected_place_id ?? null,
+      limit: resolvedIntent.nearbyMode === 'show_more' ? 20 : 10,
+    })
+    : await findNearbyPlaces({
+      tripId: input.tripId,
+      userId: input.userId,
+      query: resolvedIntent.nearbyQuery || 'places',
+      anchorText: resolvedIntent.nearbyAnchor || null,
+      selectedDayId: resolvedDayId,
+      selectedPlaceId: input.context?.selected_place_id ?? null,
+      limit: resolvedIntent.nearbyMode === 'show_more' ? 10 : 5,
+    });
+
+  if (!search.available) {
+    if (search.reason === 'maps_key_missing') {
+      return makeDeterministicResponse('Live nearby place search is not available because no Google Maps API key is configured for this account or server.', {
+        warnings: ['Google Places lookup is unavailable.'],
+        missing_data: ['No Google Maps API key is configured.'],
+        follow_up_prompts: ['What is planned for this day?', 'Which places are still unplanned?'],
+        tools_used: ['find_nearby_places'],
+      });
+    }
+
+    if (search.reason === 'anchor_not_found') {
+      return makeDeterministicResponse('I could not determine which place or day to search around. Try naming a saved place, asking about a specific day, or selecting a place first.', {
+        warnings: ['Nearby search needs a clear anchor place or day.'],
+        follow_up_prompts: ['What restaurants are near day 3?', 'What cafes are near this place?'],
+        tools_used: ['find_nearby_places'],
+      });
+    }
+
+    return makeDeterministicResponse('I could not run the live nearby search right now.', {
+      warnings: ['Live place search failed.'],
+      follow_up_prompts: ['What restaurants are near day 3?', 'What cafes are near this place?'],
+      tools_used: ['find_nearby_places'],
+    });
+  }
+
+  const anchorName = String((search.anchor as any)?.name || 'the selected area');
+  const anchorAddress = (search.anchor as any)?.address ? `\nAnchor: ${(search.anchor as any).address}` : '';
+  const results = (search.results || []) as Array<any>;
+
+  if (!results.length) {
+    return makeDeterministicResponse(`I didn't find any ${resolvedIntent.nearbySource === 'saved_trip' ? 'saved trip places' : 'live results'} for "${search.query}" near ${anchorName}.${anchorAddress}`, {
+      warnings: resolvedIntent.nearbySource === 'saved_trip' ? [] : ['These results come from a live external maps lookup, not saved trip data.'],
+      follow_up_prompts: ['Show me restaurants near this place', 'What is planned for this day?'],
+      tools_used: ['find_nearby_places'],
+    });
+  }
+
+  if (resolvedIntent.nearbyMode === 'closest') {
+    const closest = results[0];
+    const distance = formatDistanceMiles(closest.distance_meters);
+    const rating = closest.rating != null ? ` | rating ${roundTo(Number(closest.rating), 1)}` : '';
+    const address = closest.address ? ` | ${closest.address}` : '';
+    const distanceText = distance ? ` | ${distance}` : '';
+    return makeDeterministicResponse(
+      `Closest ${resolvedIntent.nearbySource === 'saved_trip' ? 'saved trip place' : 'live result'} near ${anchorName} for "${search.query}":\n- ${closest.name || 'Unknown place'}${distanceText}${rating}${address}\n\n${resolvedIntent.nearbySource === 'saved_trip' ? 'This result is already saved in this trip.' : 'This is a live external search result, not a place already saved in this trip.'}`,
+      {
+        citations: [{
+          type: resolvedIntent.nearbySource === 'saved_trip' ? 'place' : 'live_place',
+          id: resolvedIntent.nearbySource === 'saved_trip' ? closest.id || null : closest.google_place_id || null,
+          label: closest.name || 'Unknown place',
+          meta: {
+            address: closest.address || null,
+            lat: closest.lat ?? null,
+            lng: closest.lng ?? null,
+            rating: closest.rating ?? null,
+            distance_meters: closest.distance_meters ?? null,
+          },
+        }],
+        warnings: resolvedIntent.nearbySource === 'saved_trip' ? [] : ['This result comes from a live external maps lookup, not saved trip data.'],
+        follow_up_prompts: ['Show more', 'Show me grocery stores near this place', 'What attractions are near this place?'],
+        tools_used: ['find_nearby_places'],
+      },
+    );
+  }
+
+  const lines = [
+    `${resolvedIntent.nearbySource === 'saved_trip' ? 'Saved trip places' : 'Live places'} near ${anchorName} for "${search.query}":`,
+    ...results.map((place, index) => {
+      const distance = formatDistanceMiles(place.distance_meters);
+      const rating = place.rating != null ? ` | rating ${roundTo(Number(place.rating), 1)}` : '';
+      const category = place.category_name ? ` | ${place.category_name}` : '';
+      const address = place.address ? ` | ${place.address}` : '';
+      const distanceText = distance ? ` | ${distance}` : '';
+      return `${index + 1}. ${place.name || 'Unknown place'}${distanceText}${category}${rating}${address}`;
+    }),
+    '',
+    resolvedIntent.nearbySource === 'saved_trip'
+      ? 'These are places already saved in this trip.'
+      : 'These are live external search results, not places already saved in this trip.',
+  ];
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    citations: results.map((place) => ({
+      type: resolvedIntent.nearbySource === 'saved_trip' ? 'place' : 'live_place',
+      id: resolvedIntent.nearbySource === 'saved_trip' ? place.id || null : place.google_place_id || null,
+      label: place.name || 'Unknown place',
+      meta: {
+        address: place.address || null,
+        lat: place.lat ?? null,
+        lng: place.lng ?? null,
+        category_name: place.category_name ?? null,
+        rating: place.rating ?? null,
+        distance_meters: place.distance_meters ?? null,
+      },
+    })),
+    warnings: resolvedIntent.nearbySource === 'saved_trip' ? [] : ['These results come from a live external maps lookup, not saved trip data.'],
+    follow_up_prompts: [
+      ...(resolvedIntent.nearbyMode === 'show_more' ? [] : ['Show more']),
+      'Which one is closest?',
+      'Show me grocery stores near this place',
+      'What attractions are near this place?',
+    ],
+    tools_used: ['find_nearby_places'],
+  });
+}
+
 async function buildDayWeatherResponse(tripId: number, dayId: number | null, userId: number): Promise<AssistantResponse> {
   if (!dayId) {
     return makeDeterministicResponse('Pick a day or ask for a specific day number to get weather for that day.', {
@@ -934,6 +1356,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'unplanned_places_full') {
     tools.add('get_trip_places');
   }
+  if (resolvedIntent.kind === 'trip_places_full') {
+    tools.add('get_trip_places');
+  }
   if (resolvedIntent.kind === 'planning_status') {
     tools.add('get_trip_places');
     tools.add('get_reservations_summary');
@@ -962,6 +1387,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'day_plan') {
     tools.add('get_trip_days');
   }
+  if (resolvedIntent.kind === 'live_search_meta') {
+    tools.add('get_trip_places');
+  }
 
   const explicitDayNumber = resolvedIntent.dayNumber;
   let selectedDayId = input.context?.selected_day_id ?? null;
@@ -972,6 +1400,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       selectedDayId = matchedDay.id;
       if (resolvedIntent.kind === 'day_plan') tools.add('get_day_plan');
       if (resolvedIntent.kind === 'day_weather') tools.add('get_day_weather_context');
+      if (resolvedIntent.kind === 'nearby_places') tools.add('get_trip_days');
     } else {
       selectedDayId = null;
     }
@@ -986,6 +1415,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   const toolContext = addSelectedDayContext(buildContext(input.tripId, Array.from(tools)), input.tripId, selectedDayId);
   if (resolvedIntent.kind === 'unplanned_places_full') {
     return buildUnplannedPlacesListResponse(toolContext);
+  }
+  if (resolvedIntent.kind === 'trip_places_full') {
+    return buildTripPlacesListResponse(toolContext);
   }
   if (resolvedIntent.kind === 'planning_status') {
     return buildPlanningStatusResponse(toolContext);
@@ -1011,9 +1443,20 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'day_plan') {
     return buildDayPlanResponse(toolContext);
   }
+  if (resolvedIntent.kind === 'live_search_meta') {
+    return buildLiveSearchMetaResponse(input);
+  }
+  if (resolvedIntent.kind === 'nearby_places') {
+    return await buildNearbyPlacesResponse(input, resolvedIntent, selectedDayId);
+  }
   const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
   if (guardedResponse) return guardedResponse;
   const prompt = buildPrompt(input, toolContext);
+  console.info('[assistant] system prompt preview:', {
+    tripId: input.tripId,
+    userId: input.userId,
+    systemMessage: prompt.systemPrompt || null,
+  });
   const result = await completeWithLocalModel(prompt);
 
   const warnings: string[] = [];
@@ -1032,7 +1475,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   return {
     message: {
       role: 'assistant',
-      content: result.content,
+      content: sanitizeAssistantPlainText(result.content),
     },
     citations: buildCitations(toolContext, Array.from(tools)),
     suggested_actions: buildSuggestedActions(input.message, toolContext),
@@ -1050,3 +1493,4 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
     },
   };
 }
+

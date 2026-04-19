@@ -41,9 +41,28 @@ interface GooglePlaceDetails extends GooglePlaceResult {
   photos?: { name: string; authorAttributions?: { displayName?: string }[] }[];
 }
 
+interface GoogleTextSearchResponse {
+  places?: GooglePlaceResult[];
+  error?: { message?: string };
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const UA = 'TREK Travel Planner (https://github.com/mauriceboe/NOMAD)';
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMeters * c;
+}
 
 // ── Photo cache ──────────────────────────────────────────────────────────────
 
@@ -280,7 +299,7 @@ export async function searchPlaces(userId: number, query: string, lang?: string)
     body: JSON.stringify({ textQuery: query, languageCode: lang || 'en' }),
   });
 
-  const data = await response.json() as { places?: GooglePlaceResult[]; error?: { message?: string } };
+  const data = await response.json() as GoogleTextSearchResponse;
 
   if (!response.ok) {
     const err = new Error(data.error?.message || 'Google Places API error') as Error & { status: number };
@@ -299,6 +318,75 @@ export async function searchPlaces(userId: number, query: string, lang?: string)
     phone: p.nationalPhoneNumber || null,
     source: 'google',
   }));
+
+  return { places, source: 'google' };
+}
+
+export async function searchNearbyPlaces(
+  userId: number,
+  lat: number,
+  lng: number,
+  query: string,
+  limit = 5,
+  lang?: string,
+): Promise<{ places: Record<string, unknown>[]; source: string }> {
+  const apiKey = getMapsKey(userId);
+  if (!apiKey) {
+    throw Object.assign(new Error('Google Maps API key not configured'), { status: 400 });
+  }
+
+  const trimmedQuery = String(query || '').trim() || 'places';
+  const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.websiteUri,places.nationalPhoneNumber,places.types',
+    },
+    body: JSON.stringify({
+      textQuery: trimmedQuery,
+      languageCode: lang || 'en',
+      pageSize: Math.min(Math.max(Number(limit) || 5, 1), 10),
+      locationBias: {
+        circle: {
+          center: {
+            latitude: lat,
+            longitude: lng,
+          },
+          radius: 5000,
+        },
+      },
+    }),
+  });
+
+  const data = await response.json() as GoogleTextSearchResponse;
+  if (!response.ok) {
+    const err = new Error(data.error?.message || 'Google Places API error') as Error & { status: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  const places = (data.places || [])
+    .map((place) => {
+      const resultLat = place.location?.latitude ?? null;
+      const resultLng = place.location?.longitude ?? null;
+      return {
+        google_place_id: place.id,
+        name: place.displayName?.text || '',
+        address: place.formattedAddress || '',
+        lat: resultLat,
+        lng: resultLng,
+        rating: place.rating || null,
+        website: place.websiteUri || null,
+        phone: place.nationalPhoneNumber || null,
+        distance_meters: resultLat != null && resultLng != null
+          ? Math.round(haversineDistanceMeters(lat, lng, resultLat, resultLng))
+          : null,
+        source: 'google',
+      };
+    })
+    .sort((a, b) => Number(a.distance_meters ?? Number.MAX_SAFE_INTEGER) - Number(b.distance_meters ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, Math.min(Math.max(Number(limit) || 5, 1), 10));
 
   return { places, source: 'google' };
 }

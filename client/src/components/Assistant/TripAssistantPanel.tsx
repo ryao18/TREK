@@ -28,6 +28,7 @@ interface TripAssistantPanelProps {
   selectedAssignmentId: number | null
   activeTab: string
   hasBlockingOverlay?: boolean
+  onPanelStateChange?: (state: AssistantPanelState) => void
 }
 
 const QUICK_PROMPTS = [
@@ -63,6 +64,7 @@ export default function TripAssistantPanel({
   selectedAssignmentId,
   activeTab,
   hasBlockingOverlay = false,
+  onPanelStateChange,
 }: TripAssistantPanelProps): React.ReactElement {
   const messagesRef = React.useRef<HTMLDivElement | null>(null)
   const formRef = React.useRef<HTMLFormElement | null>(null)
@@ -94,6 +96,10 @@ export default function TripAssistantPanel({
   }, [panelState, tripId])
 
   React.useEffect(() => {
+    onPanelStateChange?.(panelState)
+  }, [onPanelStateChange, panelState])
+
+  React.useEffect(() => {
     try {
       sessionStorage.setItem(`trip-assistant-messages-${tripId}`, JSON.stringify(messages.slice(-20)))
     } catch {}
@@ -120,17 +126,23 @@ export default function TripAssistantPanel({
   }, [messages, isLoading, panelState])
 
   React.useEffect(() => {
+    if (isMobile && panelState === 'minimized') {
+      setPanelState('closed')
+    }
+  }, [isMobile, panelState])
+
+  React.useEffect(() => {
     if (hasBlockingOverlay && panelState === 'open') {
       autoMinimizedRef.current = true
-      setPanelState('minimized')
+      setPanelState(isMobile ? 'closed' : 'minimized')
       return
     }
 
-    if (!hasBlockingOverlay && panelState === 'minimized' && autoMinimizedRef.current) {
+    if (!hasBlockingOverlay && panelState === (isMobile ? 'closed' : 'minimized') && autoMinimizedRef.current) {
       autoMinimizedRef.current = false
       setPanelState('open')
     }
-  }, [hasBlockingOverlay, panelState])
+  }, [hasBlockingOverlay, isMobile, panelState])
 
   const shellStyle = useMemo<React.CSSProperties>(() => {
     if (isMobile) {
@@ -144,6 +156,7 @@ export default function TripAssistantPanel({
         width: '100%',
         maxWidth: '100%',
         borderRadius: 0,
+      zIndex: 95,
       }
     }
     return {
@@ -160,13 +173,14 @@ export default function TripAssistantPanel({
         ...panelBaseStyle,
         right: 12,
         left: 'auto',
-        bottom: 12,
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
         top: 'auto',
         width: 220,
         minWidth: 220,
         maxWidth: 'calc(100vw - 24px)',
         height: 72,
         minHeight: 72,
+      zIndex: 95,
       }
     }
 
@@ -182,8 +196,8 @@ export default function TripAssistantPanel({
     return {
       position: 'absolute',
       right: 12,
-      bottom: isMobile ? 12 : 18,
-      zIndex: 35,
+      bottom: isMobile ? 'calc(env(safe-area-inset-bottom, 0px) + 12px)' : 18,
+    zIndex: isMobile ? 95 : 35,
       borderRadius: 14,
       border: 'none',
       padding: isMobile ? '12px 16px' : '11px 15px',
@@ -286,17 +300,17 @@ export default function TripAssistantPanel({
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {panelState === 'minimized'
+          {!isMobile && panelState === 'minimized'
             ? (
               <button onClick={() => setPanelState('open')} title="Expand" style={iconButtonStyle}>
                 <Sparkles size={15} />
               </button>
             )
-            : (
+            : (!isMobile && (
               <button onClick={() => setPanelState('minimized')} title="Minimize" style={iconButtonStyle}>
                 <Minus size={15} />
               </button>
-            )}
+            ))}
           <button onClick={() => setPanelState('closed')} title="Close" style={iconButtonStyle}>
             <X size={15} />
           </button>

@@ -8,7 +8,8 @@ export function verifyTripAccess(tripId: string | number, userId: number) {
 export function listReservations(tripId: string | number) {
   const reservations = db.prepare(`
     SELECT r.*, d.day_number, p.name as place_name, r.assignment_id,
-      ap.place_id as accommodation_place_id, acc_p.name as accommodation_name
+      ap.place_id as accommodation_place_id, acc_p.name as accommodation_name,
+      ap.check_in as accommodation_check_in, ap.check_out as accommodation_check_out
     FROM reservations r
     LEFT JOIN days d ON r.day_id = d.id
     LEFT JOIN places p ON r.place_id = p.id
@@ -42,7 +43,8 @@ export function listReservations(tripId: string | number) {
 export function getReservationWithJoins(id: string | number) {
   return db.prepare(`
     SELECT r.*, d.day_number, p.name as place_name, r.assignment_id,
-      ap.place_id as accommodation_place_id, acc_p.name as accommodation_name
+      ap.place_id as accommodation_place_id, acc_p.name as accommodation_name,
+      ap.check_in as accommodation_check_in, ap.check_out as accommodation_check_out
     FROM reservations r
     LEFT JOIN days d ON r.day_id = d.id
     LEFT JOIN places p ON r.place_id = p.id

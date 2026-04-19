@@ -14,6 +14,7 @@ import {
   findSavedNearbyTripPlaces,
   findSavedPlaceLiveDetails,
 } from './tools';
+import { deriveAssistantConversationState, type PlaceCategoryScope } from './conversationState';
 import { completeWithLocalModel } from './provider';
 import { getDetailedWeather } from '../weatherService';
 import { getUserSettings } from '../settingsService';
@@ -37,7 +38,9 @@ type ResolvedIntentKind =
   | 'live_search_meta'
   | 'nearby_places'
   | 'place_live_detail'
+  | 'stay_detail'
   | 'place_knowledge'
+  | 'trip_places_filtered'
   | 'trip_places_full'
   | 'unplanned_places_full'
   | 'planning_status'
@@ -57,6 +60,7 @@ interface ResolvedIntent {
   nearbyMode?: 'default' | 'show_more' | 'closest';
   nearbySource?: 'live' | 'saved_trip';
   placeDetailKind?: 'type' | 'cuisine' | 'rating' | 'website' | 'phone' | 'hours' | 'open_now' | null;
+  placeCategoryScope?: PlaceCategoryScope | null;
 }
 
 function normalizeAssistantQuery(message: string): string {
@@ -110,11 +114,13 @@ function isNearbyClosestQuery(message: string): boolean {
 function normalizeNearbyQuery(query: string): string {
   const normalized = normalizeAssistantQuery(query)
     .replace(/^(show|find|list|what about|how about|show me|some)\s+/g, '')
+    .replace(/\bsaved\b|\btrip\b|\btrek\b/g, ' ')
+    .replace(/\bplaces\b/g, 'places')
     .trim();
 
   if (/\bplaces to visit\b|\bthings to do\b|\bplaces to see\b/.test(normalized)) return 'attractions';
   if (/^visit$/.test(normalized)) return 'attractions';
-  return normalized;
+  return normalized.replace(/\s+/g, ' ').trim();
 }
 
 function isSavedNearbyRequest(message: string): boolean {
@@ -169,13 +175,18 @@ function isLiveSearchMetaRequest(message: string): boolean {
 function extractPlaceDetailKind(message: string): ResolvedIntent['placeDetailKind'] {
   const lower = normalizeAssistantQuery(message);
   if (/\bopen now\b|\bopen right now\b|\bis it open\b/.test(lower)) return 'open_now';
-  if (/\bhours\b|\bopening hours\b|\bwhat time\b|\bwhen does .* open\b|\bwhen does .* close\b/.test(lower)) return 'hours';
+  if (/\bhours\b|\bopening hours\b|\bwhat time does .* open\b|\bwhat time does .* close\b|\bwhen does .* open\b|\bwhen does .* close\b/.test(lower)) return 'hours';
   if (/\brating\b|\breview count\b|\bhow many reviews\b/.test(lower)) return 'rating';
   if (/\bwebsite\b|\bweb site\b|\burl\b/.test(lower)) return 'website';
   if (/\bphone\b|\bphone number\b|\btelephone\b/.test(lower)) return 'phone';
   if (/\bwhat kind of(?:\s+of)*\s+food\b|\bwhat cuisine\b|\bcuisine\b/.test(lower)) return 'cuisine';
   if (/\bwhat kind of place\b|\bwhat type of place\b|\bwhat is this place\b|\bwhat's this place\b|\bis this a\b/.test(lower)) return 'type';
   return null;
+}
+
+function isStayDetailRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bcheck in\b|\bcheck-in\b|\bcheck out\b|\bcheck-out\b/.test(lower);
 }
 
 function isSavedPlaceLiveDetailQuestion(message: string): boolean {
@@ -186,6 +197,7 @@ function inferIntentKindFromMessage(message: string, selectedDayId?: number | nu
   if (isLiveSearchMetaRequest(message)) return 'live_search_meta';
   if (isNearbyPlacesRequest(message)) return 'nearby_places';
   if (isSavedPlaceLiveDetailQuestion(message)) return 'place_live_detail';
+  if (isStayDetailRequest(message)) return 'stay_detail';
   if (isPlaceKnowledgeQuestion(message)) return 'place_knowledge';
   if (isExplicitTripPlaceListRequest(message)) return 'trip_places_full';
   if (isExplicitUnplannedPlaceListRequest(message)) return 'unplanned_places_full';
@@ -209,6 +221,16 @@ function inferPriorIntent(history?: AssistantQueryInput['history'], selectedDayI
   return 'unknown';
 }
 
+function extractPriorPlaceDetailKind(history?: AssistantQueryInput['history']): ResolvedIntent['placeDetailKind'] {
+  const entries = [...(history || [])].reverse();
+  for (const entry of entries) {
+    if (entry.role !== 'user') continue;
+    const detailKind = extractPlaceDetailKind(entry.content);
+    if (detailKind) return detailKind;
+  }
+  return null;
+}
+
 function extractPriorNearbyRequest(history?: AssistantQueryInput['history']): { query: string; anchorText: string | null } | null {
   const entries = [...(history || [])].reverse();
   for (const entry of entries) {
@@ -230,13 +252,17 @@ function extractPriorNearbySource(history?: AssistantQueryInput['history']): 'li
 }
 
 function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
+  const conversationState = deriveAssistantConversationState(input);
   const dayNumber = extractRequestedDayNumber(input.message);
   const directKind = inferIntentKindFromMessage(input.message, input.context?.selected_day_id);
+  const directPlaceDetailKind = extractPlaceDetailKind(input.message);
   const directClosestRequest = parseNearbyClosestRequest(input.message);
   const directNearbyRequest = parseNearbySearchRequest(input.message);
   const nearbyFollowUpQuery = parseNearbyCategoryFollowUp(input.message);
   const priorNearbyRequest = extractPriorNearbyRequest(input.history);
   const priorNearbySource = extractPriorNearbySource(input.history);
+  const priorPlaceDetailKind = extractPriorPlaceDetailKind(input.history);
+  const isNearbyFollowUp = isNearbyShowMoreQuery(input.message) || isNearbyClosestQuery(input.message) || !!nearbyFollowUpQuery;
   const nearbyMode = directClosestRequest || isNearbyClosestQuery(input.message)
     ? 'closest'
     : isNearbyShowMoreQuery(input.message)
@@ -244,7 +270,7 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       : 'default';
   const nearbySource = isSavedNearbyRequest(input.message)
     ? 'saved_trip'
-    : ((isNearbyShowMoreQuery(input.message) || isNearbyClosestQuery(input.message) || nearbyFollowUpQuery) ? (priorNearbySource || 'live') : 'live');
+    : (isNearbyFollowUp ? (priorNearbySource || 'live') : 'live');
   const nearbyRequest = directClosestRequest || directNearbyRequest || (nearbyFollowUpQuery && priorNearbyRequest ? {
     query: nearbyFollowUpQuery,
     anchorText: priorNearbyRequest.anchorText,
@@ -257,11 +283,24 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
       nearbyMode,
       nearbySource,
-      placeDetailKind: extractPlaceDetailKind(input.message),
+      placeDetailKind: directPlaceDetailKind,
+      placeCategoryScope: conversationState.activePlaceCategoryScope,
     };
   }
 
   const normalized = normalizeAssistantQuery(input.message);
+  if (isCategoryPlaceListRequest(input.message) && conversationState.activePlaceCategoryScope) {
+    return {
+      kind: 'trip_places_filtered',
+      dayNumber,
+      nearbyQuery: nearbyRequest?.query || null,
+      nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+      nearbyMode,
+      nearbySource,
+      placeDetailKind: directPlaceDetailKind,
+      placeCategoryScope: conversationState.activePlaceCategoryScope,
+    };
+  }
   if (nearbyRequest && priorNearbyRequest && (nearbyFollowUpQuery || isNearbyShowMoreQuery(normalized) || isNearbyClosestQuery(normalized))) {
     return {
       kind: 'nearby_places',
@@ -269,8 +308,9 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       nearbyQuery: nearbyRequest.query,
       nearbyAnchor: nearbyRequest.anchorText || priorNearbyRequest.anchorText || null,
       nearbyMode,
-      nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : 'live',
-      placeDetailKind: extractPlaceDetailKind(input.message),
+      nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : (priorNearbySource || 'live'),
+      placeDetailKind: directPlaceDetailKind,
+      placeCategoryScope: conversationState.activePlaceCategoryScope,
     };
   }
 
@@ -282,8 +322,9 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
       nearbyQuery: nearbyRequest?.query || priorNearbyRequest?.query || null,
       nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
       nearbyMode,
-      nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : 'live',
-      placeDetailKind: extractPlaceDetailKind(input.message),
+      nearbySource: isSavedNearbyRequest(input.message) ? 'saved_trip' : (isNearbyFollowUp ? (priorNearbySource || 'live') : 'live'),
+      placeDetailKind: priorKind === 'place_live_detail' ? (directPlaceDetailKind || priorPlaceDetailKind) : directPlaceDetailKind,
+      placeCategoryScope: conversationState.activePlaceCategoryScope,
     };
   }
 
@@ -294,7 +335,8 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
     nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
     nearbyMode,
     nearbySource,
-    placeDetailKind: extractPlaceDetailKind(input.message),
+    placeDetailKind: directPlaceDetailKind,
+    placeCategoryScope: conversationState.activePlaceCategoryScope,
   };
 }
 
@@ -442,6 +484,14 @@ function isExplicitTripPlaceListRequest(message: string): boolean {
       || /\bthose\s+\d+\s+places\b/.test(lower)
     )
     && !/\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower);
+}
+
+function isCategoryPlaceListRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  if (!/\bhotels?\b|\baccommodations?\b|\brestaurants?\b|\bfood places?\b|\bfood spots?\b|\bcafes?\b|\bcoffee shops?\b|\bbakeries\b|\btea shops?\b|\bboba\b|\bbubble tea\b|\battractions?\b|\bmuseums?\b|\bparks?\b|\bplaces to visit\b|\bthings to do\b|\bshopping\b|\bshops?\b|\bstores?\b|\bboutiques?\b|\bactivities\b|\bvenues\b/.test(lower)) {
+    return false;
+  }
+  return /\blisted\b|\blist\b|\bshow\b|\bwhat\b|\bwhich\b|\bwhat about\b/.test(lower);
 }
 
 function isPackingStatusRequest(message: string): boolean {
@@ -789,9 +839,11 @@ function buildFollowUpPrompts(toolContext: Record<string, unknown>, selectedDayI
   return Array.from(new Set(prompts)).slice(0, 4);
 }
 
-function extractMentionedPlaceName(message: string, toolContext: Record<string, unknown>): string | null {
+function extractMentionedPlaceName(input: AssistantQueryInput, toolContext: Record<string, unknown>): string | null {
+  const conversationState = deriveAssistantConversationState(input);
+  if (conversationState.activePlaceName) return conversationState.activePlaceName;
   const places = ((toolContext.get_trip_places as any)?.items || []) as Array<{ name?: string }>;
-  const normalizedMessage = normalizeAssistantQuery(message);
+  const normalizedMessage = normalizeAssistantQuery(input.message);
   const matched = places.find((place) => place.name && normalizedMessage.includes(normalizeAssistantQuery(String(place.name))));
   return matched?.name || null;
 }
@@ -807,7 +859,7 @@ function isPlaceKnowledgeQuestion(message: string): boolean {
 function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse | null {
   if (!isPlaceKnowledgeQuestion(input.message)) return null;
 
-  const placeName = extractMentionedPlaceName(input.message, toolContext);
+  const placeName = extractMentionedPlaceName(input, toolContext);
   if (!placeName) return null;
 
   const places = ((toolContext.get_trip_places as any)?.items || []) as Array<{
@@ -970,6 +1022,7 @@ async function buildSavedPlaceLiveDetailResponse(
     userId: input.userId,
     message: input.message,
     selectedPlaceId: input.context?.selected_place_id ?? null,
+    history: input.history,
   });
 
   if (!detail.available || !detail.place) {
@@ -1114,6 +1167,106 @@ function buildTripPlacesListResponse(toolContext: Record<string, unknown>): Assi
     suggested_actions: [{ type: 'add_place', label: 'Add a place or activity', enabled: false, reason: 'Phase 1 is read-only' }],
     follow_up_prompts: ['Which places are still unplanned?', 'What still needs planning?', 'Summarize this trip'],
     tools_used: ['get_trip_places'],
+  });
+}
+
+function matchesPlaceCategoryScope(categoryName: string | null | undefined, scope: PlaceCategoryScope | null | undefined): boolean {
+  const category = normalizeAssistantQuery(categoryName || '');
+  if (!scope || !category) return false;
+  if (scope === 'hotel') return /\bhotel\b|\baccommodation\b/.test(category);
+  if (scope === 'restaurant') return /\brestaurant\b|\bfood\b/.test(category);
+  if (scope === 'cafe') return /\bcafe\b|\bcoffee\b|\btea\b|\bbakery\b|\bbar\/cafe\b|\bbar cafe\b/.test(category);
+  if (scope === 'attraction') return /\battraction\b|\bmuseum\b|\bpark\b|\bsight\b/.test(category);
+  if (scope === 'shopping') return /\bshopping\b|\bshop\b|\bstore\b/.test(category);
+  if (scope === 'activity') return /\bactivity\b|\bvenue\b/.test(category);
+  return category.length > 0;
+}
+
+function formatScopeLabel(scope: PlaceCategoryScope | null | undefined): string {
+  switch (scope) {
+    case 'hotel': return 'Hotels';
+    case 'restaurant': return 'Restaurants';
+    case 'cafe': return 'Cafes';
+    case 'attraction': return 'Attractions';
+    case 'shopping': return 'Shopping places';
+    case 'activity': return 'Activities';
+    default: return 'Places';
+  }
+}
+
+function buildFilteredTripPlacesResponse(toolContext: Record<string, unknown>, scope: PlaceCategoryScope | null | undefined): AssistantResponse {
+  const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{
+    id?: number;
+    name?: string;
+    has_assignment?: boolean;
+    category_name?: string | null;
+    address?: string | null;
+  }>;
+
+  const filteredPlaces = places.filter((place) => matchesPlaceCategoryScope(place.category_name, scope));
+  if (filteredPlaces.length === 0) {
+    return makeDeterministicResponse(`I couldn't find any ${formatScopeLabel(scope).toLowerCase()} in this trip.`, {
+      follow_up_prompts: ['Show all places', 'Which places are still unplanned?', 'What still needs planning?'],
+      tools_used: ['get_trip_places'],
+    });
+  }
+
+  const lines = filteredPlaces.map((place, index) => {
+    const status = place.has_assignment ? 'assigned to a day' : 'no day assigned';
+    const details = place.category_name || place.address ? ` | ${place.category_name || place.address}` : '';
+    return `${index + 1}. ${place.name || 'Unknown place'} | ${status}${details}`;
+  });
+
+  return makeDeterministicResponse(`${formatScopeLabel(scope)} listed in your trip:\n\n${lines.join('\n')}`, {
+    follow_up_prompts: ['Which of those are still unplanned?', 'Show all places', 'What still needs planning?'],
+    tools_used: ['get_trip_places'],
+  });
+}
+
+function buildStayDetailResponse(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse {
+  const conversationState = deriveAssistantConversationState(input);
+  const reservations = (((toolContext.get_reservations_summary as any)?.items) || []) as Array<{
+    id?: number;
+    type?: string | null;
+    place_id?: number | null;
+    place_name?: string | null;
+    accommodation_place_id?: number | null;
+    accommodation_name?: string | null;
+    accommodation_check_in?: string | null;
+    accommodation_check_out?: string | null;
+    confirmation_number?: string | null;
+    status?: string | null;
+  }>;
+
+  const hotelReservations = reservations.filter((reservation) => reservation.type === 'hotel');
+  const activePlaceId = conversationState.activePlaceId;
+  const activePlaceName = conversationState.activePlaceName ? normalizeAssistantQuery(conversationState.activePlaceName) : null;
+  const matchedReservation = hotelReservations.find((reservation) =>
+    (activePlaceId != null && (Number(reservation.place_id) === activePlaceId || Number(reservation.accommodation_place_id) === activePlaceId))
+    || (activePlaceName && normalizeAssistantQuery(reservation.place_name || reservation.accommodation_name || '').includes(activePlaceName))
+  ) || (hotelReservations.length === 1 ? hotelReservations[0] : null);
+
+  if (!matchedReservation) {
+    return makeDeterministicResponse('I could not determine which hotel stay you meant. Name the hotel directly or ask about one hotel after selecting it.', {
+      warnings: ['Stay details need a clear hotel subject.'],
+      follow_up_prompts: ['What hotels are listed?', 'Where is the Club Quarters hotel?', 'What about the hotels?'],
+      tools_used: ['get_reservations_summary', 'get_trip_places'],
+    });
+  }
+
+  const placeName = matchedReservation.accommodation_name || matchedReservation.place_name || conversationState.activePlaceName || 'This hotel';
+  const checkIn = matchedReservation.accommodation_check_in || null;
+  const checkOut = matchedReservation.accommodation_check_out || null;
+  const lines = [`Stay details for ${placeName}`];
+  lines.push(`- check in: ${checkIn || 'not recorded'}`);
+  lines.push(`- check out: ${checkOut || 'not recorded'}`);
+  if (matchedReservation.status) lines.push(`- reservation status: ${matchedReservation.status}`);
+  if (matchedReservation.confirmation_number) lines.push(`- confirmation: ${matchedReservation.confirmation_number}`);
+
+  return makeDeterministicResponse(lines.join('\n'), {
+    citations: [{ type: 'reservation', id: matchedReservation.id ?? null, label: placeName }],
+    follow_up_prompts: ['Where is this hotel?', 'What is the rating for this place?', 'What hotels are listed?'],
+    tools_used: ['get_reservations_summary', 'get_trip_places'],
   });
 }
 
@@ -1538,6 +1691,10 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'place_live_detail') {
     tools.add('get_trip_places');
   }
+  if (resolvedIntent.kind === 'stay_detail') {
+    tools.add('get_trip_places');
+    tools.add('get_reservations_summary');
+  }
   if (resolvedIntent.kind === 'place_knowledge') {
     tools.add('get_trip_places');
   }
@@ -1545,6 +1702,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
     tools.add('get_trip_places');
   }
   if (resolvedIntent.kind === 'trip_places_full') {
+    tools.add('get_trip_places');
+  }
+  if (resolvedIntent.kind === 'trip_places_filtered') {
     tools.add('get_trip_places');
   }
   if (resolvedIntent.kind === 'planning_status') {
@@ -1607,6 +1767,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   if (resolvedIntent.kind === 'trip_places_full') {
     return buildTripPlacesListResponse(toolContext);
   }
+  if (resolvedIntent.kind === 'trip_places_filtered') {
+    return buildFilteredTripPlacesResponse(toolContext, resolvedIntent.placeCategoryScope);
+  }
   if (resolvedIntent.kind === 'planning_status') {
     return buildPlanningStatusResponse(toolContext);
   }
@@ -1639,6 +1802,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   }
   if (resolvedIntent.kind === 'place_live_detail') {
     return await buildSavedPlaceLiveDetailResponse(input, resolvedIntent);
+  }
+  if (resolvedIntent.kind === 'stay_detail') {
+    return buildStayDetailResponse(input, toolContext);
   }
   const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
   if (guardedResponse) return guardedResponse;

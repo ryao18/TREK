@@ -144,6 +144,7 @@ export default function TripAssistantPanel({
         width: '100%',
         maxWidth: '100%',
         borderRadius: 0,
+        zIndex: 120,
       }
     }
     return {
@@ -167,6 +168,7 @@ export default function TripAssistantPanel({
         maxWidth: 'calc(100vw - 24px)',
         height: 72,
         minHeight: 72,
+        zIndex: 120,
       }
     }
 
@@ -183,7 +185,7 @@ export default function TripAssistantPanel({
       position: 'absolute',
       right: 12,
       bottom: isMobile ? 12 : 18,
-      zIndex: 35,
+      zIndex: isMobile ? 120 : 35,
       borderRadius: 14,
       border: 'none',
       padding: isMobile ? '12px 16px' : '11px 15px',

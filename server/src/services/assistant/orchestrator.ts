@@ -229,6 +229,11 @@ function isSubjectLocationRequest(message: string): boolean {
   return /\bwhere is it\b|\bwhere is this\b|\bwhere is that\b|\bwhere is this place\b|\bwhere is that place\b|\bwhere is the first one\b|\bwhere is the second one\b/.test(lower);
 }
 
+function isOrdinalReferenceLocationRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bwhere is the first one\b|\bwhere is the second one\b|\bwhere is the third one\b|\bwhere is that one\b|\bwhere is this one\b/.test(lower);
+}
+
 function isSubjectTimeRequest(message: string): boolean {
   const lower = normalizeAssistantQuery(message);
   return /\bwhen is it\b|\bwhat time is it\b|\bwhen is that\b|\bwhen is this\b/.test(lower);
@@ -334,6 +339,18 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
     anchorText: priorNearbyRequest.anchorText,
   } : null);
   if (directKind !== 'unknown') {
+    if (directKind === 'subject_location' && isOrdinalReferenceLocationRequest(input.message) && conversationState.activeResultSetKind == null) {
+      return {
+        kind: 'unknown',
+        dayNumber,
+        nearbyQuery: nearbyRequest?.query || null,
+        nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+        nearbyMode,
+        nearbySource,
+        placeDetailKind: directPlaceDetailKind,
+        placeCategoryScope: conversationState.activePlaceCategoryScope,
+      };
+    }
     return {
       kind: directKind,
       dayNumber,
@@ -2235,6 +2252,11 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
     }
     if (resolvedIntent.kind === 'day_weather') {
       tools.add('get_day_weather_context');
+    }
+  } else if (conversationState.activeDayId != null) {
+    selectedDayId = conversationState.activeDayId;
+    if (resolvedIntent.kind === 'day_plan' || resolvedIntent.kind === 'subject_location' || resolvedIntent.kind === 'subject_time' || resolvedIntent.kind === 'subject_confirmation') {
+      tools.add('get_day_plan');
     }
   }
   const toolContext = addSelectedDayContext(buildContext(input.tripId, Array.from(tools)), input.tripId, selectedDayId);

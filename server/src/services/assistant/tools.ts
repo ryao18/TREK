@@ -304,6 +304,40 @@ function isGenericAnchorReference(anchorText: string | null | undefined): boolea
     || normalized === 'selected day';
 }
 
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const prev = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const curr = new Array<number>(b.length + 1).fill(0);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + cost,
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j];
+  }
+
+  return prev[b.length];
+}
+
+function fuzzyScore(text: string, query: string): number {
+  if (!text || !query) return 0;
+  const distance = levenshteinDistance(text, query);
+  const maxLength = Math.max(text.length, query.length);
+  if (maxLength === 0) return 0;
+  const similarity = 1 - distance / maxLength;
+  if (similarity < 0.72) return 0;
+  return Math.round(similarity * 80);
+}
+
 function scorePlaceMatch(place: any, anchorText: string): number {
   const anchor = normalizeForAssistantLookup(anchorText);
   if (!anchor) return 0;
@@ -318,10 +352,15 @@ function scorePlaceMatch(place: any, anchorText: string): number {
   if (address && address.includes(anchor)) return 70;
 
   const tokens = anchor.split(' ').filter((token) => token.length >= 3);
-  if (!tokens.length) return 0;
+  const bestFuzzy = Math.max(
+    fuzzyScore(name, anchor),
+    ...tokens.map((token) => fuzzyScore(name, token)),
+  );
+  if (!tokens.length) return bestFuzzy;
   const haystack = `${name} ${address}`.trim();
   const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
-  return matchedTokens > 0 ? matchedTokens * 10 : 0;
+  const tokenScore = matchedTokens > 0 ? matchedTokens * 10 : 0;
+  return Math.max(tokenScore, bestFuzzy);
 }
 
 function extractPlaceLookupText(value: string): string {

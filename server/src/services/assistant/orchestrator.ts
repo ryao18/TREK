@@ -76,6 +76,8 @@ function normalizeAssistantQuery(message: string): string {
     .replace(/[?!.,;:]+/g, ' ')
     .replace(/\blistall\b/g, 'list all')
     .replace(/\baout\b/g, 'about')
+    .replace(/\bsitll\b/g, 'still')
+    .replace(/\bsiill\b/g, 'still')
     .replace(/\bweahter\b/g, 'weather')
     .replace(/\bwaehter\b/g, 'weather')
     .replace(/\bwether\b/g, 'weather')
@@ -277,6 +279,7 @@ function inferIntentKindFromMessage(message: string, selectedDayId?: number | nu
 function inferPriorIntent(history?: AssistantQueryInput['history'], selectedDayId?: number | null): ResolvedIntentKind {
   const entries = [...(history || [])].reverse();
   for (const entry of entries) {
+    if (entry.role !== 'user') continue;
     const kind = inferIntentKindFromMessage(entry.content, selectedDayId);
     if (kind !== 'unknown') return kind;
   }
@@ -384,6 +387,18 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
   if (isCategoryPlaceListRequest(input.message) && conversationState.activePlaceCategoryScope) {
     return {
       kind: 'trip_places_filtered',
+      dayNumber,
+      nearbyQuery: nearbyRequest?.query || null,
+      nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
+      nearbyMode,
+      nearbySource,
+      placeDetailKind: directPlaceDetailKind,
+      placeCategoryScope: conversationState.activePlaceCategoryScope,
+    };
+  }
+  if (isAddedPlacesReferenceRequest(input.message)) {
+    return {
+      kind: 'trip_places_full',
       dayNumber,
       nearbyQuery: nearbyRequest?.query || null,
       nearbyAnchor: nearbyRequest?.anchorText || priorNearbyRequest?.anchorText || null,
@@ -525,7 +540,7 @@ function shouldIncludeFullBudgetList(message: string): boolean {
 
 function isPlanningStatusRequest(message: string): boolean {
   const lower = normalizeAssistantQuery(message);
-  return /\bwhat still needs planning\b|\bwhat needs planning\b|\bwhat remains to plan\b|\bwhat is left to plan\b/.test(lower);
+  return /\bwhat still needs planning\b|\bwhat needs planning\b|\bwhat remains to plan\b|\bwhat is left to plan\b|\bwhat places still need planning\b|\bwhich places still need planning\b|\bwhat places need to be planned\b|\bwhich places need to be planned\b/.test(lower);
 }
 
 function parseNearbySearchRequest(message: string): { query: string; anchorText: string | null } | null {
@@ -563,9 +578,11 @@ function isNearbyPlacesRequest(message: string): boolean {
 
 function isExplicitUnplannedPlaceListRequest(message: string): boolean {
   const lower = normalizeAssistantQuery(message);
-  return isFullListRequest(lower)
+  return (
+    isFullListRequest(lower)
     && /\bplace\b|\bplaces\b|\blocation\b|\blocations\b|\bactivity\b|\bactivities\b/.test(lower)
-    && /\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower);
+    && /\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower)
+  ) || /\b(?:what|which)\b.*\bplaces?\b.*\b(?:still )?(?:need|needs)\b.*\bplanning\b|\b(?:what|which)\b.*\bplaces?\b.*\b(?:need|needs)\b.*\bto be planned\b/.test(lower);
 }
 
 function isResultSetUnplannedRequest(message: string): boolean {
@@ -583,9 +600,14 @@ function isExplicitTripPlaceListRequest(message: string): boolean {
   return isFullListRequest(lower)
     && (
       /\bplace\b|\bplaces\b|\blocation\b|\blocations\b/.test(lower)
-      || /\bthose\s+\d+\s+places\b/.test(lower)
+      || /\bthose\s+\d+\+?\s+places\b/.test(lower)
     )
     && !/\bunplanned\b|\bnot planned\b|\bunassigned\b|\bnot assigned\b|\bwithout a day\b|\bno day assigned\b/.test(lower);
+}
+
+function isAddedPlacesReferenceRequest(message: string): boolean {
+  const lower = normalizeAssistantQuery(message);
+  return /\bplaces i added\b|\bplaces we added\b|\ball the places i added\b|\bthose\s+\d+\+?\s+places\b|\bthe\s+\d+\+?\s+places\b/.test(lower);
 }
 
 function isCategoryPlaceListRequest(message: string): boolean {
@@ -1932,23 +1954,6 @@ function formatDistanceKm(distanceMeters: number | null | undefined): string | n
   return `${roundTo(distanceMeters / 1000, 1)} km`;
 }
 
-function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const earthRadiusMeters = 6371000;
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(earthRadiusMeters * c);
-}
-
-function estimateTravelMinutes(distanceKm: number, mode: 'walking' | 'driving' | 'transit'): number {
-  if (mode === 'walking') return Math.max(1, Math.round((distanceKm / 4.8) * 60));
-  if (mode === 'driving') return Math.max(2, Math.round((distanceKm / 22) * 60 + 1));
-  return Math.max(8, Math.round((distanceKm / 16) * 60 + 8));
-}
-
 function formatTravelModeLabel(mode: 'walking' | 'driving' | 'transit'): string {
   if (mode === 'walking') return 'walking';
   if (mode === 'driving') return 'driving';
@@ -1991,16 +1996,21 @@ async function buildPlaceComparisonResponse(input: AssistantQueryInput, _toolCon
     lines.push(`- distance: ${combinedDistance}`);
   }
 
-  if (comparisonType === 'travel_time' || mode) {
-    const activeMode = (mode || 'walking') as ComparisonTravelMode;
-    const minutes = result.estimatedMinutes ?? estimateTravelMinutes(distanceMeters / 1000, activeMode);
-    lines.push(`- estimated ${formatTravelModeLabel(activeMode)} time: ${minutes} minutes`);
+  if (comparisonType === 'travel_time' || mode || result.routeMode) {
+    const activeMode = (result.routeMode || mode || 'walking') as ComparisonTravelMode;
+    const minutes = result.estimatedMinutes;
+    if (minutes != null) {
+      lines.push(`- estimated ${formatTravelModeLabel(activeMode)} time: ${minutes} minutes`);
+    }
+    if (mode == null && comparisonType === 'distance' && result.routeMode) {
+      lines.push(`- route mode used: ${formatTravelModeLabel(result.routeMode)}`);
+    }
+  } else if (result.routeMode) {
+    lines.push(`- route mode used: ${formatTravelModeLabel(result.routeMode)}`);
   } else {
-    const walkingMinutes = estimateTravelMinutes(distanceMeters / 1000, 'walking');
-    lines.push(`- estimated walking time: ${walkingMinutes} minutes`);
+    lines.push('- live route timing is not available right now.');
   }
-
-  lines.push('- note: travel times are rough estimates from coordinates, not live routing.');
+  lines.push('- note: distance and time come from a live Google Maps route, not a coordinate estimate.');
 
   return makeDeterministicResponse(lines.join('\n'), {
     citations: result.citations,

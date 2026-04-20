@@ -77,6 +77,7 @@ export function extractPlaceCategoryScope(message: string): PlaceCategoryScope |
 function inferCategoryScopeFromHistory(history?: AssistantQueryInput['history']): PlaceCategoryScope | null {
   const entries = [...(history || [])].reverse();
   for (const entry of entries) {
+    if (entry.role !== 'user') continue;
     if (!entry || typeof entry.content !== 'string') continue;
     const scope = extractPlaceCategoryScope(entry.content);
     if (scope) return scope;

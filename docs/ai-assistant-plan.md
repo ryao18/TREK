@@ -55,6 +55,7 @@ What is implemented now:
   - `compare_places`
 - mixed saved/external comparison execution through the shared assistant tool runtime
 - comparison follow-up memory that can preserve named comparison endpoints even when one side is not a saved trip place
+- comparison distance/time answers are now intended to come from live Google Maps routing rather than coordinate-only heuristics
 
 What is still left:
 

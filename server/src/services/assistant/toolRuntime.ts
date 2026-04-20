@@ -1,5 +1,5 @@
 import { listPlaces } from '../placeService';
-import { getPlaceDetails, searchPlaces } from '../mapsService';
+import { computeRoute, getPlaceDetails, searchPlaces } from '../mapsService';
 import { resolveSavedTripPlace } from './tools';
 import type { AssistantHistoryMessage, AssistantCitation } from './types';
 import type { AssistantCompletionMessage, AssistantToolCall, AssistantToolDefinition } from './provider';
@@ -47,6 +47,7 @@ export interface AssistantComparePlacesResult {
   distanceKm?: number;
   distanceMiles?: number;
   estimatedMinutes?: number;
+  routeMode?: ComparisonTravelMode | null;
   warnings: string[];
   citations: AssistantCitation[];
   toolsUsed: string[];
@@ -92,7 +93,7 @@ export function getAssistantExternalToolDefinitions(): AssistantToolDefinition[]
       type: 'function',
       function: {
         name: 'compare_places',
-        description: 'Compare two places by distance or rough travel time. Each endpoint can be a saved trip place or a live external place name. Use this for questions like how close, how far, or how long it takes between places.',
+        description: 'Compare two places by live Google Maps route distance or travel time. Each endpoint can be a saved trip place or a live external place name. Use this for questions like how close, how far, or how long it takes between places.',
         parameters: {
           type: 'object',
           additionalProperties: false,
@@ -118,24 +119,73 @@ function parseToolArguments(toolCall: AssistantToolCall): Record<string, unknown
   }
 }
 
-function toRadians(value: number): number {
-  return (value * Math.PI) / 180;
+function normalizeLookupText(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[?!.,;:()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const earthRadiusMeters = 6371000;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return earthRadiusMeters * c;
+function hasExplicitLocationHint(text: string): boolean {
+  const normalized = normalizeLookupText(text);
+  return /\b(in|near|at)\b|,|\d/.test(normalized);
 }
 
-function estimateTravelMinutes(distanceKm: number, mode: ComparisonTravelMode): number {
-  if (mode === 'walking') return Math.max(3, Math.round((distanceKm / 4.8) * 60));
-  if (mode === 'driving') return Math.max(2, Math.round((distanceKm / 22) * 60 + 1));
-  return Math.max(8, Math.round((distanceKm / 16) * 60 + 8));
+function extractLookupTerms(text: string): string[] {
+  return normalizeLookupText(text)
+    .split(' ')
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2);
+}
+
+function scoreCandidateMatch(
+  queryText: string,
+  candidate: Record<string, unknown>,
+  counterpart?: ResolvedComparisonEndpoint | null,
+): number {
+  const normalizedQuery = normalizeLookupText(queryText);
+  const candidateName = normalizeLookupText(String(candidate.name || ''));
+  const candidateAddress = normalizeLookupText(String(candidate.address || ''));
+  const queryTerms = extractLookupTerms(queryText);
+  let score = 0;
+
+  if (candidateName === normalizedQuery) score += 120;
+  if (candidateName.includes(normalizedQuery) || normalizedQuery.includes(candidateName)) score += 70;
+  if (candidateAddress.includes(normalizedQuery)) score += 25;
+
+  for (const term of queryTerms) {
+    if (candidateName.includes(term)) score += 20;
+    else if (candidateAddress.includes(term)) score += 8;
+  }
+
+  if (counterpart && typeof candidate.lat === 'number' && typeof candidate.lng === 'number') {
+    const latDiff = Math.abs(Number(candidate.lat) - counterpart.lat);
+    const lngDiff = Math.abs(Number(candidate.lng) - counterpart.lng);
+    const approxDegrees = latDiff + lngDiff;
+    if (approxDegrees < 0.1) score += 35;
+    else if (approxDegrees < 0.4) score += 20;
+    else if (approxDegrees < 1) score += 8;
+  }
+
+  return score;
+}
+
+function selectBestSearchCandidate(
+  queryText: string,
+  candidates: Array<Record<string, unknown>>,
+  counterpart?: ResolvedComparisonEndpoint | null,
+): Record<string, unknown> | null {
+  let best: Record<string, unknown> | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const candidate of candidates) {
+    const score = scoreCandidateMatch(queryText, candidate, counterpart);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 function normalizeSearchCandidates(places: Record<string, unknown>[]): Array<Record<string, unknown>> {
@@ -186,6 +236,7 @@ function makeLivePlaceCitation(place: ResolvedComparisonEndpoint): AssistantCita
 async function resolveComparisonEndpoint(
   endpoint: ComparisonEndpointInput,
   context: ToolRuntimeContext,
+  counterpart?: ResolvedComparisonEndpoint | null,
 ): Promise<{ endpoint: ResolvedComparisonEndpoint | null; warnings: string[]; citations: AssistantCitation[]; toolsUsed: string[] }> {
   const warnings: string[] = [];
   const citations: AssistantCitation[] = [];
@@ -341,9 +392,12 @@ async function resolveComparisonEndpoint(
     }
   }
 
-  const searched = await searchPlaces(context.userId, text, 'en');
-  const candidates = normalizeSearchCandidates((searched.places || []).slice(0, 1));
-  const best = candidates[0] || null;
+  const searchQuery = counterpart && !hasExplicitLocationHint(text)
+    ? `${text} near ${counterpart.label}`
+    : text;
+  const searched = await searchPlaces(context.userId, searchQuery, 'en');
+  const candidates = normalizeSearchCandidates((searched.places || []).slice(0, MAX_SEARCH_LIMIT));
+  const best = selectBestSearchCandidate(text, candidates, counterpart);
   if (!best || best.lat == null || best.lng == null) {
     warnings.push(`I couldn't resolve "${text}" to a place with coordinates.`);
     toolsUsed.push('search_external_place');
@@ -383,16 +437,33 @@ export async function comparePlacesForAssistant(
 ): Promise<AssistantComparePlacesResult> {
   const mode = args.mode || null;
   const comparisonType = args.comparison_type || (mode ? 'travel_time' : 'distance');
-  const originResolved = await resolveComparisonEndpoint({
-    placeId: args.origin_place_id ?? null,
-    placeRef: args.origin_place_ref ?? null,
-    text: args.origin_text ?? null,
-  }, context);
-  const destinationResolved = await resolveComparisonEndpoint({
-    placeId: args.destination_place_id ?? null,
-    placeRef: args.destination_place_ref ?? null,
-    text: args.destination_text ?? null,
-  }, context);
+  const originLooksSaved = args.origin_place_id != null || args.origin_place_ref != null;
+  const destinationLooksSaved = args.destination_place_id != null || args.destination_place_ref != null;
+  let originResolved;
+  let destinationResolved;
+  if (originLooksSaved || !destinationLooksSaved) {
+    originResolved = await resolveComparisonEndpoint({
+      placeId: args.origin_place_id ?? null,
+      placeRef: args.origin_place_ref ?? null,
+      text: args.origin_text ?? null,
+    }, context);
+    destinationResolved = await resolveComparisonEndpoint({
+      placeId: args.destination_place_id ?? null,
+      placeRef: args.destination_place_ref ?? null,
+      text: args.destination_text ?? null,
+    }, context, originResolved.endpoint);
+  } else {
+    destinationResolved = await resolveComparisonEndpoint({
+      placeId: args.destination_place_id ?? null,
+      placeRef: args.destination_place_ref ?? null,
+      text: args.destination_text ?? null,
+    }, context);
+    originResolved = await resolveComparisonEndpoint({
+      placeId: args.origin_place_id ?? null,
+      placeRef: args.origin_place_ref ?? null,
+      text: args.origin_text ?? null,
+    }, context, destinationResolved.endpoint);
+  }
 
   const warnings = [...originResolved.warnings, ...destinationResolved.warnings];
   const citations = [...originResolved.citations, ...destinationResolved.citations];
@@ -416,11 +487,48 @@ export async function comparePlacesForAssistant(
     };
   }
 
-  const distanceMeters = haversineDistanceMeters(origin.lat, origin.lng, destination.lat, destination.lng);
-  const distanceKm = distanceMeters / 1000;
+  const routeModesToTry: ComparisonTravelMode[] = mode
+    ? [mode]
+    : (comparisonType === 'travel_time' ? ['walking', 'driving'] : ['walking', 'driving']);
+  let routeModeUsed: ComparisonTravelMode | null = null;
+  let routeDistanceMeters: number | null = null;
+  let routeDurationSeconds: number | null = null;
+  const routeErrors: string[] = [];
+  for (const candidateMode of routeModesToTry) {
+    try {
+      const route = await computeRoute(
+        context.userId,
+        { lat: origin.lat, lng: origin.lng },
+        { lat: destination.lat, lng: destination.lng },
+        candidateMode,
+        'en',
+      );
+      if (route.distance_meters != null) {
+        routeModeUsed = candidateMode;
+        routeDistanceMeters = route.distance_meters;
+        routeDurationSeconds = route.duration_seconds;
+        break;
+      }
+    } catch (error: any) {
+      routeErrors.push(error?.message || `Google route lookup failed for ${candidateMode}.`);
+    }
+  }
+
+  if (routeDistanceMeters == null) {
+    return {
+      ok: false,
+      error: routeErrors[0] || 'I could not compute a live Google Maps route between those places right now.',
+      mode,
+      comparisonType,
+      warnings,
+      citations,
+      toolsUsed,
+    };
+  }
+
+  const distanceKm = routeDistanceMeters / 1000;
   const distanceMiles = distanceKm * 0.621371;
-  const activeMode = mode || (comparisonType === 'travel_time' ? 'walking' : null);
-  const estimatedMinutes = activeMode ? estimateTravelMinutes(distanceKm, activeMode) : undefined;
+  const estimatedMinutes = routeDurationSeconds != null ? Math.max(1, Math.round(routeDurationSeconds / 60)) : undefined;
 
   return {
     ok: true,
@@ -428,13 +536,14 @@ export async function comparePlacesForAssistant(
     destination,
     mode,
     comparisonType,
-    distanceMeters,
+    distanceMeters: routeDistanceMeters,
     distanceKm,
     distanceMiles,
     estimatedMinutes,
+    routeMode: routeModeUsed,
     warnings,
     citations,
-    toolsUsed,
+    toolsUsed: uniqueStrings([...toolsUsed, 'google_route_lookup']),
   };
 }
 
@@ -594,7 +703,8 @@ async function executeComparePlaces(
         distance_km: result.distanceKm ?? null,
         distance_miles: result.distanceMiles ?? null,
         estimated_minutes: result.estimatedMinutes ?? null,
-        note: 'Travel times are rough estimates from coordinates, not live routing.',
+        route_mode: result.routeMode ?? null,
+        note: 'Distance and time come from a live Google Maps route.',
       }),
     },
     warnings: result.warnings,

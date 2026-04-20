@@ -1,12 +1,54 @@
+export interface AssistantCompletionMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+}
+
+export interface AssistantToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 export interface AssistantCompletionInput {
-  systemPrompt: string;
-  userPrompt: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  messages?: AssistantCompletionMessage[];
+  tools?: AssistantToolDefinition[];
+}
+
+export interface AssistantToolCall {
+  id: string;
+  name: string;
+  argumentsText: string;
 }
 
 export interface AssistantProviderResult {
   provider: string;
   model: string;
   content: string;
+  toolCalls: AssistantToolCall[];
+}
+
+function normalizeMessages(input: AssistantCompletionInput): AssistantCompletionMessage[] {
+  if (Array.isArray(input.messages) && input.messages.length > 0) {
+    return input.messages;
+  }
+  return [
+    { role: 'system', content: input.systemPrompt || '' },
+    { role: 'user', content: input.userPrompt || '' },
+  ];
 }
 
 export async function completeWithLocalModel(input: AssistantCompletionInput): Promise<AssistantProviderResult> {
@@ -19,20 +61,22 @@ export async function completeWithLocalModel(input: AssistantCompletionInput): P
     throw new Error('Local assistant model is not configured. Set AI_ASSISTANT_LOCAL_MODEL.');
   }
 
-  const payload = {
+  const messages = normalizeMessages(input);
+  const payload: Record<string, unknown> = {
     model,
     temperature: 0.2,
-    messages: [
-      { role: 'system', content: input.systemPrompt },
-      { role: 'user', content: input.userPrompt },
-    ],
+    messages,
   };
+  if (Array.isArray(input.tools) && input.tools.length > 0) {
+    payload.tools = input.tools;
+    payload.tool_choice = 'auto';
+  }
 
   console.info('[assistant] local model request:start', {
     requestUrl,
     model,
-    systemLength: input.systemPrompt.length,
-    userLength: input.userPrompt.length,
+    messageCount: messages.length,
+    toolCount: Array.isArray(input.tools) ? input.tools.length : 0,
   });
 
   let response: Response;
@@ -73,14 +117,26 @@ export async function completeWithLocalModel(input: AssistantCompletionInput): P
   }
 
   const data = await response.json() as any;
-  const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) {
+  const message = data?.choices?.[0]?.message || {};
+  const content = typeof message?.content === 'string' ? message.content.trim() : '';
+  const toolCalls = Array.isArray(message?.tool_calls)
+    ? message.tool_calls
+      .filter((toolCall: any) => toolCall?.type === 'function' && toolCall?.function?.name)
+      .map((toolCall: any) => ({
+        id: String(toolCall.id || ''),
+        name: String(toolCall.function.name),
+        argumentsText: String(toolCall.function.arguments || '{}'),
+      }))
+    : [];
+
+  if (!content && toolCalls.length === 0) {
     throw new Error('Local assistant returned an empty response.');
   }
 
   return {
     provider: 'local',
     model,
-    content: content.trim(),
+    content,
+    toolCalls,
   };
 }

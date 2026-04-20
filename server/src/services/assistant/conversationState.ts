@@ -381,9 +381,13 @@ function deriveComparisonState(
 
       state = {
         originPlaceId: originPlace?.id != null ? Number(originPlace.id) : state.originPlaceId,
-        originPlaceName: originPlace?.name ? String(originPlace.name) : state.originPlaceName,
+        originPlaceName: originPlace?.name
+          ? String(originPlace.name)
+          : (explicit.originText || state.originPlaceName),
         destinationPlaceId: destinationPlace?.id != null ? Number(destinationPlace.id) : state.destinationPlaceId,
-        destinationPlaceName: destinationPlace?.name ? String(destinationPlace.name) : state.destinationPlaceName,
+        destinationPlaceName: destinationPlace?.name
+          ? String(destinationPlace.name)
+          : (explicit.destinationText || state.destinationPlaceName),
         travelMode: explicit.travelMode || state.travelMode,
         comparisonType: explicit.comparisonType || state.comparisonType || 'distance',
       };
@@ -402,6 +406,14 @@ function deriveComparisonState(
       } else {
         state.originPlaceId = Number(referencedPlace.id);
         state.originPlaceName = String(referencedPlace.name || '');
+      }
+    } else if (followUp.placeText) {
+      if (followUp.side === 'destination') {
+        state.destinationPlaceId = null;
+        state.destinationPlaceName = followUp.placeText;
+      } else {
+        state.originPlaceId = null;
+        state.originPlaceName = followUp.placeText;
       }
     }
     if (followUp.travelMode) state.travelMode = followUp.travelMode;

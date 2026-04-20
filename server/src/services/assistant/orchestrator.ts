@@ -14,8 +14,9 @@ import {
   findSavedNearbyTripPlaces,
   findSavedPlaceLiveDetails,
 } from './tools';
-import { deriveAssistantConversationState, type PlaceCategoryScope } from './conversationState';
-import { completeWithLocalModel } from './provider';
+import { deriveAssistantConversationState, type ComparisonTravelMode, type PlaceCategoryScope } from './conversationState';
+import { completeWithLocalModel, type AssistantCompletionMessage } from './provider';
+import { comparePlacesForAssistant, executeAssistantToolCall, getAssistantExternalToolDefinitions } from './toolRuntime';
 import { getDetailedWeather } from '../weatherService';
 import { getUserSettings } from '../settingsService';
 import { getMapsKey } from '../mapsService';
@@ -364,7 +365,10 @@ function resolveAssistantIntent(input: AssistantQueryInput): ResolvedIntent {
   }
 
   const normalized = normalizeAssistantQuery(input.message);
-  const hasActiveComparison = conversationState.activeComparisonOriginPlaceId != null && conversationState.activeComparisonDestinationPlaceId != null;
+  const hasActiveComparison = !!(
+    conversationState.activeComparisonOriginPlaceName
+    && conversationState.activeComparisonDestinationPlaceName
+  );
   if (hasActiveComparison && (isComparisonTravelModeFollowUp(input.message) || isComparisonPlaceFollowUp(input.message))) {
     return {
       kind: 'place_comparison',
@@ -801,6 +805,8 @@ function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unk
     'You are TREK, a read-only trip assistant.',
     'Answer from the provided TREK trip data by default.',
     'When TREK provides live external place data or saved external enrichment through its tools, you may use it, but clearly identify it as external data rather than saved trip data.',
+    'When assistant tools for live external place search, live external place details, or mixed place comparisons are available, use them only when they are necessary to answer the user accurately.',
+    'Do not claim that you cannot look up live external place data if tool results are available in the conversation.',
     'Do not invent reservations, participants, dates, or costs.',
     'Do not invent external place details such as cuisine, hours, ratings, websites, or phone numbers.',
     'State when data is missing or incomplete.',
@@ -823,6 +829,95 @@ function buildPrompt(input: AssistantQueryInput, toolContext: Record<string, unk
   ].join('\n\n');
 
   return { systemPrompt, userPrompt };
+}
+
+async function completeAssistantWithToolLoop(
+  input: AssistantQueryInput,
+  toolContext: Record<string, unknown>,
+): Promise<{
+  provider: string;
+  model: string;
+  content: string;
+  warnings: string[];
+  citations: AssistantResponse['citations'];
+  toolsUsed: string[];
+}> {
+  const prompt = buildPrompt(input, toolContext);
+  const toolDefinitions = getAssistantExternalToolDefinitions();
+  const warnings: string[] = [];
+  const citations: AssistantResponse['citations'] = [];
+  const toolsUsed: string[] = [];
+  let messages: AssistantCompletionMessage[] = [
+    { role: 'system', content: prompt.systemPrompt },
+    { role: 'user', content: prompt.userPrompt },
+  ];
+
+  console.info('[assistant] system prompt preview:', {
+    tripId: input.tripId,
+    userId: input.userId,
+    systemMessage: prompt.systemPrompt || null,
+  });
+
+  for (let round = 0; round < 3; round += 1) {
+    const result = await completeWithLocalModel({
+      messages,
+      tools: toolDefinitions,
+    });
+    if (!result.toolCalls.length) {
+      return {
+        provider: result.provider,
+        model: result.model,
+        content: result.content,
+        warnings,
+        citations,
+        toolsUsed,
+      };
+    }
+
+    const roundToolCalls = result.toolCalls.slice(0, 2);
+    if (result.toolCalls.length > roundToolCalls.length) {
+      warnings.push('Assistant tool calls were capped for this request.');
+    }
+
+    messages = [
+      ...messages,
+      {
+        role: 'assistant',
+        content: result.content || '',
+        tool_calls: roundToolCalls.map((toolCall) => ({
+          id: toolCall.id,
+          type: 'function' as const,
+          function: {
+            name: toolCall.name,
+            arguments: toolCall.argumentsText,
+          },
+        })),
+      },
+    ];
+
+    for (const toolCall of roundToolCalls) {
+      const execution = await executeAssistantToolCall(toolCall, {
+        tripId: input.tripId,
+        userId: input.userId,
+        selectedPlaceId: input.context?.selected_place_id ?? null,
+        history: input.history,
+      });
+      messages.push(execution.message);
+      warnings.push(...execution.warnings);
+      citations.push(...execution.citations);
+      toolsUsed.push(...execution.toolsUsed);
+    }
+  }
+
+  const finalResult = await completeWithLocalModel({ messages });
+  return {
+    provider: finalResult.provider,
+    model: finalResult.model,
+    content: finalResult.content,
+    warnings,
+    citations,
+    toolsUsed,
+  };
 }
 
 function buildCitations(toolContext: Record<string, unknown>, tools: ToolName[]) {
@@ -956,6 +1051,7 @@ function isPlaceKnowledgeQuestion(message: string): boolean {
 
 function buildPlaceKnowledgeGuardrail(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse | null {
   if (!isPlaceKnowledgeQuestion(input.message)) return null;
+  if (getMapsKey(input.userId)) return null;
 
   const placeName = extractMentionedPlaceName(input, toolContext);
   if (!placeName) return null;
@@ -1859,62 +1955,58 @@ function formatTravelModeLabel(mode: 'walking' | 'driving' | 'transit'): string 
   return 'public transit';
 }
 
-function buildPlaceComparisonResponse(input: AssistantQueryInput, toolContext: Record<string, unknown>): AssistantResponse {
+async function buildPlaceComparisonResponse(input: AssistantQueryInput, _toolContext: Record<string, unknown>): Promise<AssistantResponse> {
   const conversationState = deriveAssistantConversationState(input);
-  const places = (((toolContext.get_trip_places as any)?.items) || []) as Array<{
-    id?: number;
-    name?: string;
-    address?: string | null;
-    lat?: number | null;
-    lng?: number | null;
-  }>;
+  const comparisonType = conversationState.activeComparisonType
+    || (conversationState.activeComparisonTravelMode ? 'travel_time' : 'distance');
+  const result = await comparePlacesForAssistant({
+    origin_place_id: conversationState.activeComparisonOriginPlaceId,
+    destination_place_id: conversationState.activeComparisonDestinationPlaceId,
+    origin_text: conversationState.activeComparisonOriginPlaceName,
+    destination_text: conversationState.activeComparisonDestinationPlaceName,
+    mode: conversationState.activeComparisonTravelMode,
+    comparison_type: comparisonType,
+  }, {
+    tripId: input.tripId,
+    userId: input.userId,
+    selectedPlaceId: input.context?.selected_place_id ?? null,
+    history: input.history,
+  });
 
-  const origin = places.find((place) => Number(place.id) === Number(conversationState.activeComparisonOriginPlaceId)) || null;
-  const destination = places.find((place) => Number(place.id) === Number(conversationState.activeComparisonDestinationPlaceId)) || null;
-  if (!origin || !destination) {
-    return makeDeterministicResponse('I could not determine which two saved places to compare. Name both places directly or ask a comparison after a prior comparison is established.', {
+  if (!result.ok || !result.origin || !result.destination || result.distanceMeters == null) {
+    return makeDeterministicResponse(result.error || 'I could not determine which two places to compare. Name both places directly or ask a comparison after a prior comparison is established.', {
       follow_up_prompts: ['How close is Club Quarters to Four Kings?', 'How far is Antithesis SF office from Four Kings?'],
-      tools_used: ['get_trip_places'],
+      warnings: result.warnings,
+      citations: result.citations,
+      tools_used: result.toolsUsed.length ? result.toolsUsed : ['get_trip_places'],
     });
   }
-  if (origin.lat == null || origin.lng == null || destination.lat == null || destination.lng == null) {
-    return makeDeterministicResponse(`I can't compare ${origin.name || 'the first place'} and ${destination.name || 'the second place'} because one of them is missing saved coordinates.`, {
-      missing_data: ['Both saved places need coordinates for deterministic distance comparison.'],
-      follow_up_prompts: ['Where is it?', 'Show all places'],
-      tools_used: ['get_trip_places'],
-    });
-  }
-
-  const distanceMeters = haversineDistanceMeters(Number(origin.lat), Number(origin.lng), Number(destination.lat), Number(destination.lng));
-  const distanceKm = distanceMeters / 1000;
+  const distanceMeters = result.distanceMeters;
   const distanceKmText = formatDistanceKm(distanceMeters);
   const distanceMilesText = formatDistanceMiles(distanceMeters);
-  const mode = conversationState.activeComparisonTravelMode;
-  const comparisonType = conversationState.activeComparisonType || (mode ? 'travel_time' : 'distance');
-  const lines = [`Comparison: ${origin.name || 'Origin'} to ${destination.name || 'Destination'}`];
+  const mode = result.mode;
+  const lines = [`Comparison: ${result.origin.label} to ${result.destination.label}`];
   if (distanceKmText || distanceMilesText) {
     const combinedDistance = [distanceKmText, distanceMilesText].filter(Boolean).join(' / ');
     lines.push(`- distance: ${combinedDistance}`);
   }
 
   if (comparisonType === 'travel_time' || mode) {
-    const activeMode = mode || 'walking';
-    const minutes = estimateTravelMinutes(distanceKm, activeMode);
+    const activeMode = (mode || 'walking') as ComparisonTravelMode;
+    const minutes = result.estimatedMinutes ?? estimateTravelMinutes(distanceMeters / 1000, activeMode);
     lines.push(`- estimated ${formatTravelModeLabel(activeMode)} time: ${minutes} minutes`);
   } else {
-    const walkingMinutes = estimateTravelMinutes(distanceKm, 'walking');
+    const walkingMinutes = estimateTravelMinutes(distanceMeters / 1000, 'walking');
     lines.push(`- estimated walking time: ${walkingMinutes} minutes`);
   }
 
-  lines.push('- note: travel times are rough estimates from saved coordinates, not live routing.');
+  lines.push('- note: travel times are rough estimates from coordinates, not live routing.');
 
   return makeDeterministicResponse(lines.join('\n'), {
-    citations: [
-      { type: 'place', id: origin.id ?? null, label: origin.name || 'Origin' },
-      { type: 'place', id: destination.id ?? null, label: destination.name || 'Destination' },
-    ],
+    citations: result.citations,
     follow_up_prompts: ['How about driving?', 'And public transit?', 'How about to the Antithesis SF office?'],
-    tools_used: ['get_trip_places'],
+    warnings: result.warnings,
+    tools_used: result.toolsUsed.length ? result.toolsUsed : ['get_trip_places'],
   });
 }
 
@@ -2306,7 +2398,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
     return await buildNearbyPlacesResponse(input, resolvedIntent, selectedDayId);
   }
   if (resolvedIntent.kind === 'place_comparison') {
-    return buildPlaceComparisonResponse(input, toolContext);
+    return await buildPlaceComparisonResponse(input, toolContext);
   }
   if (resolvedIntent.kind === 'place_live_detail') {
     return await buildSavedPlaceLiveDetailResponse(input, resolvedIntent);
@@ -2325,15 +2417,9 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
   }
   const guardedResponse = buildPlaceKnowledgeGuardrail(input, toolContext);
   if (guardedResponse) return guardedResponse;
-  const prompt = buildPrompt(input, toolContext);
-  console.info('[assistant] system prompt preview:', {
-    tripId: input.tripId,
-    userId: input.userId,
-    systemMessage: prompt.systemPrompt || null,
-  });
-  const result = await completeWithLocalModel(prompt);
+  const result = await completeAssistantWithToolLoop(input, toolContext);
 
-  const warnings: string[] = [];
+  const warnings: string[] = [...result.warnings];
   const missingData: string[] = [];
   const overview = toolContext.get_trip_overview as any;
   if (!overview?.trip?.start_date || !overview?.trip?.end_date) {
@@ -2351,7 +2437,10 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       role: 'assistant',
       content: sanitizeAssistantPlainText(result.content),
     },
-    citations: buildCitations(toolContext, Array.from(tools)),
+    citations: [
+      ...buildCitations(toolContext, Array.from(tools)),
+      ...result.citations,
+    ],
     suggested_actions: buildSuggestedActions(input.message, toolContext),
     warnings,
     missing_data: missingData,
@@ -2361,6 +2450,7 @@ export async function runAssistantQuery(input: AssistantQueryInput): Promise<Ass
       model: result.model,
       tools_used: Array.from(new Set([
         ...Array.from(tools),
+        ...result.toolsUsed,
         ...(toolContext.get_trip_places ? ['get_trip_places'] : []),
         ...(toolContext.get_day_plan ? ['get_day_plan'] : []),
       ])),

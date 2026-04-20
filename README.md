@@ -96,6 +96,9 @@ Current status:
 - remaining freeform replies are constrained to plain-text, grounded trip-data answers
 - assistant capabilities are accessed through the existing AI chat panel by typing requests there, not through separate assistant controls
 - live nearby place lookup is available through typed chat prompts for places near a saved place or day, including follow-ups such as `show more` and `which one is closest`
+- conversation-state follow-up handling now covers saved places, filtered place lists, day/reservation subjects, and saved-place comparisons
+- the next assistant track is controlled tool-calling for live external place search/details/comparison, executed by TREK server tools rather than giving the model direct Google API access
+- the first tool-calling slice is now started in the server assistant layer for controlled external place search/details, and mixed saved/external comparison support is in progress through the same tool runtime
 
 Still planned:
 

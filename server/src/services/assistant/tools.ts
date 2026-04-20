@@ -294,6 +294,13 @@ function normalizeForAssistantLookup(value: unknown): string {
     .trim();
 }
 
+function simplifyForFuzzyLookup(value: string): string {
+  return normalizeForAssistantLookup(value)
+    .replace(/(.)\1+/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isGenericAnchorReference(anchorText: string | null | undefined): boolean {
   const normalized = normalizeForAssistantLookup(anchorText);
   return !normalized
@@ -302,6 +309,50 @@ function isGenericAnchorReference(anchorText: string | null | undefined): boolea
     || normalized === 'this day'
     || normalized === 'today'
     || normalized === 'selected day';
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const prev = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const curr = new Array<number>(b.length + 1).fill(0);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + cost,
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j];
+  }
+
+  return prev[b.length];
+}
+
+function fuzzyScore(text: string, query: string): number {
+  if (!text || !query) return 0;
+  const variants: Array<[string, string]> = [
+    [text, query],
+    [simplifyForFuzzyLookup(text), simplifyForFuzzyLookup(query)],
+  ];
+  let best = 0;
+  for (const [left, right] of variants) {
+    if (!left || !right) continue;
+    const distance = levenshteinDistance(left, right);
+    const maxLength = Math.max(left.length, right.length);
+    if (maxLength === 0) continue;
+    const similarity = 1 - distance / maxLength;
+    if (similarity >= 0.68) {
+      best = Math.max(best, Math.round(similarity * 85));
+    }
+  }
+  return best;
 }
 
 function scorePlaceMatch(place: any, anchorText: string): number {
@@ -318,10 +369,15 @@ function scorePlaceMatch(place: any, anchorText: string): number {
   if (address && address.includes(anchor)) return 70;
 
   const tokens = anchor.split(' ').filter((token) => token.length >= 3);
-  if (!tokens.length) return 0;
+  const bestFuzzy = Math.max(
+    fuzzyScore(name, anchor),
+    ...tokens.map((token) => fuzzyScore(name, token)),
+  );
+  if (!tokens.length) return bestFuzzy;
   const haystack = `${name} ${address}`.trim();
   const matchedTokens = tokens.filter((token) => haystack.includes(token)).length;
-  return matchedTokens > 0 ? matchedTokens * 10 : 0;
+  const tokenScore = matchedTokens > 0 ? matchedTokens * 10 : 0;
+  return Math.max(tokenScore, bestFuzzy);
 }
 
 function extractPlaceLookupText(value: string): string {

@@ -46,6 +46,16 @@ interface GoogleTextSearchResponse {
   error?: { message?: string };
 }
 
+interface GoogleRouteResult {
+  distanceMeters?: number;
+  duration?: string;
+}
+
+interface GoogleComputeRoutesResponse {
+  routes?: GoogleRouteResult[];
+  error?: { message?: string };
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const UA = 'TREK Travel Planner (https://github.com/mauriceboe/NOMAD)';
@@ -93,6 +103,14 @@ export function getMapsKey(userId: number): string | null {
   if (user_key) return user_key;
   const admin = db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get() as { maps_api_key: string } | undefined;
   return decrypt_api_key(admin?.maps_api_key) || null;
+}
+
+function parseGoogleDurationSeconds(duration: string | null | undefined): number | null {
+  if (typeof duration !== 'string') return null;
+  const match = duration.match(/^([\d.]+)s$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
 }
 
 // ── Nominatim search ─────────────────────────────────────────────────────────
@@ -450,6 +468,83 @@ export async function getPlaceDetails(userId: number, placeId: string, lang?: st
   };
 
   return { place };
+}
+
+export async function computeRoute(
+  userId: number,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  mode: 'walking' | 'driving' | 'transit',
+  lang?: string,
+): Promise<{ distance_meters: number | null; duration_seconds: number | null; source: 'google_routes' }> {
+  const apiKey = getMapsKey(userId);
+  if (!apiKey) {
+    throw Object.assign(new Error('Google Maps API key not configured'), { status: 400 });
+  }
+
+  const travelMode = mode === 'walking'
+    ? 'WALK'
+    : mode === 'driving'
+      ? 'DRIVE'
+      : 'TRANSIT';
+
+  const body: Record<string, unknown> = {
+    origin: {
+      location: {
+        latLng: {
+          latitude: origin.lat,
+          longitude: origin.lng,
+        },
+      },
+    },
+    destination: {
+      location: {
+        latLng: {
+          latitude: destination.lat,
+          longitude: destination.lng,
+        },
+      },
+    },
+    travelMode,
+    languageCode: lang || 'en',
+    units: 'METRIC',
+    computeAlternativeRoutes: false,
+  };
+
+  if (mode === 'driving') {
+    body.routingPreference = 'TRAFFIC_AWARE';
+    body.departureTime = new Date().toISOString();
+  } else if (mode === 'transit') {
+    body.departureTime = new Date().toISOString();
+  }
+
+  const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json() as GoogleComputeRoutesResponse;
+  if (!response.ok) {
+    const err = new Error(data.error?.message || 'Google Routes API error') as Error & { status: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  const route = data.routes?.[0] || null;
+  if (!route) {
+    throw Object.assign(new Error('No route returned by Google Routes API'), { status: 404 });
+  }
+
+  return {
+    distance_meters: typeof route.distanceMeters === 'number' ? route.distanceMeters : null,
+    duration_seconds: parseGoogleDurationSeconds(route.duration),
+    source: 'google_routes',
+  };
 }
 
 // ── Place photo (Google or Wikimedia, with caching + DB persistence) ─────────

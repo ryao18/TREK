@@ -27,7 +27,7 @@ Current implementation status:
 - the panel shell, endpoint contract, provider path, and planner integration are all in place
 - assistant capabilities are intended to be used from the existing AI chat panel via typed prompts, not via separate assistant-specific UI entry points
 - several high-frequency question types now bypass the LLM and are answered deterministically from TREK data
-- place-specific general-knowledge questions are still intentionally constrained unless TREK has stored data or we later add explicit live maps/search tools
+- place-specific general-knowledge questions are still grounded and constrained, but TREK now has a first controlled live external tool layer for search, details, and mixed place comparison when those tools are needed
 
 What is implemented now:
 
@@ -47,6 +47,15 @@ What is implemented now:
 - nearby-search follow-ups such as `show more` and `which one is closest`
 - persisted external place enrichment for saved trip places, starting with `google_place_id` plus stable Google-derived metadata
 - deterministic saved-place detail answers for typed questions about place type, cuisine/type, rating, website, phone, and live-only operational questions such as hours / open-now
+- initial conversation-state memory for follow-up handling across saved places, filtered place lists, day/reservation subjects, and saved-place comparisons
+- initial local-provider tool-call plumbing for controlled live external place tools
+- first assistant-facing live external tools for:
+  - `search_external_place`
+  - `get_external_place_details`
+  - `compare_places`
+- mixed saved/external comparison execution through the shared assistant tool runtime
+- comparison follow-up memory that can preserve named comparison endpoints even when one side is not a saved trip place
+- comparison distance/time answers are now intended to come from live Google Maps routing rather than coordinate-only heuristics
 
 What is still left:
 
@@ -55,6 +64,26 @@ What is still left:
 - broader live external lookup and recommendation flows beyond the current nearby-place search path, still invoked through typed requests in the current AI chat panel
 - deeper saved-place external enrichment coverage and refinement beyond the initial Google-backed stable fields
 - future write-capable actions with explicit confirmation flows
+
+Current next-step implementation track:
+
+- expand controlled assistant tool-calling for broader live external place lookups
+- TREK, not the model runtime, will own Google Places API access
+- the model will only be allowed to call a small assistant-facing tool set, starting with:
+  - `search_external_place`
+  - `get_external_place_details`
+  - `compare_places`
+- tool calls will be server-side validated, rate-limited, logged, and capped per request
+- saved stable fields from confident matches should continue to flow into TREK's external enrichment layer
+- volatile data such as hours/open-now remains live-only rather than canonical saved trip truth
+
+Implementation status of this track:
+
+- the first server/provider slice is implemented
+- deterministic TREK-first routing still runs before the model tool path
+- mixed saved/external comparison support now runs through the same assistant tool runtime as search/details
+- comparison follow-ups now preserve endpoint labels when a comparison side is external rather than a saved place
+- the remaining work is to refine routing, improve external follow-up handling, and harden comparison behavior and coverage
 
 ## Why This Shape
 
@@ -113,6 +142,31 @@ Phase 3 can add guided trip-management flows:
 - rebalance overloaded days
 - create a traveler brief
 - prepare a departure checklist
+
+### External Place Tool-Calling Track
+
+The next assistant architecture step is a controlled tool-calling layer for live external place intelligence.
+
+This is not direct model access to Google Places. Instead:
+
+1. TREK exposes a small assistant-facing tool registry
+2. the model may request those TREK tools
+3. TREK executes them server-side
+4. TREK returns structured tool results back to the model
+5. TREK continues to control persistence, quota, logging, and provenance
+
+The initial tool set should be:
+
+- `search_external_place`
+- `get_external_place_details`
+- `compare_places`
+
+This track is intended to solve mixed saved/external questions such as:
+
+- "look it up on google"
+- "molly tea in sunnyvale"
+- "what kind of food is Four Kings?"
+- "how close is the office to Molly Tea?"
 
 ## Core Principles
 
@@ -196,6 +250,12 @@ A server-side assistant service that:
 
 This layer should remain stateless for MVP other than normal request handling.
 
+Near-term refinement:
+
+- the orchestrator should support a bounded tool-call loop for the local OpenAI-compatible provider
+- max tool calls should stay small per request
+- deterministic trip-data handlers should still run before the LLM/tool path whenever the answer is already known from TREK data
+
 ### Trip Tool Layer
 
 Typed read and write tools over existing services.
@@ -226,6 +286,22 @@ Phase 1 should start with a small read-only tool set.
 - `get_packing_summary(tripId)`
 - `get_todo_summary(tripId)`
 - `get_day_notes_summary(tripId, dayId?)`
+
+### External Assistant Tools
+
+These are assistant-facing tools for live place intelligence, not raw provider-side API access:
+
+- `search_external_place(query, near_place_ref?, near_lat?, near_lng?, limit?)`
+- `get_external_place_details(google_place_id)`
+- `compare_places(origin, destination, mode)`
+
+Rules for these tools:
+
+- TREK executes them server-side
+- arguments must be validated before execution
+- the model never receives Google API credentials
+- stable fields may be persisted after confident matches
+- volatile fields stay live-only
 
 Implementation note:
 
@@ -476,6 +552,12 @@ Do not start with:
 - background agents
 - write access
 - large unbounded history windows
+
+Near-term extension:
+
+- allow a small, controlled tool-calling loop for live external place lookups
+- do not expose generic browsing or unrestricted web search
+- keep deterministic TREK-first routing for structured trip-state questions
 
 ## LLM Deployment Strategy
 

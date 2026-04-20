@@ -27,7 +27,7 @@ Current implementation status:
 - the panel shell, endpoint contract, provider path, and planner integration are all in place
 - assistant capabilities are intended to be used from the existing AI chat panel via typed prompts, not via separate assistant-specific UI entry points
 - several high-frequency question types now bypass the LLM and are answered deterministically from TREK data
-- place-specific general-knowledge questions are still intentionally constrained unless TREK has stored data or we later add explicit live maps/search tools
+- place-specific general-knowledge questions are still grounded and constrained, but TREK now has a first controlled live external tool layer for search, details, and mixed place comparison when those tools are needed
 
 What is implemented now:
 
@@ -53,6 +53,8 @@ What is implemented now:
   - `search_external_place`
   - `get_external_place_details`
   - `compare_places`
+- mixed saved/external comparison execution through the shared assistant tool runtime
+- comparison follow-up memory that can preserve named comparison endpoints even when one side is not a saved trip place
 
 What is still left:
 
@@ -64,7 +66,7 @@ What is still left:
 
 Current next-step implementation track:
 
-- add controlled assistant tool-calling for live external place lookups
+- expand controlled assistant tool-calling for broader live external place lookups
 - TREK, not the model runtime, will own Google Places API access
 - the model will only be allowed to call a small assistant-facing tool set, starting with:
   - `search_external_place`
@@ -76,11 +78,11 @@ Current next-step implementation track:
 
 Implementation status of this track:
 
-- the first server/provider slice is started
+- the first server/provider slice is implemented
 - deterministic TREK-first routing still runs before the model tool path
-- mixed saved/external comparison support is now being wired through the same assistant tool runtime as search/details
-- comparison follow-ups are moving away from saved-place ids only and toward endpoint-based comparison memory
-- the remaining work is to refine routing, improve external follow-up handling, and harden comparison behavior
+- mixed saved/external comparison support now runs through the same assistant tool runtime as search/details
+- comparison follow-ups now preserve endpoint labels when a comparison side is external rather than a saved place
+- the remaining work is to refine routing, improve external follow-up handling, and harden comparison behavior and coverage
 
 ## Why This Shape
 
@@ -156,7 +158,6 @@ The initial tool set should be:
 
 - `search_external_place`
 - `get_external_place_details`
-
 - `compare_places`
 
 This track is intended to solve mixed saved/external questions such as:
@@ -291,7 +292,7 @@ These are assistant-facing tools for live place intelligence, not raw provider-s
 
 - `search_external_place(query, near_place_ref?, near_lat?, near_lng?, limit?)`
 - `get_external_place_details(google_place_id)`
-- later `compare_places(origin, destination, mode)`
+- `compare_places(origin, destination, mode)`
 
 Rules for these tools:
 

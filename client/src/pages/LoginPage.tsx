@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
-import { SUPPORTED_LANGUAGES, useTranslation } from '../i18n'
-import { authApi } from '../api/client'
+import { SUPPORTED_LANGUAGES, useTranslation, detectBrowserLanguage } from '../i18n'
+import { authApi, configApi } from '../api/client'
+import { hasStoredLanguage } from '../store/settingsStore'
 import { getApiErrorMessage } from '../types'
-import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route, Shield, KeyRound } from 'lucide-react'
+import { Plane, Eye, EyeOff, Mail, Lock, MapPin, Calendar, Package, User, Globe, Zap, Users, Wallet, Map, CheckSquare, BookMarked, FolderOpen, Route, Shield, KeyRound, ChevronDown } from 'lucide-react'
 
 interface AppConfig {
   has_users: boolean
@@ -15,6 +16,11 @@ interface AppConfig {
   oidc_configured: boolean
   oidc_display_name?: string
   oidc_only_mode: boolean
+  password_login: boolean
+  password_registration: boolean
+  oidc_login: boolean
+  oidc_registration: boolean
+  env_override_oidc_only: boolean
 }
 
 export default function LoginPage(): React.ReactElement {
@@ -31,8 +37,10 @@ export default function LoginPage(): React.ReactElement {
   const [inviteValid, setInviteValid] = useState<boolean>(false)
   const exchangeInitiated = useRef(false)
 
+  const [langDropdownOpen, setLangDropdownOpen] = useState<boolean>(false)
+
   const { login, register, demoLogin, completeMfaLogin, loadUser } = useAuthStore()
-  const { setLanguageLocal } = useSettingsStore()
+  const { setLanguageLocal, setLanguageTransient } = useSettingsStore()
   const navigate = useNavigate()
   const location = useLocation()
   const noRedirect = !!(location.state as { noRedirect?: boolean } | null)?.noRedirect
@@ -48,6 +56,12 @@ export default function LoginPage(): React.ReactElement {
   }, [])
 
   useEffect(() => {
+    if (redirectTarget !== '/dashboard') {
+      sessionStorage.setItem('oidc_redirect', redirectTarget)
+    }
+  }, [redirectTarget])
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search)
 
     const invite = params.get('invite')
@@ -60,7 +74,7 @@ export default function LoginPage(): React.ReactElement {
       authApi.validateInvite(invite).then(() => {
         setInviteValid(true)
       }).catch(() => {
-        setError('Invalid or expired invite link')
+        setError(t('login.invalidInviteLink'))
       })
       window.history.replaceState({}, '', window.location.pathname)
     }
@@ -75,14 +89,16 @@ export default function LoginPage(): React.ReactElement {
           window.history.replaceState({}, '', '/login')
           if (data.token) {
             await loadUser()
-            navigate('/dashboard', { replace: true })
+            const savedRedirect = sessionStorage.getItem('oidc_redirect') || '/dashboard'
+            sessionStorage.removeItem('oidc_redirect')
+            navigate(savedRedirect, { replace: true })
           } else {
-            setError(data.error || 'OIDC login failed')
+            setError(data.error || t('login.oidcFailed'))
           }
         })
         .catch(() => {
           window.history.replaceState({}, '', '/login')
-          setError('OIDC login failed')
+          setError(t('login.oidcFailed'))
         })
         .finally(() => setIsLoading(false))
       return
@@ -96,20 +112,61 @@ export default function LoginPage(): React.ReactElement {
         invalid_state: t('login.oidc.invalidState'),
       }
       setError(errorMessages[oidcError] || oidcError)
+      sessionStorage.removeItem('oidc_redirect')
       window.history.replaceState({}, '', '/login')
       return
     }
 
-    authApi.getAppConfig?.().catch(() => null).then((config: AppConfig | null) => {
-      if (config) {
-        setAppConfig(config)
-        if (!config.has_users) setMode('register')
-        if (config.oidc_only_mode && config.oidc_configured && config.has_users && !invite && !noRedirect) {
-          window.location.href = '/api/auth/oidc/login'
+    const CONFIG_CACHE_KEY = 'trek_app_config_cache'
+    authApi.getAppConfig?.()
+      .then((config: AppConfig) => {
+        try { localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(config)) } catch { /* ignore quota errors */ }
+        return { config, fromCache: false }
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(CONFIG_CACHE_KEY)
+          return raw ? { config: JSON.parse(raw) as AppConfig, fromCache: true } : { config: null as AppConfig | null, fromCache: false }
+        } catch { return { config: null as AppConfig | null, fromCache: false } }
+      })
+      .then(({ config, fromCache }) => {
+        if (config) {
+          setAppConfig(config)
+          if (!config.has_users) setMode('register')
+          // Skip auto-redirect when config is from cache — network is unreliable
+          // and auto-redirecting to the IdP could loop if the proxy changed.
+          if (!fromCache && !config.password_login && config.oidc_login && config.oidc_configured && config.has_users && !invite && !noRedirect) {
+            window.location.href = '/api/auth/oidc/login'
+          }
         }
-      }
-    })
+      })
   }, [navigate, t, noRedirect])
+
+  // Language detection chain (runs once on mount, only if user has no saved preference):
+  // 1. localStorage → already in store initial state, skip
+  // 2. Browser/OS language (navigator.languages)
+  // 3. Server default (DEFAULT_LANGUAGE env var)
+  // 4. 'en' → hardcoded fallback already in store
+  useEffect(() => {
+    if (hasStoredLanguage()) return
+
+    const detected = detectBrowserLanguage()
+    if (detected) {
+      setLanguageTransient(detected)
+      return
+    }
+
+    configApi.getPublicConfig()
+      .then(({ defaultLanguage }) => { if (defaultLanguage) setLanguageTransient(defaultLanguage) })
+      .catch((err) => console.warn('Failed to fetch default language config:', err))
+  }, [setLanguageTransient])
+
+  useEffect(() => {
+    if (!langDropdownOpen) return
+    const close = () => setLangDropdownOpen(false)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [langDropdownOpen])
 
   const handleDemoLogin = async (): Promise<void> => {
     setError('')
@@ -167,8 +224,8 @@ export default function LoginPage(): React.ReactElement {
         return
       }
       if (mode === 'register') {
-        if (!username.trim()) { setError('Username is required'); setIsLoading(false); return }
-        if (password.length < 8) { setError('Password must be at least 8 characters'); setIsLoading(false); return }
+        if (!username.trim()) { setError(t('login.usernameRequired')); setIsLoading(false); return }
+        if (password.length < 8) { setError(t('login.passwordMinLength')); setIsLoading(false); return }
         await register(username, email, password, inviteToken || undefined)
       } else {
         const result = await login(email, password)
@@ -194,10 +251,10 @@ export default function LoginPage(): React.ReactElement {
     }
   }
 
-  const showRegisterOption = (appConfig?.allow_registration || !appConfig?.has_users || inviteValid) && !appConfig?.oidc_only_mode && (appConfig?.setup_complete !== false || !appConfig?.has_users)
+  const showRegisterOption = (appConfig?.password_registration || !appConfig?.has_users || inviteValid) && (appConfig?.setup_complete !== false || !appConfig?.has_users)
 
   // In OIDC-only mode, show a minimal page that redirects directly to the IdP
-  const oidcOnly = appConfig?.oidc_only_mode && appConfig?.oidc_configured
+  const oidcOnly = !appConfig?.password_login && appConfig?.oidc_login && appConfig?.oidc_configured
 
   const inputBase: React.CSSProperties = {
     width: '100%', padding: '11px 12px 11px 40px', border: '1px solid #e5e7eb',
@@ -359,29 +416,66 @@ export default function LoginPage(): React.ReactElement {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif", position: 'relative' }}>
 
-      {/* Language toggle */}
-      <button
-        onClick={() => {
-          const languages = SUPPORTED_LANGUAGES.map(({ value }) => value)
-          const currentIndex = languages.findIndex(code => code === language)
-          const nextLanguage = languages[(currentIndex + 1) % languages.length]
-          setLanguageLocal(nextLanguage)
-        }}
-        style={{
-          position: 'absolute', top: 16, right: 16, zIndex: 10,
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 12px', borderRadius: 99,
-          background: 'rgba(0,0,0,0.06)', border: 'none',
-          fontSize: 13, fontWeight: 500, color: '#374151',
-          cursor: 'pointer', fontFamily: 'inherit',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'rgba(0,0,0,0.1)'}
-        onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'rgba(0,0,0,0.06)'}
-      >
-        <Globe size={14} />
-        {language.toUpperCase()}
-      </button>
+      {/* Language dropdown */}
+      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setLangDropdownOpen(o => !o) }}
+          aria-haspopup="listbox"
+          aria-expanded={langDropdownOpen}
+          aria-label="Change language"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 99,
+            background: 'rgba(0,0,0,0.06)', border: 'none',
+            fontSize: 13, fontWeight: 500, color: '#374151',
+            cursor: 'pointer', fontFamily: 'inherit',
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'rgba(0,0,0,0.1)'}
+          onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.style.background = 'rgba(0,0,0,0.06)'}
+        >
+          <Globe size={14} />
+          {SUPPORTED_LANGUAGES.find(l => l.value === language)?.label ?? language.toUpperCase()}
+          <ChevronDown size={12} style={{ transition: 'transform 0.15s', transform: langDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+        </button>
+
+        {langDropdownOpen && (
+          <div
+            role="listbox"
+            aria-label="Select language"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute', top: '100%', right: 0, marginTop: 4,
+              background: 'white', borderRadius: 12,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+              border: '1px solid rgba(0,0,0,0.08)',
+              minWidth: 190, maxHeight: 320, overflowY: 'auto',
+            }}
+          >
+            {SUPPORTED_LANGUAGES.map(({ value, label }) => (
+              <button
+                key={value}
+                role="option"
+                aria-selected={value === language}
+                onClick={() => { setLanguageLocal(value); setLangDropdownOpen(false) }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '9px 16px', border: 'none',
+                  background: value === language ? 'rgba(99,102,241,0.08)' : 'transparent',
+                  color: value === language ? '#4f46e5' : '#374151',
+                  fontWeight: value === language ? 600 : 400,
+                  fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (value !== language) e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+                onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (value !== language) e.currentTarget.style.background = 'transparent' }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Left — branding */}
       <div style={{ display: 'none', width: '55%', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '60px 48px', position: 'relative', overflow: 'hidden' }}
@@ -503,7 +597,7 @@ export default function LoginPage(): React.ReactElement {
               { Icon: FolderOpen, label: t('login.features.files'), desc: t('login.features.filesDesc') },
               { Icon: Route, label: t('login.features.routes'), desc: t('login.features.routesDesc') },
             ].map(({ Icon, label, desc }) => (
-              <div key={label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: '14px 12px', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'left', transition: 'all 0.2s' }}
+              <div key={label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: '14px 12px', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'left', transition: 'background 200ms cubic-bezier(0.23,1,0.32,1), border-color 200ms cubic-bezier(0.23,1,0.32,1)' }}
                 onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}
                 onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}>
                 <Icon size={17} style={{ color: 'rgba(255,255,255,0.7)', marginBottom: 7 }} />
@@ -548,7 +642,7 @@ export default function LoginPage(): React.ReactElement {
                     border: 'none', borderRadius: 12,
                     fontSize: 14, fontWeight: 700, cursor: 'pointer',
                     fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    textDecoration: 'none', transition: 'all 0.15s',
+                    textDecoration: 'none', transition: 'background 180ms cubic-bezier(0.23,1,0.32,1)',
                     boxSizing: 'border-box',
                   }}
                   onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => { e.currentTarget.style.background = '#1f2937' }}
@@ -693,11 +787,34 @@ export default function LoginPage(): React.ReactElement {
                   />
                   <button type="button" onClick={() => setShowPassword(v => !v)} style={{
                     position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: '#9ca3af',
+                    background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#9ca3af',
+                    width: 22, height: 22,
                   }}>
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    <Eye size={16} style={{
+                      position: 'absolute', inset: 3,
+                      opacity: showPassword ? 0 : 1,
+                      transform: showPassword ? 'scale(0.7) rotate(-20deg)' : 'scale(1) rotate(0)',
+                      transition: 'opacity 180ms cubic-bezier(0.23,1,0.32,1), transform 180ms cubic-bezier(0.23,1,0.32,1)',
+                    }} />
+                    <EyeOff size={16} style={{
+                      position: 'absolute', inset: 3,
+                      opacity: showPassword ? 1 : 0,
+                      transform: showPassword ? 'scale(1) rotate(0)' : 'scale(0.7) rotate(20deg)',
+                      transition: 'opacity 180ms cubic-bezier(0.23,1,0.32,1), transform 180ms cubic-bezier(0.23,1,0.32,1)',
+                    }} />
                   </button>
                 </div>
+                {mode === 'login' && (
+                  <div style={{ textAlign: 'right', marginTop: 6 }}>
+                    <button type="button" onClick={() => navigate('/forgot-password')} style={{
+                      background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                      color: '#6b7280', fontSize: 12.5, fontWeight: 500, fontFamily: 'inherit',
+                    }}
+                      onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.color = '#111827' }}
+                      onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.color = '#6b7280' }}
+                    >{t('login.forgotPassword')}</button>
+                  </div>
+                )}
               </div>
               )}
 
@@ -730,8 +847,8 @@ export default function LoginPage(): React.ReactElement {
             </>)}
           </div>
 
-          {/* OIDC / SSO login button (only when OIDC is configured but not in oidc-only mode) */}
-          {appConfig?.oidc_configured && !oidcOnly && (
+          {/* OIDC / SSO login button (only when OIDC is configured, oidc_login enabled, not in oidc-only mode) */}
+          {appConfig?.oidc_configured && appConfig?.oidc_login && !oidcOnly && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
                 <div style={{ flex: 1, height: 1, background: '#e5e7eb' }} />
@@ -745,7 +862,7 @@ export default function LoginPage(): React.ReactElement {
                   border: '1px solid #d1d5db', borderRadius: 12,
                   fontSize: 14, fontWeight: 600, cursor: 'pointer',
                   fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  textDecoration: 'none', transition: 'all 0.15s',
+                  textDecoration: 'none', transition: 'background 180ms cubic-bezier(0.23,1,0.32,1), border-color 180ms cubic-bezier(0.23,1,0.32,1)',
                   boxSizing: 'border-box',
                 }}
                 onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#9ca3af' }}
@@ -766,7 +883,7 @@ export default function LoginPage(): React.ReactElement {
                 color: '#451a03', border: 'none', borderRadius: 14,
                 fontSize: 15, fontWeight: 700, cursor: isLoading ? 'default' : 'pointer',
                 fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                opacity: isLoading ? 0.7 : 1, transition: 'all 0.2s',
+                opacity: isLoading ? 0.7 : 1, transition: 'transform 200ms cubic-bezier(0.23,1,0.32,1), box-shadow 200ms cubic-bezier(0.23,1,0.32,1), opacity 200ms cubic-bezier(0.23,1,0.32,1)',
                 boxShadow: '0 2px 12px rgba(245, 158, 11, 0.3)',
               }}
               onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (!isLoading) e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(245, 158, 11, 0.4)' }}

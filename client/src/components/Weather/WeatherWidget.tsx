@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudLightning, Wind } from 'lucide-react'
-import { weatherApi } from '../../api/client'
+import { fetchWeather } from '../../services/weatherQueue'
 import { useSettingsStore } from '../../store/settingsStore'
 
 const WEATHER_ICON_MAP = {
@@ -61,7 +61,7 @@ export default function WeatherWidget({ lat, lng, date, compact = false }: Weath
       // Climate data: use from cache but re-fetch in background to upgrade to forecast
       else if (cached.type === 'climate') {
         setWeather(cached)
-        weatherApi.get(lat, lng, date)
+        fetchWeather(lat, lng, date)
           .then(data => {
             if (!data.error && data.temp !== undefined && data.type === 'forecast') {
               setWeatherCache(cacheKey, data)
@@ -77,7 +77,7 @@ export default function WeatherWidget({ lat, lng, date, compact = false }: Weath
       return
     }
     setLoading(true)
-    weatherApi.get(lat, lng, date)
+    fetchWeather(lat, lng, date)
       .then(data => {
         if (data.error || data.temp === undefined) {
           setFailed(true)

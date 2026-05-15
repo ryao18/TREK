@@ -40,6 +40,14 @@ vi.mock('../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 vi.mock('../../src/websocket', () => ({ broadcastToUser: vi.fn() }));
+vi.mock('../../src/services/notifications', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/notifications')>();
+  return {
+    ...actual,
+    testSmtp: vi.fn().mockResolvedValue({ success: true }),
+    testWebhook: vi.fn().mockResolvedValue({ success: true }),
+  };
+});
 
 import { createApp } from '../../src/app';
 import { createTables } from '../../src/db/schema';
@@ -315,6 +323,67 @@ describe('Notification test endpoints', () => {
       .set('Cookie', authCookie(user.id))
       .send({ url: 'not-a-url' });
     expect(res.status).toBe(400);
+  });
+
+  it('NOTIF-005b — admin can call test-smtp and gets a result', async () => {
+    const { user } = createAdmin(testDb);
+
+    const res = await request(app)
+      .post('/api/notifications/test-smtp')
+      .set('Cookie', authCookie(user.id))
+      .send({ email: 'test@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success');
+  });
+
+  it('NOTIF-006c — POST /api/notifications/test-webhook with valid URL calls testWebhook', async () => {
+    const { user } = createUser(testDb);
+
+    const res = await request(app)
+      .post('/api/notifications/test-webhook')
+      .set('Cookie', authCookie(user.id))
+      .send({ url: 'https://webhook.site/test-endpoint' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success');
+  });
+
+  it('NOTIF-007 — POST /api/notifications/test-ntfy returns 400 when no topic configured', async () => {
+    const { user } = createUser(testDb);
+
+    const res = await request(app)
+      .post('/api/notifications/test-ntfy')
+      .set('Cookie', authCookie(user.id))
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  it('NOTIF-008 — POST /api/notifications/test-ntfy with explicit topic returns 200', async () => {
+    const { user } = createUser(testDb);
+
+    const res = await request(app)
+      .post('/api/notifications/test-ntfy')
+      .set('Cookie', authCookie(user.id))
+      .send({ topic: 'trek-integration-test-topic' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success');
+  });
+
+  it('NOTIF-009 — POST /api/notifications/test-ntfy falls back to user saved topic', async () => {
+    const { user } = createUser(testDb);
+    testDb.prepare("INSERT OR REPLACE INTO settings (user_id, key, value) VALUES (?, 'ntfy_topic', 'saved-user-topic')").run(user.id);
+
+    const res = await request(app)
+      .post('/api/notifications/test-ntfy')
+      .set('Cookie', authCookie(user.id))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success');
   });
 });
 

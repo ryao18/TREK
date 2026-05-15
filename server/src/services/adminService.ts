@@ -7,10 +7,12 @@ import { User, Addon } from '../types';
 import { updateJwtSecret } from '../config';
 import { maybe_encrypt_api_key, decrypt_api_key } from './apiKeyCrypto';
 import { getAllPermissions, savePermissions as savePerms, PERMISSION_ACTIONS } from './permissions';
-import { revokeUserSessions } from '../mcp';
+import { revokeUserSessions, revokeUserSessionsForClient } from '../mcp';
+import { deleteUserCompletely } from './userCleanupService';
 import { validatePassword } from './passwordPolicy';
 import { getPhotoProviderConfig } from './memories/helpersService';
 import { send as sendNotification } from './notificationService';
+import { resolveAuthToggles } from './authService';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -20,12 +22,25 @@ export function utcSuffix(ts: string | null | undefined): string | null {
 }
 
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0, nb = pb[i] || 0;
+  const parse = (v: string) => {
+    const [base, pre] = v.split('-pre.');
+    const parts = base.split('.').map(Number);
+    const n = pre !== undefined ? parseInt(pre, 10) : null;
+    const preN = n !== null && Number.isFinite(n) ? n : null;
+    return { parts, preN };
+  };
+  const pa = parse(a), pb = parse(b);
+  for (let i = 0; i < Math.max(pa.parts.length, pb.parts.length); i++) {
+    const na = pa.parts[i] || 0, nb = pb.parts[i] || 0;
     if (na > nb) return 1;
     if (na < nb) return -1;
+  }
+  // Equal base: stable > prerelease; higher preN wins among prereleases
+  if (pa.preN === null && pb.preN !== null) return 1;
+  if (pa.preN !== null && pb.preN === null) return -1;
+  if (pa.preN !== null && pb.preN !== null) {
+    if (pa.preN > pb.preN) return 1;
+    if (pa.preN < pb.preN) return -1;
   }
   return 0;
 }
@@ -40,8 +55,8 @@ export const isDocker = (() => {
 
 export function listUsers() {
   const users = db.prepare(
-    'SELECT id, username, email, role, created_at, updated_at, last_login FROM users ORDER BY created_at DESC'
-  ).all() as Pick<User, 'id' | 'username' | 'email' | 'role' | 'created_at' | 'updated_at' | 'last_login'>[];
+    'SELECT id, username, email, role, avatar, created_at, updated_at, last_login FROM users ORDER BY created_at DESC'
+  ).all() as (Pick<User, 'id' | 'username' | 'email' | 'role' | 'created_at' | 'updated_at' | 'last_login'> & { avatar?: string | null })[];
   let onlineUserIds = new Set<number>();
   try {
     const { getOnlineUserIds } = require('../websocket');
@@ -49,6 +64,7 @@ export function listUsers() {
   } catch { /* */ }
   return users.map(u => ({
     ...u,
+    avatar_url: u.avatar ? `/uploads/avatars/${u.avatar}` : null,
     created_at: utcSuffix(u.created_at),
     updated_at: utcSuffix(u.updated_at as string),
     last_login: utcSuffix(u.last_login),
@@ -96,7 +112,9 @@ export function createUser(data: { username: string; email: string; password: st
 }
 
 export function updateUser(id: string, data: { username?: string; email?: string; role?: string; password?: string }) {
-  const { username, email, role, password } = data;
+  const username = typeof data.username === 'string' ? data.username.trim() : data.username;
+  const email = typeof data.email === 'string' ? data.email.trim() : data.email;
+  const { role, password } = data;
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
 
   if (!user) return { error: 'User not found', status: 404 };
@@ -155,7 +173,7 @@ export function deleteUser(id: string, currentUserId: number) {
   const userToDel = db.prepare('SELECT id, email FROM users WHERE id = ?').get(id) as { id: number; email: string } | undefined;
   if (!userToDel) return { error: 'User not found', status: 404 };
 
-  db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  deleteUserCompletely(userToDel.id);
   return { email: userToDel.email };
 }
 
@@ -253,22 +271,26 @@ export function updateOidcSettings(data: {
   client_id?: string;
   client_secret?: string;
   display_name?: string;
-  oidc_only?: boolean;
   discovery_url?: string;
-}) {
+}): { error?: string; status?: number; success?: boolean } {
+  // Lockout prevention: can't remove OIDC config when password login is disabled
+  if ((data.issuer === '' || data.client_id === '') && !resolveAuthToggles().password_login) {
+    return { error: 'Cannot remove SSO configuration while password login is disabled. Enable password login first.', status: 400 };
+  }
+
   const set = (key: string, val: string) => db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val || '');
   set('oidc_issuer', data.issuer ?? '');
   set('oidc_client_id', data.client_id ?? '');
   if (data.client_secret !== undefined) set('oidc_client_secret', maybe_encrypt_api_key(data.client_secret) ?? '');
   set('oidc_display_name', data.display_name ?? '');
-  set('oidc_only', data.oidc_only ? 'true' : 'false');
   set('oidc_discovery_url', data.discovery_url ?? '');
+  return { success: true };
 }
 
 // ── Demo Baseline ──────────────────────────────────────────────────────────
 
 export function saveDemoBaseline(): { error?: string; status?: number; message?: string } {
-  if (process.env.DEMO_MODE !== 'true') {
+  if (process.env.DEMO_MODE?.toLowerCase() !== 'true') {
     return { error: 'Not found', status: 404 };
   }
   try {
@@ -297,21 +319,72 @@ export async function getGithubReleases(perPage: string = '10', page: string = '
   }
 }
 
-export async function checkVersion() {
-  const { version: currentVersion } = require('../../package.json');
-  try {
-    const resp = await fetch(
-      'https://api.github.com/repos/mauriceboe/TREK/releases/latest',
-      { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'TREK-Server' } }
-    );
-    if (!resp.ok) return { current: currentVersion, latest: currentVersion, update_available: false };
-    const data = await resp.json() as { tag_name?: string; html_url?: string };
-    const latest = (data.tag_name || '').replace(/^v/, '');
-    const update_available = latest && latest !== currentVersion && compareVersions(latest, currentVersion) > 0;
-    return { current: currentVersion, latest, update_available, release_url: data.html_url || '', is_docker: isDocker };
-  } catch {
-    return { current: currentVersion, latest: currentVersion, update_available: false, is_docker: isDocker };
+interface VersionInfo {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  release_url?: string;
+  is_docker: boolean;
+  is_prerelease: boolean;
+}
+
+const VERSION_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let _versionCache: { data: VersionInfo; expiresAt: number } | null = null;
+
+/** Test-only: clear the in-memory version cache. */
+export function __clearVersionCacheForTests(): void {
+  _versionCache = null;
+}
+
+export async function checkVersion(): Promise<VersionInfo> {
+  if (_versionCache && Date.now() < _versionCache.expiresAt) {
+    return _versionCache.data;
   }
+
+  const currentVersion: string = process.env.APP_VERSION || require('../../package.json').version;
+  const isPrerelease = currentVersion.includes('-pre.');
+  const fallback: VersionInfo = { current: currentVersion, latest: currentVersion, update_available: false, is_docker: isDocker, is_prerelease: isPrerelease };
+  let result: VersionInfo;
+  try {
+    if (isPrerelease) {
+      // Fetch release list and find the newest prerelease
+      const resp = await fetch(
+        'https://api.github.com/repos/mauriceboe/TREK/releases?per_page=100',
+        { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'TREK-Server' } }
+      );
+      if (!resp.ok) {
+        return fallback;
+      }
+      const data = await resp.json() as Array<{ tag_name?: string; html_url?: string; prerelease?: boolean }>;
+      const prereleases = Array.isArray(data) ? data.filter(r => r.prerelease) : [];
+      if (!prereleases.length) {
+        return fallback;
+      }
+      // Pre-compute stripped versions, then sort descending
+      const tagged = prereleases.map(r => ({ r, v: (r.tag_name || '').replace(/^v/, '') }));
+      tagged.sort((a, b) => compareVersions(b.v, a.v));
+      const latest = tagged[0].v;
+      const update_available = !!latest && latest !== currentVersion && compareVersions(latest, currentVersion) > 0;
+      result = { current: currentVersion, latest, update_available, release_url: tagged[0].r.html_url || '', is_docker: isDocker, is_prerelease: true };
+    } else {
+      const resp = await fetch(
+        'https://api.github.com/repos/mauriceboe/TREK/releases/latest',
+        { headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'TREK-Server' } }
+      );
+      if (!resp.ok) {
+        return fallback;
+      }
+      const data = await resp.json() as { tag_name?: string; html_url?: string };
+      const latest = (data.tag_name || '').replace(/^v/, '');
+      const update_available = !!latest && latest !== currentVersion && compareVersions(latest, currentVersion) > 0;
+      result = { current: currentVersion, latest, update_available, release_url: data.html_url || '', is_docker: isDocker, is_prerelease: false };
+    }
+  } catch {
+    return fallback;
+  }
+
+  _versionCache = { data: result, expiresAt: Date.now() + VERSION_CACHE_TTL };
+  return result;
 }
 
 export async function checkAndNotifyVersion(): Promise<void> {
@@ -329,7 +402,7 @@ export async function checkAndNotifyVersion(): Promise<void> {
       actorId: null,
       scope: 'admin',
       targetId: 0,
-      params: { version: result.latest as string },
+      params: { version: result.latest },
     });
   } catch {
     // Silently ignore — version check is non-critical
@@ -387,6 +460,67 @@ export function getBagTracking() {
 export function updateBagTracking(enabled: boolean) {
   db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('bag_tracking_enabled', ?)").run(enabled ? 'true' : 'false');
   return { enabled: !!enabled };
+}
+
+// ── Places Photos ─────────────────────────────────────────────────────────
+
+export function getPlacesPhotos() {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'places_photos_enabled'").get() as { value: string } | undefined;
+  return { enabled: row?.value !== 'false' };
+}
+
+export function updatePlacesPhotos(enabled: boolean) {
+  db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('places_photos_enabled', ?)").run(enabled ? 'true' : 'false');
+  return { enabled: !!enabled };
+}
+
+// ── Places Autocomplete ────────────────────────────────────────────────────
+
+export function getPlacesAutocomplete() {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'places_autocomplete_enabled'").get() as { value: string } | undefined;
+  return { enabled: row?.value !== 'false' };
+}
+
+export function updatePlacesAutocomplete(enabled: boolean) {
+  db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('places_autocomplete_enabled', ?)").run(enabled ? 'true' : 'false');
+  return { enabled: !!enabled };
+}
+
+// ── Places Details ─────────────────────────────────────────────────────────
+
+export function getPlacesDetails() {
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'places_details_enabled'").get() as { value: string } | undefined;
+  return { enabled: row?.value !== 'false' };
+}
+
+export function updatePlacesDetails(enabled: boolean) {
+  db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('places_details_enabled', ?)").run(enabled ? 'true' : 'false');
+  return { enabled: !!enabled };
+}
+
+// ── Collab Features ───────────────────────────────────────────────────────
+
+const COLLAB_FEATURE_KEYS = ['collab_chat_enabled', 'collab_notes_enabled', 'collab_polls_enabled', 'collab_whatsnext_enabled'] as const;
+
+export function getCollabFeatures() {
+  const rows = db.prepare("SELECT key, value FROM app_settings WHERE key IN ('collab_chat_enabled', 'collab_notes_enabled', 'collab_polls_enabled', 'collab_whatsnext_enabled')").all() as { key: string; value: string }[];
+  const map: Record<string, string> = {};
+  for (const r of rows) map[r.key] = r.value;
+  return {
+    chat: map['collab_chat_enabled'] !== 'false',
+    notes: map['collab_notes_enabled'] !== 'false',
+    polls: map['collab_polls_enabled'] !== 'false',
+    whatsnext: map['collab_whatsnext_enabled'] !== 'false',
+  };
+}
+
+export function updateCollabFeatures(features: { chat?: boolean; notes?: boolean; polls?: boolean; whatsnext?: boolean }) {
+  const mapping: Record<string, string> = { chat: 'collab_chat_enabled', notes: 'collab_notes_enabled', polls: 'collab_polls_enabled', whatsnext: 'collab_whatsnext_enabled' };
+  const stmt = db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)");
+  for (const [feat, key] of Object.entries(mapping)) {
+    if (features[feat] !== undefined) stmt.run(key, features[feat] ? 'true' : 'false');
+  }
+  return getCollabFeatures();
 }
 
 // ── Packing Templates ──────────────────────────────────────────────────────
@@ -599,6 +733,30 @@ export function deleteMcpToken(id: string) {
   if (!token) return { error: 'Token not found', status: 404 };
   db.prepare('DELETE FROM mcp_tokens WHERE id = ?').run(id);
   revokeUserSessions(token.user_id);
+  return {};
+}
+
+// ── OAuth Sessions ─────────────────────────────────────────────────────────
+
+export function listOAuthSessions() {
+  const rows = db.prepare(`
+    SELECT ot.id, ot.client_id, oc.name AS client_name, ot.user_id, u.username,
+           ot.scopes, ot.access_token_expires_at, ot.refresh_token_expires_at, ot.created_at
+    FROM oauth_tokens ot
+    JOIN oauth_clients oc ON ot.client_id = oc.client_id
+    JOIN users u ON u.id = ot.user_id
+    WHERE ot.revoked_at IS NULL
+      AND ot.refresh_token_expires_at > CURRENT_TIMESTAMP
+    ORDER BY ot.created_at DESC
+  `).all() as (Record<string, unknown> & { scopes: string })[];
+  return rows.map(r => ({ ...r, scopes: JSON.parse(r.scopes) }));
+}
+
+export function revokeOAuthSession(id: string) {
+  const row = db.prepare('SELECT id, user_id, client_id FROM oauth_tokens WHERE id = ?').get(id) as { id: number; user_id: number; client_id: string } | undefined;
+  if (!row) return { error: 'Session not found', status: 404 };
+  db.prepare('UPDATE oauth_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+  revokeUserSessionsForClient(row.user_id, row.client_id);
   return {};
 }
 

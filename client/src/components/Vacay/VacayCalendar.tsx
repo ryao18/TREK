@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useVacayStore } from '../../store/vacayStore'
 import { useTranslation } from '../../i18n'
 import { isWeekend } from './holidays'
+import { tripsApi } from '../../api/client'
 import VacayMonthCard from './VacayMonthCard'
 import { Building2, MousePointer2 } from 'lucide-react'
 
@@ -9,6 +10,30 @@ export default function VacayCalendar() {
   const { t } = useTranslation()
   const { selectedYear, selectedUserId, entries, companyHolidays, toggleEntry, toggleCompanyHoliday, plan, users, holidays } = useVacayStore()
   const [companyMode, setCompanyMode] = useState(false)
+  const [tripDates, setTripDates] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await tripsApi.list()
+        const dates = new Set<string>()
+        for (const trip of data.trips || []) {
+          if (!trip.start_date || !trip.end_date) continue
+          const start = new Date(trip.start_date + 'T00:00:00')
+          const end = new Date(trip.end_date + 'T00:00:00')
+          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const y = d.getFullYear()
+            if (y === selectedYear) {
+              dates.add(`${y}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+            }
+          }
+        }
+        if (!cancelled) setTripDates(dates)
+      } catch { /* ignore */ }
+    })()
+    return () => { cancelled = true }
+  }, [selectedYear])
 
   const companyHolidayMap = useMemo(() => {
     const map: Record<string, typeof companyHolidays> = {}
@@ -47,7 +72,6 @@ export default function VacayCalendar() {
       await toggleCompanyHoliday(dateStr, selectedUserId)
       return
     }
-    if (holidays[dateStr]) return
     if (blockWeekends && isWeekend(dateStr, weekendDays)) return
     if (companyHolidaysEnabled && selectedUserCompanyHolidaySet.has(dateStr)) return
     await toggleEntry(dateStr, selectedUserId || undefined)
@@ -57,7 +81,7 @@ export default function VacayCalendar() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-14">
         {Array.from({ length: 12 }, (_, i) => (
           <VacayMonthCard
             key={i}
@@ -72,6 +96,8 @@ export default function VacayCalendar() {
             companyMode={companyMode}
             blockWeekends={blockWeekends}
             weekendDays={weekendDays}
+            tripDates={tripDates}
+            weekStart={plan?.week_start ?? 1}
           />
         ))}
       </div>
@@ -80,7 +106,7 @@ export default function VacayCalendar() {
         <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl border max-w-full overflow-x-auto" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
           <button
             onClick={() => setCompanyMode(false)}
-            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-all shrink-0"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-[background-color,color,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0"
             style={{
               background: !companyMode ? 'var(--text-primary)' : 'transparent',
               color: !companyMode ? 'var(--bg-card)' : 'var(--text-muted)',
@@ -94,7 +120,7 @@ export default function VacayCalendar() {
             <button
               onClick={() => setCompanyMode(true)}
               disabled={!selectedUserId}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-all shrink-0"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-medium transition-[background-color,color,border-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0"
               style={{
                 background: companyMode ? '#d97706' : 'transparent',
                 color: companyMode ? '#fff' : 'var(--text-muted)',

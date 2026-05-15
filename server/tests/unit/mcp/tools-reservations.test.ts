@@ -64,17 +64,17 @@ async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>)
 // ---------------------------------------------------------------------------
 
 describe('Tool: create_reservation', () => {
-  it('creates a basic flight reservation', async () => {
+  it('creates a basic reservation', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id);
     await withHarness(user.id, async (h) => {
       const result = await h.client.callTool({
         name: 'create_reservation',
-        arguments: { tripId: trip.id, title: 'Flight to Rome', type: 'flight' },
+        arguments: { tripId: trip.id, title: 'Eiffel Tower Tour', type: 'tour' },
       });
       const data = parseToolResult(result) as any;
-      expect(data.reservation.title).toBe('Flight to Rome');
-      expect(data.reservation.type).toBe('flight');
+      expect(data.reservation.title).toBe('Eiffel Tower Tour');
+      expect(data.reservation.type).toBe('tour');
       expect(data.reservation.status).toBe('pending');
     });
   });

@@ -2,6 +2,19 @@ import { db } from '../db/database';
 import { decrypt_api_key } from './apiKeyCrypto';
 import { checkSsrf } from '../utils/ssrfGuard';
 
+// ── Google API call counter ───────────────────────────────────────────────────
+
+let googleApiCallCount = 0;
+
+export function getGoogleApiCallCount(): number { return googleApiCallCount; }
+export function resetGoogleApiCallCount(): void { googleApiCallCount = 0; }
+
+function googleFetch(endpoint: string, label: string, init?: RequestInit): Promise<Response> {
+  googleApiCallCount++;
+  console.debug(`[Google API] #${googleApiCallCount} ${label} → ${endpoint}`);
+  return fetch(endpoint, init);
+}
+
 // ── Interfaces ───────────────────────────────────────────────────────────────
 
 interface NominatimResult {
@@ -32,6 +45,16 @@ interface GooglePlaceResult {
   types?: string[];
 }
 
+interface GoogleAutocompleteSuggestion {
+  placePrediction?: {
+    placeId: string;
+    structuredFormat?: {
+      mainText?: { text: string };
+      secondaryText?: { text: string };
+    };
+  };
+}
+
 interface GooglePlaceDetails extends GooglePlaceResult {
   userRatingCount?: number;
   regularOpeningHours?: { weekdayDescriptions?: string[]; openNow?: boolean };
@@ -43,28 +66,34 @@ interface GooglePlaceDetails extends GooglePlaceResult {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const UA = 'TREK Travel Planner (https://github.com/mauriceboe/NOMAD)';
+const UA = 'TREK Travel Planner (https://github.com/mauriceboe/TREK)';
 
-// ── Photo cache ──────────────────────────────────────────────────────────────
+// ── Photo cache (disk-backed) ────────────────────────────────────────────────
+import * as placePhotoCache from './placePhotoCache';
 
-const photoCache = new Map<string, { photoUrl: string; attribution: string | null; fetchedAt: number; error?: boolean }>();
-const PHOTO_TTL = 12 * 60 * 60 * 1000; // 12 hours
-const ERROR_TTL = 5 * 60 * 1000; // 5 min for errors
-const CACHE_MAX_ENTRIES = 1000;
-const CACHE_PRUNE_TARGET = 500;
-const CACHE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// ── Concurrency limiter for outbound photo fetches ───────────────────────────
+// Caps simultaneous Wikimedia/Google photo requests so a bulk import of hundreds
+// of places cannot monopolise the event loop or trigger external API rate limits.
+const MAX_CONCURRENT_PHOTO_FETCHES = 5;
+let photoFetchActive = 0;
+const photoFetchQueue: Array<() => void> = [];
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of photoCache) {
-    if (now - entry.fetchedAt > PHOTO_TTL) photoCache.delete(key);
+function acquirePhotoFetchSlot(): Promise<void> {
+  if (photoFetchActive < MAX_CONCURRENT_PHOTO_FETCHES) {
+    photoFetchActive++;
+    return Promise.resolve();
   }
-  if (photoCache.size > CACHE_MAX_ENTRIES) {
-    const entries = [...photoCache.entries()].sort((a, b) => a[1].fetchedAt - b[1].fetchedAt);
-    const toDelete = entries.slice(0, entries.length - CACHE_PRUNE_TARGET);
-    toDelete.forEach(([key]) => photoCache.delete(key));
+  return new Promise(resolve => photoFetchQueue.push(resolve));
+}
+
+function releasePhotoFetchSlot(): void {
+  const next = photoFetchQueue.shift();
+  if (next) {
+    next();
+  } else {
+    photoFetchActive--;
   }
-}, CACHE_CLEANUP_INTERVAL);
+}
 
 // ── API key retrieval ────────────────────────────────────────────────────────
 
@@ -89,7 +118,10 @@ export async function searchNominatim(query: string, lang?: string) {
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
     headers: { 'User-Agent': UA },
   });
-  if (!response.ok) throw new Error('Nominatim API error');
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Nominatim API error: ${response.status} ${response.statusText}${text ? ' - ' + text.substring(0, 200) : ''}`);
+  }
   const data = await response.json() as NominatimResult[];
   return data.map(item => ({
     google_place_id: null,
@@ -103,6 +135,34 @@ export async function searchNominatim(query: string, lang?: string) {
     phone: null,
     source: 'openstreetmap',
   }));
+}
+
+// ── Nominatim lookup (by OSM ID) ────────────────────────────────────────────
+
+export async function lookupNominatim(osmType: string, osmId: string, lang?: string): Promise<{
+  name: string; address: string; lat: number | null; lng: number | null;
+} | null> {
+  const typePrefix = osmType.charAt(0).toUpperCase(); // N, W, R
+  const params = new URLSearchParams({
+    osm_ids: `${typePrefix}${osmId}`,
+    format: 'json',
+    'accept-language': lang || 'en',
+  });
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/lookup?${params}`, {
+      headers: { 'User-Agent': UA },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as NominatimResult[];
+    const item = data[0];
+    if (!item) return null;
+    return {
+      name: item.name || item.display_name?.split(',')[0] || '',
+      address: item.display_name || '',
+      lat: parseFloat(item.lat) || null,
+      lng: parseFloat(item.lon) || null,
+    };
+  } catch { return null; }
 }
 
 // ── Overpass API (OSM details) ───────────────────────────────────────────────
@@ -270,7 +330,7 @@ export async function searchPlaces(userId: number, query: string, lang?: string)
     return { places, source: 'openstreetmap' };
   }
 
-  const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+  const response = await googleFetch('https://places.googleapis.com/v1/places:searchText', 'searchText', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -303,6 +363,86 @@ export async function searchPlaces(userId: number, query: string, lang?: string)
   return { places, source: 'google' };
 }
 
+// ── Autocomplete (Google or Nominatim fallback) ─────────────────────────────
+
+export async function autocompletePlaces(
+  userId: number,
+  input: string,
+  lang?: string,
+  locationBias?: { low: { lat: number; lng: number }; high: { lat: number; lng: number } },
+): Promise<{ suggestions: { placeId: string; mainText: string; secondaryText: string }[]; source: string }> {
+  const apiKey = getMapsKey(userId);
+
+  if (!apiKey) {
+    return autocompleteNominatim(input, lang);
+  }
+
+  const body: Record<string, unknown> = {
+    input,
+    languageCode: lang || 'en',
+  };
+  if (locationBias) {
+    body.locationBias = {
+      rectangle: {
+        low: { latitude: locationBias.low.lat, longitude: locationBias.low.lng },
+        high: { latitude: locationBias.high.lat, longitude: locationBias.high.lng },
+      },
+    };
+  }
+
+  const response = await googleFetch('https://places.googleapis.com/v1/places:autocomplete', 'autocomplete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json() as { suggestions?: GoogleAutocompleteSuggestion[]; error?: { message?: string } };
+
+  if (!response.ok) {
+    const err = new Error(data.error?.message || 'Google Places Autocomplete error') as Error & { status: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  const suggestions = (data.suggestions || [])
+    .filter((s) => s.placePrediction)
+    .slice(0, 5)
+    .map((s) => ({
+      placeId: s.placePrediction!.placeId,
+      mainText: s.placePrediction!.structuredFormat?.mainText?.text || '',
+      secondaryText: s.placePrediction!.structuredFormat?.secondaryText?.text || '',
+    }));
+
+  return { suggestions, source: 'google' };
+}
+
+async function autocompleteNominatim(
+  input: string,
+  lang?: string,
+): Promise<{ suggestions: { placeId: string; mainText: string; secondaryText: string }[]; source: string }> {
+  try {
+    const places = await searchNominatim(input, lang);
+    const suggestions = places
+      .filter((p) => p.osm_id && p.osm_id.includes(':') && p.osm_id.split(':')[1] !== '')
+      .slice(0, 5)
+      .map((p) => {
+        const parts = (p.address || '').split(',').map((s) => s.trim());
+        return {
+          placeId: p.osm_id,
+          mainText: p.name || parts[0] || '',
+          secondaryText: parts.slice(1).join(', '),
+        };
+      });
+    return { suggestions, source: 'nominatim' };
+  } catch (err) {
+    console.error('Nominatim autocomplete failed:', err);
+    return { suggestions: [], source: 'nominatim' };
+  }
+}
+
 // ── Place details (Google or OSM) ────────────────────────────────────────────
 
 export async function getPlaceDetails(userId: number, placeId: string, lang?: string): Promise<{ place: Record<string, unknown> }> {
@@ -310,17 +450,99 @@ export async function getPlaceDetails(userId: number, placeId: string, lang?: st
   if (placeId.includes(':')) {
     const [osmType, osmId] = placeId.split(':');
     const element = await fetchOverpassDetails(osmType, osmId);
-    if (!element?.tags) return { place: buildOsmDetails({}, osmType, osmId) };
-    return { place: buildOsmDetails(element.tags, osmType, osmId) };
+    const details = buildOsmDetails(element?.tags || {}, osmType, osmId);
+
+    // Fetch Nominatim only when Overpass lacks coordinates or address
+    const d = details as Record<string, unknown>;
+    const needsNominatim = !d.lat || !d.lng || !d.address;
+    const nominatim = needsNominatim ? await lookupNominatim(osmType, osmId, lang) : null;
+
+    return {
+      place: {
+        ...details,
+        name: (d.name as string) || nominatim?.name || element?.tags?.name || '',
+        address: (d.address as string) || nominatim?.address || '',
+        lat: d.lat ?? nominatim?.lat ?? null,
+        lng: d.lng ?? nominatim?.lng ?? null,
+        osm_id: placeId,
+      },
+    };
   }
 
   // Google details
+  const langKey = lang || 'de';
   const apiKey = getMapsKey(userId);
   if (!apiKey) {
     throw Object.assign(new Error('Google Maps API key not configured'), { status: 400 });
   }
 
-  const response = await fetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=${lang || 'de'}`, {
+  // Check DB cache first (lean mask, expanded=0) — 7-day TTL
+  const DETAILS_TTL = 7 * 24 * 60 * 60 * 1000;
+  const cached = db.prepare(
+    'SELECT payload_json, fetched_at FROM place_details_cache WHERE place_id = ? AND lang = ? AND expanded = 0'
+  ).get(placeId, langKey) as { payload_json: string; fetched_at: number } | undefined;
+  if (cached && Date.now() - cached.fetched_at < DETAILS_TTL) return { place: JSON.parse(cached.payload_json) };
+
+  const response = await googleFetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=${langKey}`, `getPlaceDetails(${placeId})`, {
+    method: 'GET',
+    headers: {
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri',
+    },
+  });
+
+  const data = await response.json() as GooglePlaceDetails & { error?: { message?: string } };
+
+  if (!response.ok) {
+    const err = new Error(data.error?.message || 'Google Places API error') as Error & { status: number };
+    err.status = response.status;
+    throw err;
+  }
+
+  const place = {
+    google_place_id: data.id,
+    name: data.displayName?.text || '',
+    address: data.formattedAddress || '',
+    lat: data.location?.latitude || null,
+    lng: data.location?.longitude || null,
+    rating: data.rating || null,
+    rating_count: data.userRatingCount || null,
+    website: data.websiteUri || null,
+    phone: data.nationalPhoneNumber || null,
+    opening_hours: data.regularOpeningHours?.weekdayDescriptions || null,
+    open_now: data.regularOpeningHours?.openNow ?? null,
+    google_maps_url: data.googleMapsUri || null,
+    summary: null,
+    reviews: [],
+    source: 'google' as const,
+    cached_at: Date.now(),
+  };
+
+  try {
+    db.prepare(
+      'INSERT OR REPLACE INTO place_details_cache (place_id, lang, expanded, payload_json, fetched_at) VALUES (?, ?, 0, ?, ?)'
+    ).run(placeId, langKey, JSON.stringify(place), Date.now());
+  } catch (dbErr) {
+    console.error('Failed to cache place details:', dbErr);
+  }
+
+  return { place };
+}
+
+export async function getPlaceDetailsExpanded(userId: number, placeId: string, lang?: string, refresh = false): Promise<{ place: Record<string, unknown> }> {
+  const langKey = lang || 'de';
+  const apiKey = getMapsKey(userId);
+  if (!apiKey) throw Object.assign(new Error('Google Maps API key not configured'), { status: 400 });
+
+  // Check DB cache for expanded result
+  if (!refresh) {
+    const cached = db.prepare(
+      'SELECT payload_json FROM place_details_cache WHERE place_id = ? AND lang = ? AND expanded = 1'
+    ).get(placeId, langKey) as { payload_json: string } | undefined;
+    if (cached) return { place: JSON.parse(cached.payload_json) };
+  }
+
+  const response = await googleFetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=${langKey}`, `getPlaceDetailsExpanded(${placeId})`, {
     method: 'GET',
     headers: {
       'X-Goog-Api-Key': apiKey,
@@ -358,12 +580,21 @@ export async function getPlaceDetails(userId: number, placeId: string, lang?: st
       photo: r.authorAttribution?.photoUri || null,
     })),
     source: 'google' as const,
+    cached_at: Date.now(),
   };
+
+  try {
+    db.prepare(
+      'INSERT OR REPLACE INTO place_details_cache (place_id, lang, expanded, payload_json, fetched_at) VALUES (?, ?, 1, ?, ?)'
+    ).run(placeId, langKey, JSON.stringify(place), Date.now());
+  } catch (dbErr) {
+    console.error('Failed to cache expanded place details:', dbErr);
+  }
 
   return { place };
 }
 
-// ── Place photo (Google or Wikimedia, with caching + DB persistence) ─────────
+// ── Place photo (Google or Wikimedia, disk-cached) ────────────────────────────
 
 export async function getPlacePhoto(
   userId: number,
@@ -372,84 +603,123 @@ export async function getPlacePhoto(
   lng: number,
   name?: string,
 ): Promise<{ photoUrl: string; attribution: string | null }> {
-  // Check cache first
-  const cached = photoCache.get(placeId);
-  if (cached) {
-    const ttl = cached.error ? ERROR_TTL : PHOTO_TTL;
-    if (Date.now() - cached.fetchedAt < ttl) {
-      if (cached.error) throw Object.assign(new Error('(Cache) No photo available'), { status: 404 });
-      return { photoUrl: cached.photoUrl, attribution: cached.attribution };
+  // Disk cache hit — serve immediately, no Google call
+  const diskHit = placePhotoCache.get(placeId);
+  if (diskHit) return { photoUrl: diskHit.photoUrl, attribution: diskHit.attribution };
+
+  // Recent error — don't hammer the API
+  if (placePhotoCache.getErrored(placeId)) {
+    throw Object.assign(new Error('(Cache) No photo available'), { status: 404 });
+  }
+
+  // Deduplicate concurrent requests for the same placeId
+  const existing = placePhotoCache.getInFlight(placeId);
+  if (existing) {
+    const result = await existing;
+    if (!result) throw Object.assign(new Error('(Cache) No photo available'), { status: 404 });
+    return { photoUrl: `/api/maps/place-photo/${encodeURIComponent(placeId)}/bytes`, attribution: result.attribution };
+  }
+
+  const fetchPromise = (async (): Promise<{ filePath: string; attribution: string | null } | null> => {
+    await acquirePhotoFetchSlot();
+    try {
+    const apiKey = getMapsKey(userId);
+    const isCoordLookup = placeId.startsWith('coords:');
+
+    // No Google key or coordinate-only lookup → try Wikimedia (URL-based, not byte-cached)
+    if (!apiKey || isCoordLookup) {
+      if (!isNaN(lat) && !isNaN(lng)) {
+        try {
+          const wiki = await fetchWikimediaPhoto(lat, lng, name);
+          if (wiki) {
+            // Wikimedia photos: fetch bytes and cache to disk
+            const ssrf = await checkSsrf(wiki.photoUrl, true);
+            if (!ssrf.allowed) throw Object.assign(new Error('Photo URL blocked'), { status: 403 });
+            const imgRes = await fetch(wiki.photoUrl);
+            if (imgRes.ok) {
+              const bytes = Buffer.from(await imgRes.arrayBuffer());
+              const cached = await placePhotoCache.put(placeId, bytes, wiki.attribution);
+              return { filePath: cached.filePath, attribution: cached.attribution };
+            }
+          }
+        } catch { /* fall through */ }
+      }
+      placePhotoCache.markError(placeId);
+      return null;
     }
-    photoCache.delete(placeId);
-  }
 
-  const apiKey = getMapsKey(userId);
-  const isCoordLookup = placeId.startsWith('coords:');
-
-  // No Google key or coordinate-only lookup -> try Wikimedia
-  if (!apiKey || isCoordLookup) {
-    if (!isNaN(lat) && !isNaN(lng)) {
-      try {
-        const wiki = await fetchWikimediaPhoto(lat, lng, name);
-        if (wiki) {
-          photoCache.set(placeId, { ...wiki, fetchedAt: Date.now() });
-          return wiki;
-        } else {
-          photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
-        }
-      } catch { /* fall through */ }
+    // Reject URL-shaped placeIds — legacy DBs may store raw photo URLs in image_url
+    if (/^https?:\/\//i.test(placeId)) {
+      placePhotoCache.markError(placeId);
+      return null;
     }
-    throw Object.assign(new Error('(Wikimedia) No photo available'), { status: 404 });
-  }
 
-  // Google Photos
-  const detailsRes = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
-    headers: {
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'photos',
-    },
-  });
-  const details = await detailsRes.json() as GooglePlaceDetails & { error?: { message?: string } };
+    // Google Photos — fetch details to get photo name
+    const detailsRes = await googleFetch(`https://places.googleapis.com/v1/places/${placeId}`, `getPlacePhoto/details(${placeId})`, {
+      headers: {
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'photos',
+      },
+    });
+    const body = await detailsRes.text();
+    if (!detailsRes.ok) {
+      console.error('Google Places photo details error:', detailsRes.status, body.slice(0, 200));
+      placePhotoCache.markError(placeId);
+      return null;
+    }
+    let details: GooglePlaceDetails & { error?: { message?: string } };
+    try { details = body ? JSON.parse(body) : { photos: [] }; }
+    catch { placePhotoCache.markError(placeId); return null; }
 
-  if (!detailsRes.ok) {
-    console.error('Google Places photo details error:', details.error?.message || detailsRes.status);
-    photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
-    throw Object.assign(new Error('(Google Places) Photo could not be retrieved'), { status: 404 });
-  }
+    if (!details.photos?.length) {
+      placePhotoCache.markError(placeId);
+      return null;
+    }
 
-  if (!details.photos?.length) {
-    photoCache.set(placeId, { photoUrl: '', attribution: null, fetchedAt: Date.now(), error: true });
-    throw Object.assign(new Error('(Google Places) No photo available'), { status: 404 });
-  }
+    const photo = details.photos[0];
+    const photoName = photo.name;
+    const attribution = photo.authorAttributions?.[0]?.displayName || null;
 
-  const photo = details.photos[0];
-  const photoName = photo.name;
-  const attribution = photo.authorAttributions?.[0]?.displayName || null;
+    // Fetch actual image bytes
+    const mediaRes = await googleFetch(
+      `https://places.googleapis.com/v1/${photoName}/media?maxHeightPx=400`,
+      `getPlacePhoto/media(${placeId})`,
+      { headers: { 'X-Goog-Api-Key': apiKey } }
+    );
 
-  const mediaRes = await fetch(
-    `https://places.googleapis.com/v1/${photoName}/media?maxHeightPx=400&skipHttpRedirect=true`,
-    { headers: { 'X-Goog-Api-Key': apiKey } }
-  );
-  const mediaData = await mediaRes.json() as { photoUri?: string };
-  const photoUrl = mediaData.photoUri;
+    if (!mediaRes.ok) {
+      placePhotoCache.markError(placeId);
+      return null;
+    }
 
-  if (!photoUrl) {
-    photoCache.set(placeId, { photoUrl: '', attribution, fetchedAt: Date.now(), error: true });
-    throw Object.assign(new Error('(Google Places) Photo URL not available'), { status: 404 });
-  }
+    const bytes = Buffer.from(await mediaRes.arrayBuffer());
+    if (!bytes.length) {
+      placePhotoCache.markError(placeId);
+      return null;
+    }
 
-  photoCache.set(placeId, { photoUrl, attribution, fetchedAt: Date.now() });
+    const cached = await placePhotoCache.put(placeId, bytes, attribution);
 
-  // Persist photo URL to database
-  try {
-    db.prepare(
-      'UPDATE places SET image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE google_place_id = ? AND (image_url IS NULL OR image_url = ?)'
-    ).run(photoUrl, placeId, '');
-  } catch (dbErr) {
-    console.error('Failed to persist photo URL to database:', dbErr);
-  }
+    // Persist stable proxy URL to database
+    try {
+      db.prepare(
+        'UPDATE places SET image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE google_place_id = ? AND (image_url IS NULL OR image_url = \'\')'
+      ).run(cached.photoUrl, placeId);
+    } catch (dbErr) {
+      console.error('Failed to persist photo URL to database:', dbErr);
+    }
 
-  return { photoUrl, attribution };
+    return { filePath: cached.filePath, attribution };
+    } finally {
+      releasePhotoFetchSlot();
+    }
+  })();
+
+  placePhotoCache.setInFlight(placeId, fetchPromise);
+
+  const result = await fetchPromise;
+  if (!result) throw Object.assign(new Error('No photo available'), { status: 404 });
+  return { photoUrl: `/api/maps/place-photo/${encodeURIComponent(placeId)}/bytes`, attribution: result.attribution };
 }
 
 // ── Reverse geocoding ────────────────────────────────────────────────────────

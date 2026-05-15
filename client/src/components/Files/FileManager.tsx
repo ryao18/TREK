@@ -1,7 +1,7 @@
 import ReactDOM from 'react-dom'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, Trash2, ExternalLink, X, FileText, FileImage, File, MapPin, Ticket, StickyNote, Star, RotateCcw, Pencil, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Upload, Trash2, ExternalLink, Download, X, FileText, FileImage, File, MapPin, Ticket, StickyNote, Star, RotateCcw, Pencil, Check, ChevronLeft, ChevronRight, Plane, Train, Car, Ship } from 'lucide-react'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
 import { filesApi } from '../../api/client'
@@ -10,6 +10,7 @@ import { useCanDo } from '../../store/permissionsStore'
 import { useTripStore } from '../../store/tripStore'
 
 import { getAuthUrl } from '../../api/authUrl'
+import { downloadFile, openFile as openFileUrl } from '../../utils/fileDownload'
 
 function isImage(mimeType) {
   if (!mimeType) return false
@@ -28,6 +29,10 @@ function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function triggerDownload(url: string, filename: string) {
+  downloadFile(url, filename).catch(() => {})
 }
 
 function formatDateWithLocale(dateStr, locale) {
@@ -89,7 +94,7 @@ function ImageLightbox({ files, initialIndex, onClose }: ImageLightboxProps) {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, display: 'flex', flexDirection: 'column', paddingBottom: 'var(--bottom-nav-h)' }}
       onClick={onClose}
       onTouchStart={e => setTouchStart(e.touches[0].clientX)}
       onTouchEnd={e => {
@@ -108,10 +113,16 @@ function ImageLightbox({ files, initialIndex, onClose }: ImageLightboxProps) {
         </span>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
           <button
-            onClick={async () => { const u = await getAuthUrl(file.url, 'download'); window.open(u, '_blank', 'noreferrer') }}
+            onClick={() => openFileUrl(file.url, file.original_name).catch(() => {})}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', display: 'flex', padding: 4 }}
             title={t('files.openTab')}>
             <ExternalLink size={16} />
+          </button>
+          <button
+            onClick={() => triggerDownload(file.url, file.original_name)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', display: 'flex', padding: 4 }}
+            title={t('files.download') || 'Download'}>
+            <Download size={16} />
           </button>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', display: 'flex', padding: 4 }}>
             <X size={18} />
@@ -223,6 +234,15 @@ function AvatarChip({ name, avatarUrl, size = 20 }: { name: string; avatarUrl?: 
       )}
     </>
   )
+}
+
+const TRANSPORT_TYPES = new Set(['flight', 'train', 'car', 'cruise'])
+
+function transportIcon(type: string) {
+  if (type === 'train') return Train
+  if (type === 'car') return Car
+  if (type === 'cruise') return Ship
+  return Plane
 }
 
 interface FileManagerProps {
@@ -479,7 +499,9 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
               <SourceBadge key={p.id} icon={MapPin} label={`${t('files.sourcePlan')} · ${p.name}`} />
             ))}
             {linkedReservations.map(r => (
-              <SourceBadge key={r.id} icon={Ticket} label={`${t('files.sourceBooking')} · ${r.title || t('files.sourceBooking')}`} />
+              TRANSPORT_TYPES.has(r.type)
+                ? <SourceBadge key={r.id} icon={transportIcon(r.type)} label={`${t('files.sourceTransport')} · ${r.title || t('files.sourceTransport')}`} />
+                : <SourceBadge key={r.id} icon={Ticket} label={`${t('files.sourceBooking')} · ${r.title || t('files.sourceBooking')}`} />
             ))}
             {file.note_id && (
               <SourceBadge icon={StickyNote} label={t('files.sourceCollab') || 'Collab Notes'} />
@@ -513,6 +535,10 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
               <button onClick={() => openFile(file)} title={t('common.open')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
                 <ExternalLink size={14} />
+              </button>
+              <button onClick={() => triggerDownload(file.url, file.original_name)} title={t('files.download') || 'Download'} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
+                <Download size={14} />
               </button>
               {can('file_delete', trip) && <button onClick={() => handleDelete(file.id)} title={t('common.delete')} style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', borderRadius: 6, display: 'flex' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faint)'}>
@@ -634,8 +660,17 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
                     </div>
                     {dayGroups.map(({ day, dayPlaces }) => (
                       <div key={day.id}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '8px 10px 2px' }}>
-                          {day.title || `${t('dayplan.dayN', { n: day.day_number })}${day.date ? ` · ${day.date}` : ''}`}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '8px 10px 2px' }}>
+                          <span>{day.title || t('dayplan.dayN', { n: day.day_number })}</span>
+                          {(() => {
+                            const badge = day.date || (day.title ? t('dayplan.dayN', { n: day.day_number }) : null)
+                            return badge ? (
+                              <span style={{
+                                fontSize: 10, fontWeight: 600, color: 'var(--text-faint)',
+                                background: 'var(--bg-tertiary)', padding: '1px 6px', borderRadius: 999,
+                              }}>{badge}</span>
+                            ) : null
+                          })()}
                         </div>
                         {dayPlaces.map(placeBtn)}
                       </div>
@@ -649,52 +684,68 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
                   </div>
                 )
 
+                const bookingReservations = reservations.filter(r => !TRANSPORT_TYPES.has(r.type))
+                const transportReservations = reservations.filter(r => TRANSPORT_TYPES.has(r.type))
+
+                const reservationBtn = (r: Reservation) => {
+                  const isLinked = file.reservation_id === r.id || (file.linked_reservation_ids || []).includes(r.id)
+                  const Icon = TRANSPORT_TYPES.has(r.type) ? transportIcon(r.type) : Ticket
+                  return (
+                    <button key={r.id} onClick={async () => {
+                      if (isLinked) {
+                        if (file.reservation_id === r.id) {
+                          await handleAssign(file.id, { reservation_id: null })
+                        } else {
+                          try {
+                            const linksRes = await filesApi.getLinks(tripId, file.id)
+                            const link = (linksRes.links || []).find((l: any) => l.reservation_id === r.id)
+                            if (link) await filesApi.removeLink(tripId, file.id, link.id)
+                            refreshFiles()
+                          } catch {}
+                        }
+                      } else {
+                        if (!file.reservation_id) {
+                          await handleAssign(file.id, { reservation_id: r.id })
+                        } else {
+                          try {
+                            await filesApi.addLink(tripId, file.id, { reservation_id: r.id })
+                            refreshFiles()
+                          } catch {}
+                        }
+                      }
+                    }} style={{
+                      width: '100%', textAlign: 'left', padding: '6px 10px 6px 20px', background: isLinked ? 'var(--bg-hover)' : 'none',
+                      border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)',
+                      borderRadius: 8, fontFamily: 'inherit', fontWeight: isLinked ? 600 : 400,
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = isLinked ? 'var(--bg-hover)' : 'transparent'}>
+                      <Icon size={12} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title || r.name}</span>
+                      {isLinked && <Check size={14} style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--accent)' }} />}
+                    </button>
+                  )
+                }
+
                 const bookingsSection = reservations.length > 0 && (
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', padding: '8px 10px 4px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {t('files.assignBooking')}
-                    </div>
-                    {reservations.map(r => {
-                      const isLinked = file.reservation_id === r.id || (file.linked_reservation_ids || []).includes(r.id)
-                      return (
-                        <button key={r.id} onClick={async () => {
-                          if (isLinked) {
-                            // Unlink: if primary reservation_id, clear it; if via file_links, remove link
-                            if (file.reservation_id === r.id) {
-                              await handleAssign(file.id, { reservation_id: null })
-                            } else {
-                              try {
-                                const linksRes = await filesApi.getLinks(tripId, file.id)
-                                const link = (linksRes.links || []).find((l: any) => l.reservation_id === r.id)
-                                if (link) await filesApi.removeLink(tripId, file.id, link.id)
-                                refreshFiles()
-                              } catch {}
-                            }
-                          } else {
-                            // Link: if no primary, set it; otherwise use file_links
-                            if (!file.reservation_id) {
-                              await handleAssign(file.id, { reservation_id: r.id })
-                            } else {
-                              try {
-                                await filesApi.addLink(tripId, file.id, { reservation_id: r.id })
-                                refreshFiles()
-                              } catch {}
-                            }
-                          }
-                        }} style={{
-                          width: '100%', textAlign: 'left', padding: '6px 10px 6px 20px', background: isLinked ? 'var(--bg-hover)' : 'none',
-                          border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)',
-                          borderRadius: 8, fontFamily: 'inherit', fontWeight: isLinked ? 600 : 400,
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                          onMouseLeave={e => e.currentTarget.style.background = isLinked ? 'var(--bg-hover)' : 'transparent'}>
-                          <Ticket size={12} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title || r.name}</span>
-                          {isLinked && <Check size={14} style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--accent)' }} />}
-                        </button>
-                      )
-                    })}
+                    {bookingReservations.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', padding: '8px 10px 4px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {t('files.assignBooking')}
+                        </div>
+                        {bookingReservations.map(reservationBtn)}
+                      </>
+                    )}
+                    {transportReservations.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', padding: '8px 10px 4px', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: bookingReservations.length > 0 ? 4 : 0 }}>
+                          {t('files.assignTransport')}
+                        </div>
+                        {transportReservations.map(reservationBtn)}
+                      </>
+                    )}
                   </div>
                 )
 
@@ -728,11 +779,18 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{previewFile.original_name}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 <button
-                  onClick={async () => { const u = await getAuthUrl(previewFile.url, 'download'); window.open(u, '_blank', 'noreferrer') }}
+                  onClick={() => openFileUrl(previewFile.url, previewFile.original_name).catch(() => toast.error(t('files.openError')))}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, transition: 'color 0.15s' }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}>
                   <ExternalLink size={13} /> {t('files.openTab')}
+                </button>
+                <button
+                  onClick={() => triggerDownload(previewFile.url, previewFile.original_name)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'none', padding: '4px 8px', borderRadius: 6, transition: 'color 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}>
+                  <Download size={13} /> {t('files.download') || 'Download'}
                 </button>
                 <button onClick={() => setPreviewFile(null)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', display: 'flex', padding: 4, borderRadius: 6, transition: 'color 0.15s' }}
@@ -749,7 +807,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
               title={previewFile.original_name}
             >
               <p style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <button onClick={async () => { const u = await getAuthUrl(previewFile.url, 'download'); window.open(u, '_blank', 'noopener noreferrer') }} style={{ color: 'var(--text-primary)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', font: 'inherit' }}>PDF herunterladen</button>
+                <button onClick={() => openFileUrl(previewFile.url, previewFile.original_name).catch(() => toast.error(t('files.openError')))} style={{ color: 'var(--text-primary)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', font: 'inherit' }}>{t('files.downloadPdf')}</button>
               </p>
             </object>
           </div>
@@ -757,25 +815,81 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
         document.body
       )}
 
-      {/* Header */}
-      <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>{showTrash ? (t('files.trash') || 'Trash') : t('files.title')}</h2>
-          <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--text-faint)' }}>
-            {showTrash
-              ? `${trashFiles.length} ${trashFiles.length === 1 ? 'file' : 'files'}`
-              : (files.length === 1 ? t('files.countSingular') : t('files.count', { count: files.length }))}
-          </p>
-        </div>
-        <button onClick={toggleTrash} style={{
-          padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border-primary)',
-          background: showTrash ? 'var(--accent)' : 'var(--bg-card)',
-          color: showTrash ? 'var(--accent-text)' : 'var(--text-muted)',
-          fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-          fontFamily: 'inherit',
+      {/* Toolbar */}
+      <div style={{ padding: '24px 28px 0', flexShrink: 0 }} className="max-md:!px-4 max-md:!pt-4">
+        <div style={{
+          background: 'var(--bg-tertiary)', borderRadius: 18,
+          padding: '14px 16px 14px 22px',
+          display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
         }}>
-          <Trash2 size={13} /> {t('files.trash') || 'Trash'}
-        </button>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', flexShrink: 0 }}>
+            {showTrash ? (t('files.trash') || 'Trash') : t('files.title')}
+          </h2>
+
+          {!showTrash && (
+            <>
+              <div className="hidden md:block" style={{ width: 1, height: 22, background: 'var(--border-faint)', flexShrink: 0 }} />
+              <div className="hidden md:inline-flex" style={{ gap: 4, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                {[
+                  { id: 'all', label: t('files.filterAll') },
+                  ...(files.some(f => f.starred) ? [{ id: 'starred', icon: Star } as const] : []),
+                  { id: 'pdf', label: t('files.filterPdf') },
+                  { id: 'image', label: t('files.filterImages') },
+                  { id: 'doc', label: t('files.filterDocs') },
+                  ...(files.some(f => f.note_id) ? [{ id: 'collab', label: t('files.filterCollab') || 'Collab' }] : []),
+                ].map(tab => {
+                  const active = filterType === tab.id
+                  const TabIcon = 'icon' in tab ? tab.icon : null
+                  const count = tab.id === 'all' ? files.length
+                    : tab.id === 'starred' ? files.filter(f => f.starred).length
+                    : tab.id === 'pdf' ? files.filter(f => (f.mime_type || '').includes('pdf') || /\.pdf$/i.test(f.original_name)).length
+                    : tab.id === 'image' ? files.filter(f => (f.mime_type || '').startsWith('image/')).length
+                    : tab.id === 'doc' ? files.filter(f => /\.(docx?|xlsx?|txt|csv)$/i.test(f.original_name)).length
+                    : tab.id === 'collab' ? files.filter(f => f.note_id).length
+                    : 0
+                  return (
+                    <button key={tab.id} onClick={() => setFilterType(tab.id)}
+                      style={{
+                        appearance: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '6px 12px', borderRadius: 99, fontSize: 13, whiteSpace: 'nowrap',
+                        background: active ? 'var(--bg-card)' : 'transparent',
+                        color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                        fontWeight: active ? 500 : 400,
+                        boxShadow: active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {TabIcon ? <TabIcon size={13} fill={active ? '#facc15' : 'none'} color={active ? '#facc15' : 'currentColor'} /> : null}
+                      {'label' in tab && tab.label}
+                      <span style={{
+                        fontSize: 10, fontWeight: 600,
+                        background: active ? 'var(--bg-tertiary)' : 'rgba(0,0,0,0.06)',
+                        color: 'var(--text-faint)',
+                        padding: '1px 6px', borderRadius: 99, minWidth: 16, textAlign: 'center',
+                      }}>{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          <button onClick={toggleTrash} style={{
+            appearance: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '9px 14px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+            background: 'var(--accent)', color: 'var(--accent-text)',
+            flexShrink: 0, marginLeft: 'auto',
+            opacity: showTrash ? 1 : 0.88,
+            transition: 'opacity 0.15s ease',
+          }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+            onMouseLeave={e => e.currentTarget.style.opacity = showTrash ? '1' : '0.88'}
+          >
+            <Trash2 size={14} strokeWidth={2.5} /> <span className="hidden sm:inline">{t('files.trash') || 'Trash'}</span>
+          </button>
+        </div>
       </div>
 
       {showTrash ? (
@@ -813,7 +927,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
           {can('file_upload', trip) && <div
             {...getRootProps()}
             style={{
-              margin: '16px 16px 0', border: '2px dashed', borderRadius: 14, padding: '20px 16px',
+              margin: '16px 28px 0', border: '2px dashed', borderRadius: 14, padding: '20px 16px',
               textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s',
               borderColor: isDragActive ? 'var(--text-secondary)' : 'var(--border-primary)',
               background: isDragActive ? 'var(--bg-secondary)' : 'var(--bg-card)',
@@ -838,7 +952,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
           </div>}
 
           {/* Filter tabs */}
-          <div style={{ display: 'flex', gap: 4, padding: '12px 16px 0', flexShrink: 0, flexWrap: 'wrap' }}>
+          <div className="md:!hidden" style={{ display: 'flex', gap: 4, padding: '12px 16px 0', flexShrink: 0, flexWrap: 'wrap' }}>
             {[
               { id: 'all', label: t('files.filterAll') },
               ...(files.some(f => f.starred) ? [{ id: 'starred', icon: Star }] : []),
@@ -861,7 +975,7 @@ export default function FileManager({ files = [], onUpload, onDelete, onUpdate, 
           </div>
 
           {/* File list */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 28px 16px' }} className="max-md:!px-4">
             {filteredFiles.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-faint)' }}>
                 <FileText size={40} style={{ color: 'var(--text-faint)', display: 'block', margin: '0 auto 12px' }} />

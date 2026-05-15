@@ -44,6 +44,7 @@ import {
   getAdminGlobalPref,
   getActiveChannels,
   getAvailableChannels,
+  isWebhookConfigured,
 } from '../../../src/services/notificationPreferencesService';
 
 beforeAll(() => {
@@ -93,14 +94,14 @@ describe('getPreferencesMatrix', () => {
     const { user } = createUser(testDb);
     const { event_types } = getPreferencesMatrix(user.id, 'user');
     expect(event_types).not.toContain('version_available');
-    expect(event_types.length).toBe(7);
+    expect(event_types.length).toBe(9);
   });
 
   it('NPREF-005 — user scope excludes version_available for everyone including admins', () => {
     const { user } = createAdmin(testDb);
     const { event_types } = getPreferencesMatrix(user.id, 'admin', 'user');
     expect(event_types).not.toContain('version_available');
-    expect(event_types.length).toBe(7);
+    expect(event_types.length).toBe(9);
   });
 
   it('NPREF-005b — admin scope returns only version_available', () => {
@@ -152,14 +153,15 @@ describe('getPreferencesMatrix', () => {
     expect(available_channels.email).toBe(false);
   });
 
-  it('NPREF-011 — implemented_combos maps version_available to [inapp, email, webhook]', () => {
+  it('NPREF-011 — implemented_combos maps version_available to [inapp, email, webhook, ntfy]', () => {
     const { user } = createAdmin(testDb);
     const { implemented_combos } = getPreferencesMatrix(user.id, 'admin', 'admin');
-    expect(implemented_combos['version_available']).toEqual(['inapp', 'email', 'webhook']);
-    // All events now support all three channels
+    expect(implemented_combos['version_available']).toEqual(['inapp', 'email', 'webhook', 'ntfy']);
+    // All events now support all four channels
     expect(implemented_combos['trip_invite']).toContain('inapp');
     expect(implemented_combos['trip_invite']).toContain('email');
     expect(implemented_combos['trip_invite']).toContain('webhook');
+    expect(implemented_combos['trip_invite']).toContain('ntfy');
   });
 });
 
@@ -314,5 +316,21 @@ describe('setAdminPreferences', () => {
     expect(getAdminGlobalPref('version_available', 'email')).toBe(true);
     const row = testDb.prepare("SELECT value FROM app_settings WHERE key = ?").get('admin_notif_pref_version_available_email') as { value: string } | undefined;
     expect(row?.value).toBe('1');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isWebhookConfigured
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('isWebhookConfigured', () => {
+  it('NPREF-026 — returns false when webhook is not in active channels', () => {
+    // No notification_channels configured → defaults don't include webhook
+    expect(isWebhookConfigured()).toBe(false);
+  });
+
+  it('NPREF-027 — returns true when webhook is in active channels', () => {
+    setNotificationChannels(testDb, 'webhook');
+    expect(isWebhookConfigured()).toBe(true);
   });
 });

@@ -15,13 +15,21 @@ import { decrypt_api_key, maybe_encrypt_api_key, encrypt_api_key } from './apiKe
 import { createEphemeralToken } from './ephemeralTokens';
 import { revokeUserSessions } from '../mcp';
 import { startTripReminders } from '../scheduler';
+import { deleteUserCompletely } from './userCleanupService';
+import { verifyJwtAndLoadUser } from '../middleware/auth';
 import { User } from '../types';
+import { DEMO_EMAIL_PRIMARY, isDemoEmail } from './demo';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 authenticator.options = { window: 1 };
+
+// Pre-computed bcrypt hash to equalise timing of "unknown email" and
+// "OIDC-only account" branches with the real verification path (CWE-208).
+// Cost factor 12 matches register/changePassword/resetPassword — must stay in sync.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('__trek_no_such_user__', 12);
 
 const MFA_SETUP_TTL_MS = 15 * 60 * 1000;
 const mfaSetupPending = new Map<number, { secret: string; exp: number }>();
@@ -30,7 +38,9 @@ const MFA_BACKUP_CODE_COUNT = 10;
 const ADMIN_SETTINGS_KEYS = [
   'allow_registration', 'allowed_file_types', 'require_mfa',
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_skip_tls_verify',
-  'notification_channels', 'admin_webhook_url',
+  'notification_channels', 'admin_webhook_url', 'admin_ntfy_server', 'admin_ntfy_topic', 'admin_ntfy_token',
+  'notify_trip_reminder',
+  'password_login', 'password_registration', 'oidc_login', 'oidc_registration',
 ];
 
 const avatarDir = path.join(__dirname, '../../uploads/avatars');
@@ -107,21 +117,59 @@ export function avatarUrl(user: { avatar?: string | null }): string | null {
   return user.avatar ? `/uploads/avatars/${user.avatar}` : null;
 }
 
-export function isOidcOnlyMode(): boolean {
+export function resolveAuthToggles(): {
+  password_login: boolean;
+  password_registration: boolean;
+  oidc_login: boolean;
+  oidc_registration: boolean;
+} {
   const get = (key: string) =>
-    (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value || null;
-  const enabled = process.env.OIDC_ONLY === 'true' || get('oidc_only') === 'true';
-  if (!enabled) return false;
+    (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value ?? null;
+
+  const hasNewKeys = ['password_login', 'password_registration', 'oidc_login', 'oidc_registration']
+    .some(k => get(k) !== null);
+
+  if (hasNewKeys) {
+    const result = {
+      password_login: get('password_login') !== 'false',
+      password_registration: get('password_registration') !== 'false',
+      oidc_login: get('oidc_login') !== 'false',
+      oidc_registration: get('oidc_registration') !== 'false',
+    };
+    if (process.env.OIDC_ONLY?.toLowerCase() === 'true') {
+      result.password_login = false;
+      result.password_registration = false;
+    }
+    return result;
+  }
+
+  // Legacy fallback
+  const oidcOnlyEnabled = process.env.OIDC_ONLY?.toLowerCase() === 'true' || get('oidc_only') === 'true';
   const oidcConfigured = !!(
     (process.env.OIDC_ISSUER || get('oidc_issuer')) &&
     (process.env.OIDC_CLIENT_ID || get('oidc_client_id'))
   );
-  return oidcConfigured;
+  const oidcOnly = oidcOnlyEnabled && oidcConfigured;
+  const allowReg = (get('allow_registration') ?? 'true') === 'true';
+
+  return {
+    password_login: !oidcOnly,
+    password_registration: !oidcOnly && allowReg,
+    oidc_login: true,
+    oidc_registration: allowReg,
+  };
 }
 
-export function generateToken(user: { id: number | bigint }) {
+export function isOidcOnlyMode(): boolean {
+  return !resolveAuthToggles().password_login;
+}
+
+export function generateToken(user: { id: number | bigint; password_version?: number }) {
+  const pv = typeof user.password_version === 'number'
+    ? user.password_version
+    : ((db.prepare('SELECT password_version FROM users WHERE id = ?').get(user.id) as { password_version?: number } | undefined)?.password_version ?? 0);
   return jwt.sign(
-    { id: user.id },
+    { id: user.id, pv },
     JWT_SECRET,
     { expiresIn: '24h', algorithm: 'HS256' }
   );
@@ -135,8 +183,44 @@ export function normalizeBackupCode(input: string): string {
   return String(input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+// Legacy SHA-256 hex hash. Kept so existing stored hashes (from before
+// the bcrypt migration) can still be verified in `matchBackupCode`
+// without forcing every user to re-enrol their MFA device. New hashes
+// are produced by `hashBackupCodeBcrypt` below.
 export function hashBackupCode(input: string): string {
   return crypto.createHash('sha256').update(normalizeBackupCode(input)).digest('hex');
+}
+
+const BCRYPT_BACKUP_COST = 10;
+
+/**
+ * Hash a backup code with bcrypt for at-rest storage. Backup codes only
+ * have ~40 bits of entropy (8 hex chars) so a plain SHA-256 rainbow
+ * table cracks them in minutes if the DB ever leaks. bcrypt with a
+ * moderate cost raises that cost by ~3-4 orders of magnitude.
+ */
+export function hashBackupCodeBcrypt(input: string): string {
+  return bcrypt.hashSync(normalizeBackupCode(input), BCRYPT_BACKUP_COST);
+}
+
+/**
+ * Constant-time match of a plaintext backup code against a stored hash
+ * in either format (bcrypt or legacy SHA-256 hex). Used by login and
+ * password-reset flows; callers that need to CONSUME the matching
+ * entry should use this to find the index, then splice it out.
+ */
+export function matchBackupCode(plaintext: string, storedHash: string): boolean {
+  if (!storedHash) return false;
+  if (storedHash.startsWith('$2')) {
+    // bcrypt hash — compareSync is constant-time internally.
+    try { return bcrypt.compareSync(normalizeBackupCode(plaintext), storedHash); }
+    catch { return false; }
+  }
+  // Legacy SHA-256 hex. Compare the SHA-256 of the input against the
+  // stored hex with a constant-time comparator so timing can't leak.
+  const candidate = hashBackupCode(plaintext);
+  if (candidate.length !== storedHash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(storedHash));
 }
 
 export function generateBackupCodes(count = MFA_BACKUP_CODE_COUNT): string[] {
@@ -174,10 +258,9 @@ export function getPendingMfaSecret(userId: number): string | null {
 
 export function getAppConfig(authenticatedUser: { id: number } | null) {
   const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
-  const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'allow_registration'").get() as { value: string } | undefined;
-  const allowRegistration = userCount === 0 || (setting?.value ?? 'true') === 'true';
-  const isDemo = process.env.DEMO_MODE === 'true';
-  const { version } = require('../../package.json');
+  const isDemo = process.env.DEMO_MODE?.toLowerCase() === 'true';
+  const toggles = resolveAuthToggles();
+  const version: string = process.env.APP_VERSION ?? require('../../package.json').version;
   const hasGoogleKey = !!db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
   const oidcDisplayName = process.env.OIDC_DISPLAY_NAME ||
     (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_display_name'").get() as { value: string } | undefined)?.value || null;
@@ -185,9 +268,6 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
     (process.env.OIDC_ISSUER || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_issuer'").get() as { value: string } | undefined)?.value) &&
     (process.env.OIDC_CLIENT_ID || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_client_id'").get() as { value: string } | undefined)?.value)
   );
-  const oidcOnlySetting = process.env.OIDC_ONLY ||
-    (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_only'").get() as { value: string } | undefined)?.value;
-  const oidcOnlyMode = oidcConfigured && oidcOnlySetting === 'true';
   const requireMfaRow = db.prepare("SELECT value FROM app_settings WHERE key = 'require_mfa'").get() as { value: string } | undefined;
   const notifChannel = (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_channel'").get() as { value: string } | undefined)?.value || 'none';
   const tripReminderSetting = (db.prepare("SELECT value FROM app_settings WHERE key = 'notify_trip_reminder'").get() as { value: string } | undefined)?.value;
@@ -195,29 +275,45 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
   const notifChannelsRaw = (db.prepare("SELECT value FROM app_settings WHERE key = 'notification_channels'").get() as { value: string } | undefined)?.value || notifChannel;
   const activeChannels = notifChannelsRaw === 'none' ? [] : notifChannelsRaw.split(',').map((c: string) => c.trim()).filter(Boolean);
   const hasWebhookEnabled = activeChannels.includes('webhook');
-  const channelConfigured = (activeChannels.includes('email') && hasSmtpHost) || hasWebhookEnabled;
-  const tripRemindersEnabled = channelConfigured && tripReminderSetting !== 'false';
+  const tripRemindersEnabled = tripReminderSetting !== 'false';
+  const placesPhotosSetting = (db.prepare("SELECT value FROM app_settings WHERE key = 'places_photos_enabled'").get() as { value: string } | undefined)?.value;
+  const placesPhotosEnabled = placesPhotosSetting !== 'false';
+  const placesAutocompleteSetting = (db.prepare("SELECT value FROM app_settings WHERE key = 'places_autocomplete_enabled'").get() as { value: string } | undefined)?.value;
+  const placesAutocompleteEnabled = placesAutocompleteSetting !== 'false';
+  const placesDetailsSetting = (db.prepare("SELECT value FROM app_settings WHERE key = 'places_details_enabled'").get() as { value: string } | undefined)?.value;
+  const placesDetailsEnabled = placesDetailsSetting !== 'false';
   const setupComplete = userCount > 0 && !(db.prepare("SELECT id FROM users WHERE role = 'admin' AND must_change_password = 1 LIMIT 1").get());
 
   return {
-    allow_registration: isDemo ? false : allowRegistration,
+    // Legacy fields (backward compat)
+    allow_registration: isDemo ? false : (toggles.password_registration || toggles.oidc_registration),
+    oidc_only_mode: !toggles.password_login && !toggles.password_registration,
+    // Granular toggles
+    password_login: toggles.password_login,
+    password_registration: isDemo ? false : toggles.password_registration,
+    oidc_login: toggles.oidc_login,
+    oidc_registration: isDemo ? false : toggles.oidc_registration,
+    env_override_oidc_only: process.env.OIDC_ONLY === 'true',
     has_users: userCount > 0,
     setup_complete: setupComplete,
     version,
+    is_prerelease: version.includes('-pre.'),
     has_maps_key: hasGoogleKey,
     oidc_configured: oidcConfigured,
     oidc_display_name: oidcConfigured ? (oidcDisplayName || 'SSO') : undefined,
-    oidc_only_mode: oidcOnlyMode,
     require_mfa: requireMfaRow?.value === 'true',
     allowed_file_types: (db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get() as { value: string } | undefined)?.value || 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv',
     demo_mode: isDemo,
-    demo_email: isDemo ? 'demo@trek.app' : undefined,
+    demo_email: isDemo ? DEMO_EMAIL_PRIMARY : undefined,
     demo_password: isDemo ? 'demo12345' : undefined,
     timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     notification_channel: notifChannel,
     notification_channels: activeChannels,
     available_channels: { email: hasSmtpHost, webhook: hasWebhookEnabled, inapp: true },
     trip_reminders_enabled: tripRemindersEnabled,
+    places_photos_enabled: placesPhotosEnabled,
+    places_autocomplete_enabled: placesAutocompleteEnabled,
+    places_details_enabled: placesDetailsEnabled,
     permissions: authenticatedUser ? getAllPermissions() : undefined,
     dev_mode: process.env.NODE_ENV === 'development',
   };
@@ -231,7 +327,7 @@ export function demoLogin(): { error?: string; status?: number; token?: string; 
   if (process.env.DEMO_MODE !== 'true') {
     return { error: 'Not found', status: 404 };
   }
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get('demo@trek.app') as User | undefined;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(DEMO_EMAIL_PRIMARY) as User | undefined;
   if (!user) return { error: 'Demo user not found', status: 500 };
   const token = generateToken(user);
   const safe = stripUserForClient(user) as Record<string, unknown>;
@@ -252,7 +348,9 @@ export function registerUser(body: {
   password?: string;
   invite_token?: string;
 }): { error?: string; status?: number; token?: string; user?: Record<string, unknown>; auditUserId?: number; auditDetails?: Record<string, unknown> } {
-  const { username, email, password, invite_token } = body;
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const email = typeof body.email === 'string' ? body.email.trim() : '';
+  const { password, invite_token } = body;
 
   const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
 
@@ -265,12 +363,9 @@ export function registerUser(body: {
   }
 
   if (userCount > 0 && !validInvite) {
-    if (isOidcOnlyMode()) {
-      return { error: 'Password authentication is disabled. Please sign in with SSO.', status: 403 };
-    }
-    const setting = db.prepare("SELECT value FROM app_settings WHERE key = 'allow_registration'").get() as { value: string } | undefined;
-    if (setting?.value === 'false') {
-      return { error: 'Registration is disabled. Contact your administrator.', status: 403 };
+    const toggles = resolveAuthToggles();
+    if (!toggles.password_registration) {
+      return { error: 'Password registration is disabled. Contact your administrator.', status: 403 };
     }
   }
 
@@ -297,8 +392,8 @@ export function registerUser(body: {
 
   try {
     const result = db.prepare(
-      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)'
-    ).run(username, email, password_hash, role);
+      'INSERT INTO users (username, email, password_hash, role, first_seen_version, login_count) VALUES (?, ?, ?, ?, ?, 0)'
+    ).run(username, email, password_hash, role, process.env.APP_VERSION || '0.0.0');
 
     const user = { id: result.lastInsertRowid, username, email, role, avatar: null, mfa_enabled: false };
     const token = generateToken(user);
@@ -347,14 +442,24 @@ export function loginUser(body: {
   }
 
   const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email) as User | undefined;
+
+  // Always run bcrypt — even for unknown/OIDC-only users — so response time
+  // does not reveal whether the email exists in the database (CWE-203/208).
+  const hashToCheck = user?.password_hash ?? DUMMY_PASSWORD_HASH;
+  const validPassword = bcrypt.compareSync(password, hashToCheck);
+
   if (!user) {
     return {
       error: 'Invalid email or password', status: 401,
       auditUserId: null, auditAction: 'user.login_failed', auditDetails: { email, reason: 'unknown_email' },
     };
   }
-
-  const validPassword = bcrypt.compareSync(password, user.password_hash!);
+  if (!user.password_hash) {
+    return {
+      error: 'Invalid email or password', status: 401,
+      auditUserId: Number(user.id), auditAction: 'user.login_failed', auditDetails: { email, reason: 'oidc_only' },
+    };
+  }
   if (!validPassword) {
     return {
       error: 'Invalid email or password', status: 401,
@@ -371,7 +476,7 @@ export function loginUser(body: {
     return { mfa_required: true, mfa_token };
   }
 
-  db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+  db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP, login_count = login_count + 1 WHERE id = ?').run(user.id);
   const token = generateToken(user);
   const userSafe = stripUserForClient(user) as Record<string, unknown>;
 
@@ -409,7 +514,7 @@ export function changePassword(
   if (isOidcOnlyMode()) {
     return { error: 'Password authentication is disabled.', status: 403 };
   }
-  if (process.env.DEMO_MODE === 'true' && userEmail === 'demo@trek.app') {
+  if (process.env.DEMO_MODE === 'true' && isDemoEmail(userEmail)) {
     return { error: 'Password change is disabled in demo mode.', status: 403 };
   }
 
@@ -431,7 +536,7 @@ export function changePassword(
 }
 
 export function deleteAccount(userId: number, userEmail: string, userRole: string): { error?: string; status?: number; success?: boolean } {
-  if (process.env.DEMO_MODE === 'true' && userEmail === 'demo@trek.app') {
+  if (process.env.DEMO_MODE === 'true' && isDemoEmail(userEmail)) {
     return { error: 'Account deletion is disabled in demo mode.', status: 403 };
   }
   if (userRole === 'admin') {
@@ -440,7 +545,7 @@ export function deleteAccount(userId: number, userEmail: string, userRole: strin
       return { error: 'Cannot delete the last admin account', status: 400 };
     }
   }
-  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  deleteUserCompletely(userId);
   return { success: true };
 }
 
@@ -551,11 +656,13 @@ export function getSettings(userId: number): { error?: string; status?: number; 
 // Avatar
 // ---------------------------------------------------------------------------
 
-export function saveAvatar(userId: number, filename: string) {
+export async function saveAvatar(userId: number, filename: string) {
   const current = db.prepare('SELECT avatar FROM users WHERE id = ?').get(userId) as { avatar: string | null } | undefined;
   if (current && current.avatar) {
+    // Fire-and-forget: leftover files are harmless; the DB update is
+    // the source of truth for which avatar is current.
     const oldPath = path.join(avatarDir, current.avatar);
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    await fs.promises.rm(oldPath, { force: true }).catch(() => {});
   }
 
   db.prepare('UPDATE users SET avatar = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(filename, userId);
@@ -564,11 +671,11 @@ export function saveAvatar(userId: number, filename: string) {
   return { success: true, avatar_url: avatarUrl(updated || {}) };
 }
 
-export function deleteAvatar(userId: number) {
+export async function deleteAvatar(userId: number) {
   const current = db.prepare('SELECT avatar FROM users WHERE id = ?').get(userId) as { avatar: string | null } | undefined;
   if (current && current.avatar) {
     const filePath = path.join(avatarDir, current.avatar);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await fs.promises.rm(filePath, { force: true }).catch(() => {});
   }
   db.prepare('UPDATE users SET avatar = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(userId);
   return { success: true };
@@ -677,7 +784,7 @@ export function getAppSettings(userId: number): { error?: string; status?: numbe
   const result: Record<string, string> = {};
   for (const key of ADMIN_SETTINGS_KEYS) {
     const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined;
-    if (row) result[key] = (key === 'smtp_pass' || key === 'admin_webhook_url') ? '••••••••' : row.value;
+    if (row) result[key] = (key === 'smtp_pass' || key === 'admin_webhook_url' || key === 'admin_ntfy_token') ? '••••••••' : row.value;
   }
   return { data: result };
 }
@@ -707,6 +814,20 @@ export function updateAppSettings(
     }
   }
 
+  // Lockout prevention: can't disable all login methods
+  if (body.password_login !== undefined || body.oidc_login !== undefined) {
+    const current = resolveAuthToggles();
+    const oidcConfigured = !!(
+      (process.env.OIDC_ISSUER || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_issuer'").get() as { value: string } | undefined)?.value) &&
+      (process.env.OIDC_CLIENT_ID || (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_client_id'").get() as { value: string } | undefined)?.value)
+    );
+    const nextPasswordLogin = body.password_login !== undefined ? (String(body.password_login) === 'true') : current.password_login;
+    const nextOidcLogin = body.oidc_login !== undefined ? (String(body.oidc_login) === 'true') : current.oidc_login;
+    if (!nextPasswordLogin && (!nextOidcLogin || !oidcConfigured)) {
+      return { error: 'Cannot disable all login methods. At least one must remain enabled.', status: 400 };
+    }
+  }
+
   for (const key of ADMIN_SETTINGS_KEYS) {
     if (body[key] !== undefined) {
       let val = String(body[key]);
@@ -717,6 +838,8 @@ export function updateAppSettings(
       if (key === 'smtp_pass') val = encrypt_api_key(val);
       if (key === 'admin_webhook_url' && val === '••••••••') continue;
       if (key === 'admin_webhook_url' && val) val = maybe_encrypt_api_key(val) ?? val;
+      if (key === 'admin_ntfy_token' && val === '••••••••') continue;
+      if (key === 'admin_ntfy_token' && val) val = maybe_encrypt_api_key(val) ?? val;
       db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)").run(key, val);
     }
   }
@@ -727,6 +850,7 @@ export function updateAppSettings(
   const smtpChanged = changedKeys.some(k => k.startsWith('smtp_'));
   if (changedKeys.includes('notification_channels')) summary.notification_channels = body.notification_channels;
   if (changedKeys.includes('admin_webhook_url')) summary.admin_webhook_url_updated = true;
+  if (changedKeys.some(k => k.startsWith('admin_ntfy_'))) summary.admin_ntfy_updated = true;
   if (smtpChanged) summary.smtp_settings_updated = true;
   if (changedKeys.includes('allow_registration')) summary.allow_registration = body.allow_registration;
   if (changedKeys.includes('allowed_file_types')) summary.allowed_file_types_updated = true;
@@ -799,7 +923,7 @@ export function getTravelStats(userId: number) {
 // ---------------------------------------------------------------------------
 
 export function setupMfa(userId: number, userEmail: string): { error?: string; status?: number; secret?: string; otpauth_url?: string; qrPromise?: Promise<string> } {
-  if (process.env.DEMO_MODE === 'true' && userEmail === 'demo@nomad.app') {
+  if (process.env.DEMO_MODE === 'true' && isDemoEmail(userEmail)) {
     return { error: 'MFA is not available in demo mode.', status: 403 };
   }
   const row = db.prepare('SELECT mfa_enabled FROM users WHERE id = ?').get(userId) as { mfa_enabled: number } | undefined;
@@ -832,7 +956,7 @@ export function enableMfa(userId: number, code?: string): { error?: string; stat
     return { error: 'Invalid verification code', status: 401 };
   }
   const backupCodes = generateBackupCodes();
-  const backupHashes = backupCodes.map(hashBackupCode);
+  const backupHashes = backupCodes.map(hashBackupCodeBcrypt);
   const enc = encryptMfaSecret(pending);
   db.prepare('UPDATE users SET mfa_enabled = 1, mfa_secret = ?, mfa_backup_codes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
     enc,
@@ -848,7 +972,7 @@ export function disableMfa(
   userEmail: string,
   body: { password?: string; code?: string }
 ): { error?: string; status?: number; success?: boolean; mfa_enabled?: boolean } {
-  if (process.env.DEMO_MODE === 'true' && userEmail === 'demo@nomad.app') {
+  if (process.env.DEMO_MODE === 'true' && isDemoEmail(userEmail)) {
     return { error: 'MFA cannot be changed in demo mode.', status: 403 };
   }
   const policy = db.prepare("SELECT value FROM app_settings WHERE key = 'require_mfa'").get() as { value: string } | undefined;
@@ -907,8 +1031,9 @@ export function verifyMfaLogin(body: {
     const okTotp = authenticator.verify({ token: tokenStr.replace(/\s/g, ''), secret });
     if (!okTotp) {
       const hashes = parseBackupCodeHashes(user.mfa_backup_codes);
-      const candidateHash = hashBackupCode(tokenStr);
-      const idx = hashes.findIndex(h => h === candidateHash);
+      // matchBackupCode handles both bcrypt and legacy SHA-256 hashes;
+      // any store older than the bcrypt migration keeps working.
+      const idx = hashes.findIndex((h) => matchBackupCode(tokenStr, h));
       if (idx === -1) {
         return { error: 'Invalid verification code', status: 401 };
       }
@@ -918,7 +1043,7 @@ export function verifyMfaLogin(body: {
         user.id
       );
     }
-    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP, login_count = login_count + 1 WHERE id = ?').run(user.id);
     const sessionToken = generateToken(user);
     const userSafe = stripUserForClient(user) as Record<string, unknown>;
     return {
@@ -929,6 +1054,219 @@ export function verifyMfaLogin(body: {
   } catch {
     return { error: 'Invalid or expired verification token', status: 401 };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Password reset
+// ---------------------------------------------------------------------------
+
+// 60 min; long enough to read the email in a second tab, short enough
+// that a leaked link is unlikely to still be valid when someone tries it.
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_TOKEN_BYTES = 32; // 256-bit entropy
+
+/**
+ * Returns the SHA-256 hex hash of a reset token. Raw tokens are never
+ * persisted — we only store and compare their hashes.
+ */
+function hashResetToken(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+/**
+ * Shape returned by requestPasswordReset. For enumeration-safety the
+ * route ALWAYS returns the same response to the client regardless of
+ * whether a user existed — this struct is only consumed internally by
+ * the route handler to decide whether to send an email / log a link.
+ */
+export interface PasswordResetRequestOutcome {
+  tokenForDelivery: string | null;   // raw token — send via email or log, never return to client
+  userId: number | null;
+  userEmail: string | null;
+  reason: 'issued' | 'no_user' | 'oidc_only' | 'throttled_per_email' | 'password_login_disabled';
+}
+
+// Per-email throttle (defence-in-depth on top of the per-IP limiter).
+const perEmailResetAttempts = new Map<string, { count: number; first: number }>();
+const PASSWORD_RESET_PER_EMAIL_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_PER_EMAIL_MAX = 3;
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of perEmailResetAttempts) {
+    if (now - record.first >= PASSWORD_RESET_PER_EMAIL_WINDOW_MS) perEmailResetAttempts.delete(key);
+  }
+}, 5 * 60 * 1000).unref?.();
+
+export function requestPasswordReset(rawEmail: string, createdIp: string | null): PasswordResetRequestOutcome {
+  const email = String(rawEmail || '').trim().toLowerCase();
+  // Basic shape check — a fully empty / malformed email is treated like
+  // "no user" so we still spend the same time internally.
+  const looksLikeEmail = email.length > 0 && /.+@.+\..+/.test(email);
+
+  // Global policy check: password login disabled → no reset possible.
+  const toggles = resolveAuthToggles();
+  if (!toggles.password_login) {
+    return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'password_login_disabled' };
+  }
+
+  // Per-email throttle. We check this BEFORE the DB lookup so the timing
+  // is identical regardless of whether the account exists.
+  const throttleKey = email || '__noemail__';
+  const now = Date.now();
+  const record = perEmailResetAttempts.get(throttleKey);
+  if (record && record.count >= PASSWORD_RESET_PER_EMAIL_MAX && now - record.first < PASSWORD_RESET_PER_EMAIL_WINDOW_MS) {
+    return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'throttled_per_email' };
+  }
+  if (!record || now - record.first >= PASSWORD_RESET_PER_EMAIL_WINDOW_MS) {
+    perEmailResetAttempts.set(throttleKey, { count: 1, first: now });
+  } else {
+    record.count++;
+  }
+
+  if (!looksLikeEmail) {
+    return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'no_user' };
+  }
+
+  const user = db.prepare('SELECT id, email, password_hash, oidc_sub FROM users WHERE email = ?').get(email) as
+    | { id: number; email: string; password_hash: string | null; oidc_sub: string | null }
+    | undefined;
+
+  if (!user) {
+    return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'no_user' };
+  }
+  // OIDC-only account (no local password) — we can't reset what isn't there.
+  // The client still gets the generic "if that email exists…" response.
+  if (!user.password_hash && user.oidc_sub) {
+    return { tokenForDelivery: null, userId: user.id, userEmail: user.email, reason: 'oidc_only' };
+  }
+
+  // Invalidate any prior unconsumed tokens for this user so there is
+  // always at most one live reset link in flight.
+  db.prepare(
+    "UPDATE password_reset_tokens SET consumed_at = CURRENT_TIMESTAMP WHERE user_id = ? AND consumed_at IS NULL"
+  ).run(user.id);
+
+  const raw = randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString('base64url');
+  const token_hash = hashResetToken(raw);
+  const expires_at = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
+
+  db.prepare(
+    'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_ip) VALUES (?, ?, ?, ?)'
+  ).run(user.id, token_hash, expires_at, createdIp);
+
+  return { tokenForDelivery: raw, userId: user.id, userEmail: user.email, reason: 'issued' };
+}
+
+export interface ResetPasswordOutcome {
+  error?: string;
+  status?: number;
+  success?: boolean;
+  /** When true the client must collect a TOTP/backup code and call again. */
+  mfa_required?: boolean;
+  userId?: number;
+}
+
+/**
+ * Consume a reset token and set a new password. If the target user has
+ * MFA enabled, a valid TOTP code or backup code must be supplied — a
+ * compromised email alone therefore does NOT allow taking over a
+ * 2FA-protected account.
+ */
+export function resetPassword(body: {
+  token?: string;
+  new_password?: string;
+  mfa_code?: string;
+}): ResetPasswordOutcome {
+  const { token, new_password, mfa_code } = body;
+  if (!token || typeof token !== 'string') {
+    return { error: 'Reset token is required', status: 400 };
+  }
+  if (!new_password || typeof new_password !== 'string') {
+    return { error: 'New password is required', status: 400 };
+  }
+  // Check the policy BEFORE touching the token so an invalid password
+  // does not burn the user's one-time link.
+  const pwCheck = validatePassword(new_password);
+  if (!pwCheck.ok) return { error: pwCheck.reason!, status: 400 };
+
+  const tokenHash = hashResetToken(token);
+  const row = db.prepare(
+    'SELECT id, user_id, expires_at, consumed_at FROM password_reset_tokens WHERE token_hash = ?'
+  ).get(tokenHash) as
+    | { id: number; user_id: number; expires_at: string; consumed_at: string | null }
+    | undefined;
+
+  if (!row) return { error: 'Invalid or expired reset link', status: 400 };
+  if (row.consumed_at) return { error: 'This reset link has already been used', status: 400 };
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    return { error: 'Reset link has expired. Please request a new one.', status: 400 };
+  }
+
+  const user = db.prepare(
+    'SELECT id, email, mfa_enabled, mfa_secret, mfa_backup_codes, password_version FROM users WHERE id = ?'
+  ).get(row.user_id) as
+    | { id: number; email: string; mfa_enabled: number | boolean; mfa_secret: string | null; mfa_backup_codes: string | null; password_version: number }
+    | undefined;
+
+  if (!user) return { error: 'Invalid or expired reset link', status: 400 };
+
+  // MFA gate. If enabled, require a valid TOTP or backup code.
+  const mfaOn = user.mfa_enabled === 1 || user.mfa_enabled === true;
+  let backupCodeConsumedIndex: number | null = null;
+  if (mfaOn) {
+    if (!user.mfa_secret) {
+      // Data inconsistency — fail closed.
+      return { error: 'MFA is enabled but not configured. Contact your administrator.', status: 500 };
+    }
+    const supplied = typeof mfa_code === 'string' ? mfa_code.trim() : '';
+    if (!supplied) return { mfa_required: true, status: 200 };
+
+    const secret = decryptMfaSecret(user.mfa_secret);
+    const okTotp = authenticator.verify({ token: supplied.replace(/\s/g, ''), secret });
+    if (!okTotp) {
+      const hashes = parseBackupCodeHashes(user.mfa_backup_codes);
+      const idx = hashes.findIndex((h) => matchBackupCode(supplied, h));
+      if (idx === -1) return { error: 'Invalid MFA code', status: 401 };
+      backupCodeConsumedIndex = idx;
+    }
+  }
+
+  const newHash = bcrypt.hashSync(new_password, 12);
+  const newPv = (user.password_version ?? 0) + 1;
+
+  db.transaction(() => {
+    // Burn the token first to keep it atomic with the password change.
+    db.prepare('UPDATE password_reset_tokens SET consumed_at = CURRENT_TIMESTAMP WHERE id = ?').run(row.id);
+    // Also burn every OTHER live token for this user — a fresh login
+    // should not leave a second door open.
+    db.prepare(
+      "UPDATE password_reset_tokens SET consumed_at = CURRENT_TIMESTAMP WHERE user_id = ? AND consumed_at IS NULL AND id != ?"
+    ).run(user.id, row.id);
+    db.prepare(
+      'UPDATE users SET password_hash = ?, must_change_password = 0, password_version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run(newHash, newPv, user.id);
+    // Consume backup code if one was used.
+    if (backupCodeConsumedIndex !== null) {
+      const hashes = parseBackupCodeHashes(user.mfa_backup_codes);
+      hashes.splice(backupCodeConsumedIndex, 1);
+      db.prepare('UPDATE users SET mfa_backup_codes = ? WHERE id = ?').run(JSON.stringify(hashes), user.id);
+    }
+    // Revoke every other credential class the user had. The
+    // password_version bump alone invalidates JWT cookie sessions, but
+    // MCP static tokens and OAuth 2.1 bearer tokens are separate stores
+    // that survive the bump unless we prune them here.
+    db.prepare('DELETE FROM mcp_tokens WHERE user_id = ?').run(user.id);
+    try {
+      db.prepare(
+        "UPDATE oauth_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL"
+      ).run(user.id);
+    } catch { /* oauth_tokens table may not exist in very old installs */ }
+  })();
+
+  // Kick off any MCP/WS session cleanup — same hook the account-delete path uses.
+  try { revokeUserSessions?.(user.id); } catch { /* best-effort */ }
+
+  return { success: true, userId: user.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -997,7 +1335,7 @@ export function createResourceToken(userId: number, purpose?: string): { error?:
 export function isDemoUser(userId: number): boolean {
   if (process.env.DEMO_MODE !== 'true') return false;
   const user = db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined;
-  return user?.email === 'demo@nomad.app';
+  return isDemoEmail(user?.email);
 }
 
 export function verifyMcpToken(rawToken: string): User | null {
@@ -1015,12 +1353,15 @@ export function verifyMcpToken(rawToken: string): User | null {
   return null;
 }
 
+/**
+ * Verify a JWT the same way `middleware/auth.ts#verifyJwtAndLoadUser`
+ * does — including the `password_version` check — so that stolen tokens
+ * lose access the moment the victim resets their password.
+ *
+ * This is the single entry point every non-cookie JWT verification path
+ * (MCP bearer, WebSocket handshake, file-download query tokens, photo
+ * route) should go through.
+ */
 export function verifyJwtToken(token: string): User | null {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: number };
-    const user = db.prepare('SELECT id, username, email, role FROM users WHERE id = ?').get(decoded.id) as User | undefined;
-    return user || null;
-  } catch {
-    return null;
-  }
+  return verifyJwtAndLoadUser(token);
 }

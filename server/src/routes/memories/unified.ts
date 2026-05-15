@@ -55,8 +55,7 @@ router.put('/unified/trips/:tripId/photos/sharing', authenticate, async (req: Re
     const result = await setTripPhotoSharing(
         tripId,
         authReq.user.id,
-        req.body?.provider,
-        req.body?.asset_id,
+        Number(req.body?.photo_id),
         req.body?.shared,
     );
     if ('error' in result) return res.status(result.error.status).json({ error: result.error.message });
@@ -66,7 +65,7 @@ router.put('/unified/trips/:tripId/photos/sharing', authenticate, async (req: Re
 router.delete('/unified/trips/:tripId/photos', authenticate, async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const { tripId } = req.params;
-    const result = await removeTripPhoto(tripId, authReq.user.id, req.body?.provider, req.body?.asset_id);
+    const result = removeTripPhoto(tripId, authReq.user.id, Number(req.body?.photo_id));
     if ('error' in result) return res.status(result.error.status).json({ error: result.error.message });
     res.json({ success: true });
 });
@@ -85,7 +84,8 @@ router.get('/unified/trips/:tripId/album-links', authenticate, (req: Request, re
 router.post('/unified/trips/:tripId/album-links', authenticate, async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const { tripId } = req.params;
-    const result = createTripAlbumLink(tripId, authReq.user.id, req.body?.provider, req.body?.album_id, req.body?.album_name);
+    const passphrase = req.body?.passphrase ? String(req.body.passphrase) : undefined;
+    const result = createTripAlbumLink(tripId, authReq.user.id, req.body?.provider, req.body?.album_id, req.body?.album_name, passphrase);
     if ('error' in result) return res.status(result.error.status).json({ error: result.error.message });
     res.json({ success: true });
 });

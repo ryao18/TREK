@@ -8,10 +8,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2,ttf}'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/mcp/],
+        navigateFallbackDenylist: [/^\/api/, /^\/uploads/, /^\/mcp/, /^\/oauth\//, /^\/.well-known\//],
         runtimeCaching: [
           {
             // Carto map tiles (default provider)
@@ -46,7 +46,7 @@ export default defineConfig({
           {
             // API calls — prefer network, fall back to cache
             // Exclude sensitive endpoints (auth, admin, backup, settings)
-            urlPattern: /\/api\/(?!auth|admin|backup|settings).*/i,
+            urlPattern: /\/api\/(?!auth|admin|backup|settings|health).*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-data',
@@ -90,6 +90,7 @@ export default defineConfig({
   ],
   build: {
     sourcemap: false,
+    modulePreload: { polyfill: false },
   },
   server: {
     port: 5173,
@@ -109,7 +110,30 @@ export default defineConfig({
       '/mcp': {
         target: 'http://localhost:3001',
         changeOrigin: true,
-      }
+      },
+      // OAuth 2.1 endpoints handled by backend (SDK authorize handler + token/revoke)
+      // /oauth/authorize goes to backend so the SDK can redirect to /oauth/consent
+      // /oauth/consent is served by Vite as a SPA route (no proxy entry needed)
+      '/oauth/authorize': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/oauth/token': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/oauth/register': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/oauth/revoke': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/.well-known': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     }
   }
 })

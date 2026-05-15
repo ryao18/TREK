@@ -30,6 +30,7 @@ function ProviderImg({ baseUrl, provider, style, loading }: { baseUrl: string; p
 // ── Types ───────────────────────────────────────────────────────────────────
 
 interface TripPhoto {
+  photo_id: number
   asset_id: string
   provider: string
   user_id: number
@@ -84,7 +85,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
 
   // Album linking
   const [showAlbumPicker, setShowAlbumPicker] = useState(false)
-  const [albums, setAlbums] = useState<{ id: string; albumName: string; assetCount: number }[]>([])
+  const [albums, setAlbums] = useState<{ id: string; albumName: string; assetCount: number; passphrase?: string }[]>([])
   const [albumsLoading, setAlbumsLoading] = useState(false)
   const [albumLinks, setAlbumLinks] = useState<{ id: number; provider: string; album_id: string; album_name: string; user_id: number; username: string; sync_enabled: number; last_synced_at: string | null }[]>([])
   const [syncing, setSyncing] = useState<number | null>(null)
@@ -105,19 +106,12 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   }
 
   function buildProviderAssetUrl(photo: TripPhoto, what: string): string {
-    return `${ADDON_PREFIX}/${photo.provider}/assets/${tripId}/${photo.asset_id}/${photo.user_id}/${what}`
+    return `/photos/${photo.photo_id}/${what}`
   }
 
   function buildProviderAssetUrlFromAsset(asset: Asset, what: string, userId: number): string {
-    const photo: TripPhoto = {
-      asset_id: asset.id,
-      provider: asset.provider,
-      user_id: userId,
-      username: '',
-      shared: 0,
-      added_at: null
-    }
-    return buildProviderAssetUrl(photo, what)
+    // Picker photos are not yet saved — use provider-specific URL
+    return `${ADDON_PREFIX}/${asset.provider}/assets/${tripId}/${asset.id}/${userId}/${what}`
   }
 
 
@@ -147,7 +141,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
     await loadAlbums(selectedProvider)
   }
 
-  const linkAlbum = async (albumId: string, albumName: string) => {
+  const linkAlbum = async (albumId: string, albumName: string, passphrase?: string) => {
     if (!selectedProvider) {
       toast.error(t('memories.error.linkAlbum'))
       return
@@ -158,6 +152,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
         album_id: albumId,
         album_name: albumName,
         provider: selectedProvider,
+        ...(passphrase ? { passphrase } : {}),
       })
       setShowAlbumPicker(false)
       await loadAlbumLinks()
@@ -189,7 +184,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   }
 
   // Lightbox
-  const [lightboxId, setLightboxId] = useState<string | null>(null)
+  const [lightboxId, setLightboxId] = useState<number | null>(null)
   const [lightboxUserId, setLightboxUserId] = useState<number | null>(null)
   const [lightboxInfo, setLightboxInfo] = useState<any>(null)
   const [lightboxInfoLoading, setLightboxInfoLoading] = useState(false)
@@ -357,11 +352,10 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
     try {
       await apiClient.delete(buildUnifiedUrl('photos'), {
         data: {
-          asset_id: photo.asset_id,
-          provider: photo.provider,
+          photo_id: photo.photo_id,
         },
       })
-      setTripPhotos(prev => prev.filter(p => !(p.provider === photo.provider && p.asset_id === photo.asset_id)))
+      setTripPhotos(prev => prev.filter(p => p.photo_id !== photo.photo_id))
     } catch { toast.error(t('memories.error.removePhoto')) }
   }
 
@@ -371,11 +365,10 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
     try {
       await apiClient.put(buildUnifiedUrl('photos', 'sharing'), {
         shared,
-        asset_id: photo.asset_id,
-        provider: photo.provider,
+        photo_id: photo.photo_id,
       })
       setTripPhotos(prev => prev.map(p =>
-        p.provider === photo.provider && p.asset_id === photo.asset_id ? { ...p, shared: shared ? 1 : 0 } : p
+        p.photo_id === photo.photo_id ? { ...p, shared: shared ? 1 : 0 } : p
       ))
     } catch { toast.error(t('memories.error.toggleSharing')) }
   }
@@ -497,7 +490,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
               {albums.map(album => {
                 const isLinked = linkedIds.has(album.id)
                 return (
-                  <button key={album.id} onClick={() => !isLinked && linkAlbum(album.id, album.albumName)}
+                  <button key={album.id} onClick={() => !isLinked && linkAlbum(album.id, album.albumName, album.passphrase)}
                     disabled={isLinked}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '12px 14px',
@@ -589,7 +582,8 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
                 borderColor: !pickerDateFilter ? 'var(--text-primary)' : 'var(--border-primary)',
                 color: !pickerDateFilter ? 'var(--bg-primary)' : 'var(--text-muted)',
               }}>
-              {t('memories.allPhotos')}
+              <span className="hidden sm:inline">{t('memories.allPhotos')}</span>
+              <span className="sm:hidden">{t('common.all')}</span>
             </button>
           </div>
           {selectedIds.size > 0 && (
@@ -714,6 +708,23 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', ...font }}>
 
+      {/* Disconnected banner — shown when photos exist but provider is unreachable */}
+      {!connected && allVisible.length > 0 && enabledProviders.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 16px', flexShrink: 0,
+          background: 'rgba(234,179,8,0.08)', borderBottom: '1px solid rgba(234,179,8,0.25)',
+          fontSize: 12, color: 'var(--text-muted)',
+        }}>
+          <Camera size={13} style={{ color: '#ca8a04', flexShrink: 0 }} />
+          <span>
+            {t('memories.providerDisconnectedBanner', {
+              provider_name: enabledProviders.length === 1 ? enabledProviders[0].name : enabledProviders.map(p => p.name).join(', ')
+            })}
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-secondary)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -822,10 +833,10 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
             {allVisible.map(photo => {
               const isOwn = photo.user_id === currentUser?.id
               return (
-                <div key={`${photo.provider}:${photo.asset_id}`} className="group"
+                <div key={photo.photo_id} className="group"
                   style={{ position: 'relative', aspectRatio: '1', borderRadius: 10, overflow: 'visible', cursor: 'pointer' }}
                   onClick={() => {
-                    setLightboxId(photo.asset_id); setLightboxUserId(photo.user_id); setLightboxInfo(null)
+                    setLightboxId(photo.photo_id); setLightboxUserId(photo.user_id); setLightboxInfo(null)
                     if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc)
                     setLightboxOriginalSrc('')
                     fetchImageAsBlob('/api' + buildProviderAssetUrl(photo, 'original')).then(setLightboxOriginalSrc)
@@ -944,7 +955,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
           setShowMobileInfo(false)
         }
 
-        const currentIdx = allVisible.findIndex(p => p.asset_id === lightboxId)
+        const currentIdx = allVisible.findIndex(p => p.photo_id === lightboxId)
         const hasPrev = currentIdx > 0
         const hasNext = currentIdx < allVisible.length - 1
         const navigateTo = (idx: number) => {
@@ -952,7 +963,7 @@ export default function MemoriesPanel({ tripId, startDate, endDate }: MemoriesPa
           if (!photo) return
           if (lightboxOriginalSrc) URL.revokeObjectURL(lightboxOriginalSrc)
           setLightboxOriginalSrc('')
-          setLightboxId(photo.asset_id)
+          setLightboxId(photo.photo_id)
           setLightboxUserId(photo.user_id)
           setLightboxInfo(null)
           fetchImageAsBlob('/api' + buildProviderAssetUrl(photo, 'original')).then(setLightboxOriginalSrc)

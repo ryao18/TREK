@@ -31,6 +31,7 @@ export interface Trip {
 export interface Day {
   id: number
   trip_id: number
+  day_number?: number
   date: string
   title: string | null
   notes: string | null
@@ -43,18 +44,24 @@ export interface Place {
   trip_id: number
   name: string
   description: string | null
+  notes: string | null
   lat: number | null
   lng: number | null
   address: string | null
   category_id: number | null
   icon: string | null
   price: string | null
+  currency: string | null
   image_url: string | null
   google_place_id: string | null
   osm_id: string | null
   route_geometry: string | null
   place_time: string | null
   end_time: string | null
+  duration_minutes: number | null
+  transport_mode: string | null
+  website: string | null
+  phone: string | null
   created_at: string
 }
 
@@ -167,6 +174,20 @@ export interface BudgetMember {
   paid: boolean
 }
 
+export interface ReservationEndpoint {
+  id?: number
+  reservation_id?: number
+  role: 'from' | 'to' | 'stop'
+  sequence: number
+  name: string
+  code: string | null
+  lat: number
+  lng: number
+  timezone: string | null
+  local_time: string | null
+  local_date: string | null
+}
+
 export interface Reservation {
   id: number
   trip_id: number
@@ -183,11 +204,17 @@ export interface Reservation {
   notes: string | null
   url: string | null
   day_id?: number | null
+  end_day_id?: number | null
   place_id?: number | null
   assignment_id?: number | null
   accommodation_id?: number | null
+  accommodation_start_day_id?: number | null
+  accommodation_end_day_id?: number | null
   day_plan_position?: number | null
+  day_positions?: Record<number, number> | null
   metadata?: Record<string, string> | string | null
+  needs_review?: number
+  endpoints?: ReservationEndpoint[]
   created_at: string
 }
 
@@ -226,6 +253,12 @@ export interface Settings {
   show_place_description: boolean
   route_calculation?: boolean
   blur_booking_codes?: boolean
+  map_booking_labels?: boolean
+  map_provider?: 'leaflet' | 'mapbox-gl'
+  mapbox_access_token?: string
+  mapbox_style?: string
+  mapbox_3d_enabled?: boolean
+  mapbox_quality_mode?: boolean
 }
 
 export interface AssignmentsMap {
@@ -274,6 +307,7 @@ export interface Accommodation {
   name: string
   address: string | null
   check_in: string | null
+  check_in_end: string | null
   check_out: string | null
   confirmation_number: string | null
   notes: string | null
@@ -335,11 +369,18 @@ export interface AppConfig {
   demo_mode: boolean
   oidc_configured: boolean
   oidc_display_name?: string
+  oidc_only_mode?: boolean
   has_maps_key?: boolean
   allowed_file_types?: string
   timezone?: string
   /** When true, users without MFA cannot use the app until they enable it */
   require_mfa?: boolean
+  // Granular auth toggles
+  password_login?: boolean
+  password_registration?: boolean
+  oidc_login?: boolean
+  oidc_registration?: boolean
+  env_override_oidc_only?: boolean
 }
 
 // Translation function type
@@ -369,6 +410,7 @@ export interface VacayPlan {
   block_weekends: boolean
   carry_over_enabled: boolean
   company_holidays_enabled: boolean
+  week_start?: number
   name?: string
   year?: number
   owner_id?: number

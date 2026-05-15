@@ -1,4 +1,5 @@
 import { budgetApi } from '../../api/client'
+import { budgetRepo } from '../../repo/budgetRepo'
 import type { StoreApi } from 'zustand'
 import type { TripStoreState } from '../tripStore'
 import type { BudgetItem, BudgetMember } from '../../types'
@@ -14,12 +15,14 @@ export interface BudgetSlice {
   deleteBudgetItem: (tripId: number | string, id: number) => Promise<void>
   setBudgetItemMembers: (tripId: number | string, itemId: number, userIds: number[]) => Promise<{ members: BudgetMember[]; item: BudgetItem }>
   toggleBudgetMemberPaid: (tripId: number | string, itemId: number, userId: number, paid: boolean) => Promise<void>
+  reorderBudgetItems: (tripId: number | string, orderedIds: number[]) => Promise<void>
+  reorderBudgetCategories: (tripId: number | string, orderedCategories: string[]) => Promise<void>
 }
 
 export const createBudgetSlice = (set: SetState, get: GetState): BudgetSlice => ({
   loadBudgetItems: async (tripId) => {
     try {
-      const data = await budgetApi.list(tripId)
+      const data = await budgetRepo.list(tripId)
       set({ budgetItems: data.items })
     } catch (err: unknown) {
       console.error('Failed to load budget items:', err)
@@ -81,5 +84,53 @@ export const createBudgetSlice = (set: SetState, get: GetState): BudgetSlice => 
           : item
       )
     }));
+  },
+
+  reorderBudgetItems: async (tripId, orderedIds) => {
+    // Optimistic: reorder locally
+    set(state => {
+      const byId = new Map(state.budgetItems.map(i => [i.id, i]))
+      const reordered = orderedIds.map((id, idx) => {
+        const item = byId.get(id)
+        return item ? { ...item, sort_order: idx } : null
+      }).filter((i): i is BudgetItem => i !== null)
+      // Keep items not in orderedIds at the end
+      const remaining = state.budgetItems.filter(i => !orderedIds.includes(i.id))
+      return { budgetItems: [...reordered, ...remaining] }
+    })
+    try {
+      await budgetApi.reorderItems(tripId, orderedIds)
+    } catch {
+      // Reload on failure
+      const data = await budgetApi.list(tripId)
+      set({ budgetItems: data.items })
+    }
+  },
+
+  reorderBudgetCategories: async (tripId, orderedCategories) => {
+    // Optimistic: reorder items by new category order (Map preserves insertion order for numeric keys)
+    set(state => {
+      const grouped = new Map<string, BudgetItem[]>()
+      for (const item of state.budgetItems) {
+        const cat = item.category || 'Other'
+        if (!grouped.has(cat)) grouped.set(cat, [])
+        grouped.get(cat)!.push(item)
+      }
+      const reordered: BudgetItem[] = []
+      for (const cat of orderedCategories) {
+        const items = grouped.get(cat)
+        if (items) reordered.push(...items)
+      }
+      for (const [cat, items] of grouped) {
+        if (!orderedCategories.includes(cat)) reordered.push(...items)
+      }
+      return { budgetItems: reordered }
+    })
+    try {
+      await budgetApi.reorderCategories(tripId, orderedCategories)
+    } catch {
+      const data = await budgetApi.list(tripId)
+      set({ budgetItems: data.items })
+    }
   },
 })

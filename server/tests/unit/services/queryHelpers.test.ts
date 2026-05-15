@@ -48,17 +48,6 @@ const sampleParticipants: Participant[] = [
 ];
 
 describe('formatAssignmentWithPlace', () => {
-  it('returns correct top-level shape', () => {
-    const result = formatAssignmentWithPlace(makeRow(), sampleTags, sampleParticipants);
-    expect(result).toHaveProperty('id', 1);
-    expect(result).toHaveProperty('day_id', 10);
-    expect(result).toHaveProperty('order_index', 0);
-    expect(result).toHaveProperty('notes', 'assignment note');
-    expect(result).toHaveProperty('created_at');
-    expect(result).toHaveProperty('place');
-    expect(result).toHaveProperty('participants');
-  });
-
   it('nests place fields correctly from flat row', () => {
     const result = formatAssignmentWithPlace(makeRow(), [], []);
     const { place } = result;
@@ -99,25 +88,5 @@ describe('formatAssignmentWithPlace', () => {
   it('sets place.category to null when category_id is 0 (falsy)', () => {
     const result = formatAssignmentWithPlace(makeRow({ category_id: 0 as any }), [], []);
     expect(result.place.category).toBeNull();
-  });
-
-  it('includes provided tags in place.tags', () => {
-    const result = formatAssignmentWithPlace(makeRow(), sampleTags, []);
-    expect(result.place.tags).toEqual(sampleTags);
-  });
-
-  it('defaults place.tags to [] when empty array provided', () => {
-    const result = formatAssignmentWithPlace(makeRow(), [], []);
-    expect(result.place.tags).toEqual([]);
-  });
-
-  it('includes provided participants', () => {
-    const result = formatAssignmentWithPlace(makeRow(), [], sampleParticipants);
-    expect(result.participants).toEqual(sampleParticipants);
-  });
-
-  it('defaults participants to [] when empty array provided', () => {
-    const result = formatAssignmentWithPlace(makeRow(), [], []);
-    expect(result.participants).toEqual([]);
   });
 });

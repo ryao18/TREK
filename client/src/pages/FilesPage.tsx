@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTripStore } from '../store/tripStore'
-import { tripsApi, placesApi } from '../api/client'
+import { tripRepo } from '../repo/tripRepo'
+import { placeRepo } from '../repo/placeRepo'
 import Navbar from '../components/Layout/Navbar'
 import FileManager from '../components/Files/FileManager'
 import { ArrowLeft } from 'lucide-react'
@@ -27,8 +28,8 @@ export default function FilesPage(): React.ReactElement {
     setIsLoading(true)
     try {
       const [tripData, placesData] = await Promise.all([
-        tripsApi.get(tripId),
-        placesApi.list(tripId),
+        tripRepo.get(tripId),
+        placeRepo.list(tripId),
       ])
       setTrip(tripData.trip)
       setPlaces(placesData.places)
@@ -78,8 +79,8 @@ export default function FilesPage(): React.ReactElement {
 
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Dateien & Dokumente</h1>
-              <p className="text-gray-500 text-sm">{files.length} Dateien für {trip?.name}</p>
+              <h1 className="text-2xl font-bold text-gray-900">{t('files.pageTitle')}</h1>
+              <p className="text-gray-500 text-sm">{t('files.subtitle', { count: files.length, trip: trip?.name })}</p>
             </div>
           </div>
 

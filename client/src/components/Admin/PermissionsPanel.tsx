@@ -107,10 +107,12 @@ export default function PermissionsPanel(): React.ReactElement {
             <button
               onClick={handleReset}
               disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+              title={t('perm.resetDefaults')}
+              aria-label={t('perm.resetDefaults')}
+              className="flex items-center justify-center gap-1.5 px-0 sm:px-3 py-1.5 text-sm w-8 sm:w-auto border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              {t('perm.resetDefaults')}
+              <span className="hidden sm:inline">{t('perm.resetDefaults')}</span>
             </button>
             <button
               onClick={handleSave}

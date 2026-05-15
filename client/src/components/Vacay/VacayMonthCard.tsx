@@ -52,22 +52,26 @@ interface VacayMonthCardProps {
   companyMode: boolean
   blockWeekends: boolean
   weekendDays?: number[]
+  tripDates?: Set<string>
+  weekStart?: number
 }
 
 export default function VacayMonthCard({
   year, month, holidays, companyHolidayMap, blockedCompanyHolidaySet, companyHolidaysEnabled = true, entryMap,
-  onCellClick, companyMode, blockWeekends, weekendDays = [0, 6],
+  onCellClick, companyMode, blockWeekends, weekendDays = [0, 6], tripDates, weekStart = 1
 }: VacayMonthCardProps) {
   const { t, locale } = useTranslation()
 
-  const weekdays = WEEKDAY_KEYS.map(k => t(k))
+  const WEEKDAY_KEYS_SUNDAY = ['vacay.sun', 'vacay.mon', 'vacay.tue', 'vacay.wed', 'vacay.thu', 'vacay.fri', 'vacay.sat'] as const
+  const orderedKeys = weekStart === 0 ? WEEKDAY_KEYS_SUNDAY : WEEKDAY_KEYS
+  const weekdays = orderedKeys.map(k => t(k))
   const monthName = useMemo(() => new Intl.DateTimeFormat(locale, { month: 'long' }).format(new Date(year, month, 1)), [locale, year, month])
 
   const weeks = useMemo(() => {
     const firstDay = new Date(year, month, 1)
     const daysInMonth = new Date(year, month + 1, 0).getDate()
-    let startDow = firstDay.getDay() - 1
-    if (startDow < 0) startDow = 6
+    let startDow = firstDay.getDay() - weekStart
+    if (startDow < 0) startDow += 7
     const cells: Array<number | null> = []
     for (let i = 0; i < startDow; i++) cells.push(null)
     for (let d = 1; d <= daysInMonth; d++) cells.push(d)
@@ -79,6 +83,11 @@ export default function VacayMonthCard({
 
   const pad = (n: number) => String(n).padStart(2, '0')
 
+  const todayStr = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+
   return (
     <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
       <div className="px-3 py-2 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
@@ -86,11 +95,16 @@ export default function VacayMonthCard({
       </div>
 
       <div className="grid grid-cols-7 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
-        {weekdays.map((wd, i) => (
-          <div key={wd} className="text-center text-[10px] font-medium py-1" style={{ color: i >= 5 ? 'var(--text-faint)' : 'var(--text-muted)' }}>
-            {wd}
-          </div>
-        ))}
+        {weekdays.map((wd, i) => {
+          // Map column index back to JS day (0=Sun..6=Sat) to check if it's a weekend column
+          const jsDay = (i + weekStart) % 7
+          const isWeekendCol = weekendDays.includes(jsDay)
+          return (
+            <div key={`${wd}-${i}`} className="text-center text-[10px] font-medium py-1" style={{ color: isWeekendCol ? 'var(--text-faint)' : 'var(--text-muted)' }}>
+              {wd}
+            </div>
+          )
+        })}
       </div>
 
       <div>
@@ -106,6 +120,7 @@ export default function VacayMonthCard({
               const companyEntries = companyHolidaysEnabled ? (companyHolidayMap[dateStr] || []) : []
               const vacationEntries = (entryMap[dateStr] || []).filter(entry => !companyEntries.some(company => company.user_id === entry.user_id))
               const isBlocked = !!holiday || (weekend && blockWeekends) || (blockedCompanyHolidaySet.has(dateStr) && !companyMode)
+              const isToday = dateStr === todayStr
 
               return (
                 <div
@@ -128,9 +143,30 @@ export default function VacayMonthCard({
                   {companyEntries.length > 0 && renderPeopleOverlay(companyEntries, true)}
                   {companyEntries.length > 0 && <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full" style={{ background: '#d97706' }} />}
 
-                  <span className="relative z-[1] text-[11px] font-medium" style={{
-                    color: companyEntries.length > 0 ? '#b45309' : holiday ? holiday.color : weekend ? 'var(--text-faint)' : 'var(--text-primary)',
+                  {tripDates?.has(dateStr) && (
+                    <span className="absolute top-[3px] right-[3px] w-[5px] h-[5px] rounded-full z-[2]" style={{ background: '#3b82f6' }} />
+                  )}
+
+                  <span className="relative z-[1] text-[11px]" style={{
                     fontWeight: vacationEntries.length > 0 || companyEntries.length > 0 ? 700 : 500,
+                    color: isToday
+                      ? '#fff'
+                      : companyEntries.length > 0
+                        ? '#b45309'
+                        : vacationEntries.length > 0
+                        ? 'var(--text-primary)'
+                        : holiday ? holiday.color
+                        : weekend ? 'var(--text-faint)'
+                        : 'var(--text-primary)',
+                    ...(isToday ? {
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      background: '#3b82f6',
+                    } : {}),
                   }}>
                     {day}
                   </span>

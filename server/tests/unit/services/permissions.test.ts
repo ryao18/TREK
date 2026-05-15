@@ -1,16 +1,21 @@
 import { describe, it, expect, vi } from 'vitest';
 
+// Mutable rows array so individual tests can inject DB rows
+const dbRows: { key: string; value: string }[] = [];
+
 // Mock database — permissions module queries app_settings at runtime
 vi.mock('../../../src/db/database', () => ({
   db: {
     prepare: () => ({
-      all: () => [], // no custom permissions → fall back to defaults
+      all: () => dbRows, // no custom permissions → fall back to defaults
       run: vi.fn(),
+      get: vi.fn(),
     }),
+    transaction: (fn: () => void) => fn,
   },
 }));
 
-import { checkPermission, getPermissionLevel, PERMISSION_ACTIONS } from '../../../src/services/permissions';
+import { checkPermission, getPermissionLevel, savePermissions, invalidatePermissionsCache, PERMISSION_ACTIONS } from '../../../src/services/permissions';
 
 describe('permissions', () => {
   describe('checkPermission — admin bypass', () => {
@@ -78,6 +83,32 @@ describe('permissions', () => {
 
     it('returns trip_owner for unknown action key', () => {
       expect(getPermissionLevel('nonexistent_action')).toBe('trip_owner');
+    });
+  });
+
+  describe('savePermissions — invalid action key is skipped', () => {
+    it('returns skipped array containing invalid action key', () => {
+      const result = savePermissions({ nonexistent_action: 'trip_member' });
+      expect(result.skipped).toContain('nonexistent_action');
+    });
+
+    it('returns skipped array when level is not in allowedLevels for the action', () => {
+      // trip_delete only allows ['admin', 'trip_owner'], so 'trip_member' is invalid
+      const result = savePermissions({ trip_delete: 'trip_member' });
+      expect(result.skipped).toContain('trip_delete');
+    });
+  });
+
+  describe('checkPermission — default case', () => {
+    it('returns false when permission level is an unrecognized value', () => {
+      // Inject a DB row with an unknown level for trip_edit, then invalidate cache
+      dbRows.push({ key: 'perm_trip_edit', value: 'unknown_level' });
+      invalidatePermissionsCache();
+      const result = checkPermission('trip_edit', 'user', 10, 10, false);
+      // Clean up for subsequent tests
+      dbRows.length = 0;
+      invalidatePermissionsCache();
+      expect(result).toBe(false);
     });
   });
 });

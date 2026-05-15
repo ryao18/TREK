@@ -303,3 +303,230 @@ describe('Vacay dissolve plan', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('Vacay holiday calendar CRUD', () => {
+  it('VACAY-026 — PUT /plan/holiday-calendars/:id updates an existing calendar', async () => {
+    const { user } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(user.id));
+
+    // Create a calendar first
+    const createRes = await request(app)
+      .post('/api/addons/vacay/plan/holiday-calendars')
+      .set('Cookie', authCookie(user.id))
+      .send({ region: 'US', label: 'US Holidays' });
+    expect(createRes.status).toBe(200);
+    const calId = createRes.body.plan?.holiday_calendars?.at(-1)?.id
+      ?? (testDb.prepare('SELECT id FROM vacay_holiday_calendars ORDER BY id DESC LIMIT 1').get() as any)?.id;
+
+    const res = await request(app)
+      .put(`/api/addons/vacay/plan/holiday-calendars/${calId}`)
+      .set('Cookie', authCookie(user.id))
+      .send({ label: 'Updated Label', color: '#ff0000' });
+    expect(res.status).toBe(200);
+  });
+
+  it('VACAY-027 — DELETE /plan/holiday-calendars/:id removes the calendar', async () => {
+    const { user } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(user.id));
+
+    const createRes = await request(app)
+      .post('/api/addons/vacay/plan/holiday-calendars')
+      .set('Cookie', authCookie(user.id))
+      .send({ region: 'FR', label: 'French Holidays' });
+    expect(createRes.status).toBe(200);
+    const calId = (testDb.prepare('SELECT id FROM vacay_holiday_calendars ORDER BY id DESC LIMIT 1').get() as any)?.id;
+
+    const res = await request(app)
+      .delete(`/api/addons/vacay/plan/holiday-calendars/${calId}`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('VACAY-027b — DELETE /plan/holiday-calendars/:id non-existent returns 404', async () => {
+    const { user } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(user.id));
+
+    const res = await request(app)
+      .delete('/api/addons/vacay/plan/holiday-calendars/99999')
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('Vacay invite full flow', () => {
+  it('VACAY-028 — POST /invite/accept joins the invitee to the owner plan', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: invitee } = createUser(testDb);
+
+    // Owner creates plan
+    const planRes = await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+    const planId = planRes.body.plan.id;
+
+    // Owner invites invitee
+    await request(app)
+      .post('/api/addons/vacay/invite')
+      .set('Cookie', authCookie(owner.id))
+      .send({ user_id: invitee.id });
+
+    // Invitee accepts
+    const res = await request(app)
+      .post('/api/addons/vacay/invite/accept')
+      .set('Cookie', authCookie(invitee.id))
+      .send({ plan_id: planId });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('VACAY-029 — POST /invite/decline removes the pending invite', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: invitee } = createUser(testDb);
+
+    const planRes = await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+    const planId = planRes.body.plan.id;
+
+    await request(app)
+      .post('/api/addons/vacay/invite')
+      .set('Cookie', authCookie(owner.id))
+      .send({ user_id: invitee.id });
+
+    const res = await request(app)
+      .post('/api/addons/vacay/invite/decline')
+      .set('Cookie', authCookie(invitee.id))
+      .send({ plan_id: planId });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('VACAY-030 — POST /invite/cancel removes the pending invite from owner side', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: invitee } = createUser(testDb);
+
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+
+    await request(app)
+      .post('/api/addons/vacay/invite')
+      .set('Cookie', authCookie(owner.id))
+      .send({ user_id: invitee.id });
+
+    const res = await request(app)
+      .post('/api/addons/vacay/invite/cancel')
+      .set('Cookie', authCookie(owner.id))
+      .send({ user_id: invitee.id });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe('Vacay company holidays', () => {
+  it('VACAY-032 — POST /entries/company-holiday toggles a company holiday', async () => {
+    const { user } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(user.id));
+    await request(app).post('/api/addons/vacay/years').set('Cookie', authCookie(user.id)).send({ year: 2025 });
+
+    const res = await request(app)
+      .post('/api/addons/vacay/entries/company-holiday')
+      .set('Cookie', authCookie(user.id))
+      .send({ date: '2025-12-25', note: 'Christmas' });
+    expect(res.status).toBe(200);
+  });
+
+  it('VACAY-033 — POST /entries/toggle with target_user_id not in plan returns 403', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: outsider } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+    await request(app).post('/api/addons/vacay/years').set('Cookie', authCookie(owner.id)).send({ year: 2025 });
+
+    const res = await request(app)
+      .post('/api/addons/vacay/entries/toggle')
+      .set('Cookie', authCookie(owner.id))
+      .send({ date: '2025-07-14', target_user_id: outsider.id });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('Vacay stats restrictions', () => {
+  it('VACAY-034 — PUT /stats/:year for user not in plan returns 403', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: outsider } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+    await request(app).post('/api/addons/vacay/years').set('Cookie', authCookie(owner.id)).send({ year: 2025 });
+
+    const res = await request(app)
+      .put('/api/addons/vacay/stats/2025')
+      .set('Cookie', authCookie(owner.id))
+      .send({ vacation_days: 25, target_user_id: outsider.id });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('Vacay holidays error path', () => {
+  it('VACAY-035 — GET /holidays/:year/:country returns 502 when external API fetch fails', async () => {
+    const { user } = createUser(testDb);
+    // Use an unusual country/year to avoid cache hits from other tests
+    vi.mocked(global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+
+    const res = await request(app)
+      .get('/api/addons/vacay/holidays/2099/ZZ')
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(502);
+  });
+});
+
+describe('Vacay color restriction', () => {
+  it('VACAY-036 — PUT /color with target_user_id not in plan returns 403', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: outsider } = createUser(testDb);
+    await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+
+    const res = await request(app)
+      .put('/api/addons/vacay/color')
+      .set('Cookie', authCookie(owner.id))
+      .send({ color: '#ff0000', target_user_id: outsider.id });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('Vacay holidays success path', () => {
+  it('VACAY-037 — GET /holidays/:year/:country returns data when fetch succeeds', async () => {
+    const { user } = createUser(testDb);
+    // Use unique year/country to avoid cache from other tests
+    vi.mocked(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve([{ date: '2025-05-01', name: 'Labour Day', countryCode: 'AT' }]),
+    });
+
+    const res = await request(app)
+      .get('/api/addons/vacay/holidays/2025/AT')
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('Vacay toggle entry for plan member', () => {
+  it('VACAY-038 — POST /entries/toggle with target_user_id in plan toggles their entry', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: invitee } = createUser(testDb);
+
+    const planRes = await request(app).get('/api/addons/vacay/plan').set('Cookie', authCookie(owner.id));
+    const planId = planRes.body.plan.id;
+    await request(app).post('/api/addons/vacay/years').set('Cookie', authCookie(owner.id)).send({ year: 2025 });
+
+    // Invite and accept so invitee is in the plan
+    await request(app)
+      .post('/api/addons/vacay/invite')
+      .set('Cookie', authCookie(owner.id))
+      .send({ user_id: invitee.id });
+    await request(app)
+      .post('/api/addons/vacay/invite/accept')
+      .set('Cookie', authCookie(invitee.id))
+      .send({ plan_id: planId });
+
+    // Owner toggles an entry for the invitee (who is now in the plan)
+    const res = await request(app)
+      .post('/api/addons/vacay/entries/toggle')
+      .set('Cookie', authCookie(owner.id))
+      .send({ date: '2025-06-10', target_user_id: invitee.id });
+    expect(res.status).toBe(200);
+  });
+});

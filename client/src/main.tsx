@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
 import 'leaflet/dist/leaflet.css'
+import { startConnectivityProbe } from './sync/connectivity'
+
+startConnectivityProbe()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

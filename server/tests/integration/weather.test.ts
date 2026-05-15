@@ -153,4 +153,110 @@ describe('Weather with mocked API', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('temp');
   });
+
+  it('WEATHER-007 — GET /weather returns 500 on non-ok API response (ApiError path)', async () => {
+    const { user } = createUser(testDb);
+    // Use unique coords to avoid cache from previous tests
+    vi.mocked(global.fetch as any).mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: () => Promise.resolve({ error: true, reason: 'Service unavailable' }),
+    });
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 3);
+    const dateStr = futureDate.toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get(`/api/weather?lat=55.0&lng=25.0&date=${dateStr}`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(503);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  it('WEATHER-008 — GET /weather returns 500 on network error (generic error path)', async () => {
+    const { user } = createUser(testDb);
+    vi.mocked(global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 4);
+    const dateStr = futureDate.toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get(`/api/weather?lat=56.0&lng=26.0&date=${dateStr}`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  it('WEATHER-009 — GET /weather/detailed returns detailed weather data', async () => {
+    const { user } = createUser(testDb);
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 2);
+    const dateStr = futureDate.toISOString().slice(0, 10);
+
+    // Override mock with full detailed forecast response
+    vi.mocked(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        daily: {
+          time: [dateStr],
+          temperature_2m_max: [24],
+          temperature_2m_min: [16],
+          weathercode: [1],
+          precipitation_sum: [0],
+          windspeed_10m_max: [12],
+          sunrise: [`${dateStr}T06:00`],
+          sunset: [`${dateStr}T21:00`],
+          precipitation_probability_max: [10],
+        },
+        hourly: {
+          time: [`${dateStr}T12:00`],
+          temperature_2m: [20],
+          precipitation_probability: [5],
+          precipitation: [0],
+          weathercode: [1],
+          windspeed_10m: [10],
+          relativehumidity_2m: [55],
+        },
+      }),
+    });
+
+    const res = await request(app)
+      .get(`/api/weather/detailed?lat=50.0&lng=10.0&date=${dateStr}`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('temp');
+    expect(res.body.type).toBe('forecast');
+  });
+
+  it('WEATHER-010 — GET /weather/detailed returns error status on ApiError', async () => {
+    const { user } = createUser(testDb);
+    vi.mocked(global.fetch as any).mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      json: () => Promise.resolve({ error: true, reason: 'Bad Gateway' }),
+    });
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 6);
+    const dateStr = futureDate.toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get(`/api/weather/detailed?lat=57.0&lng=27.0&date=${dateStr}`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(502);
+    expect(res.body).toHaveProperty('error');
+  });
+
+  it('WEATHER-011 — GET /weather/detailed returns 500 on network error', async () => {
+    const { user } = createUser(testDb);
+    vi.mocked(global.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const dateStr = futureDate.toISOString().slice(0, 10);
+
+    const res = await request(app)
+      .get(`/api/weather/detailed?lat=58.0&lng=28.0&date=${dateStr}`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty('error');
+  });
 });

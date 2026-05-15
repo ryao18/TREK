@@ -9,6 +9,7 @@ interface SelectOption {
   isHeader?: boolean
   searchLabel?: string
   groupLabel?: string
+  badge?: string
 }
 
 interface CustomSelectProps {
@@ -104,7 +105,14 @@ export default function CustomSelect({
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected ? 'var(--text-primary)' : 'var(--text-faint)' }}>
           {selected ? selected.label : placeholder}
         </span>
-        <ChevronDown size={sm ? 12 : 14} style={{ flexShrink: 0, color: 'var(--text-faint)', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }} />
+        {selected?.badge && (
+          <span style={{
+            flexShrink: 0, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
+            background: 'var(--bg-tertiary)', padding: '2px 7px', borderRadius: 999,
+            letterSpacing: '0.01em',
+          }}>{selected.badge}</span>
+        )}
+        <ChevronDown size={sm ? 12 : 14} style={{ flexShrink: 0, color: 'var(--text-faint)', transition: 'transform 200ms cubic-bezier(0.23,1,0.32,1)', transform: open ? 'rotate(180deg)' : 'none' }} />
       </button>
 
       {/* Dropdown */}
@@ -128,7 +136,9 @@ export default function CustomSelect({
           borderRadius: 10,
           boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
           overflow: 'hidden',
-          animation: 'selectIn 0.15s ease-out',
+          animation: 'trek-menu-enter 200ms cubic-bezier(0.23, 1, 0.32, 1)',
+          transformOrigin: 'top center',
+          willChange: 'transform, opacity',
         }}>
           {/* Search */}
           {searchable && (
@@ -184,6 +194,13 @@ export default function CustomSelect({
                   >
                     {option.icon && <span style={{ display: 'flex', flexShrink: 0 }}>{option.icon}</span>}
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option.label}</span>
+                    {option.badge && (
+                      <span style={{
+                        flexShrink: 0, fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
+                        background: 'var(--bg-tertiary)', padding: '2px 7px', borderRadius: 999,
+                        letterSpacing: '0.01em',
+                      }}>{option.badge}</span>
+                    )}
                     {isSelected && <Check size={13} style={{ flexShrink: 0, color: 'var(--text-muted)' }} />}
                   </button>
                 )
@@ -194,12 +211,6 @@ export default function CustomSelect({
         document.body
       )}
 
-      <style>{`
-        @keyframes selectIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   )
 }

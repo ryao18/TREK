@@ -25,10 +25,16 @@ export function isValidAssetId(id: string): boolean {
 
 export function getConnectionSettings(userId: number) {
   const creds = getImmichCredentials(userId);
+  const prefs = db.prepare('SELECT immich_auto_upload FROM users WHERE id = ?').get(userId) as { immich_auto_upload?: number } | undefined;
   return {
     immich_url: creds?.immich_url || '',
     connected: !!(creds?.immich_url && creds?.immich_api_key),
+    auto_upload: !!(prefs?.immich_auto_upload),
   };
+}
+
+export function setImmichAutoUpload(userId: number, enabled: boolean): void {
+  db.prepare('UPDATE users SET immich_auto_upload = ? WHERE id = ?').run(enabled ? 1 : 0, userId);
 }
 
 export async function saveImmichSettings(
@@ -149,44 +155,36 @@ export async function browseTimeline(
 export async function searchPhotos(
   userId: number,
   from?: string,
-  to?: string
-): Promise<{ assets?: any[]; error?: string; status?: number }> {
+  to?: string,
+  page: number = 1,
+  size: number = 50,
+): Promise<{ assets?: any[]; hasMore?: boolean; error?: string; status?: number }> {
   const creds = getImmichCredentials(userId);
   if (!creds) return { error: 'Immich not configured', status: 400 };
 
   try {
-    // Paginate through all results (Immich limits per-page to 1000)
-    const allAssets: any[] = [];
-    let page = 1;
-    const pageSize = 1000;
-    while (true) {
-      const resp = await safeFetch(`${creds.immich_url}/api/search/metadata`, {
-        method: 'POST',
-        headers: { 'x-api-key': creds.immich_api_key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          takenAfter: from ? `${from}T00:00:00.000Z` : undefined,
-          takenBefore: to ? `${to}T23:59:59.999Z` : undefined,
-          type: 'IMAGE',
-          size: pageSize,
-          page,
-        }),
-        signal: AbortSignal.timeout(15000) as any,
-      });
-      if (!resp.ok) return { error: 'Search failed', status: resp.status };
-      const data = await resp.json() as { assets?: { items?: any[] } };
-      const items = data.assets?.items || [];
-      allAssets.push(...items);
-      if (items.length < pageSize) break; // Last page
-      page++;
-      if (page > 20) break; // Safety limit (20k photos max)
-    }
-    const assets = allAssets.map((a: any) => ({
+    const resp = await safeFetch(`${creds.immich_url}/api/search/metadata`, {
+      method: 'POST',
+      headers: { 'x-api-key': creds.immich_api_key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        takenAfter: from ? `${from}T00:00:00.000Z` : undefined,
+        takenBefore: to ? `${to}T23:59:59.999Z` : undefined,
+        type: 'IMAGE',
+        size,
+        page,
+      }),
+      signal: AbortSignal.timeout(15000) as any,
+    });
+    if (!resp.ok) return { error: 'Search failed', status: resp.status };
+    const data = await resp.json() as { assets?: { items?: any[] } };
+    const items = data.assets?.items || [];
+    const assets = items.map((a: any) => ({
       id: a.id,
       takenAt: a.fileCreatedAt || a.createdAt,
       city: a.exifInfo?.city || null,
       country: a.exifInfo?.country || null,
     }));
-    return { assets };
+    return { assets, hasMore: items.length >= size };
   } catch {
     return { error: 'Could not reach Immich', status: 502 };
   }
@@ -238,6 +236,30 @@ export async function getAssetInfo(
   }
 }
 
+export async function fetchImmichThumbnailBytes(
+  userId: number,
+  assetId: string,
+  ownerUserId?: number
+): Promise<{ bytes: Buffer; contentType: string } | { error: string; status: number }> {
+  const effectiveUserId = ownerUserId ?? userId;
+  const creds = getImmichCredentials(effectiveUserId);
+  if (!creds) return { error: 'Not found', status: 404 };
+
+  const url = `${creds.immich_url}/api/assets/${assetId}/thumbnail?size=thumbnail`;
+  try {
+    const resp = await safeFetch(url, {
+      headers: { 'x-api-key': creds.immich_api_key },
+      signal: AbortSignal.timeout(10000) as any,
+    });
+    if (!resp.ok) return { error: 'Upstream error', status: resp.status };
+    const contentType = resp.headers.get('content-type') || 'image/jpeg';
+    const bytes = Buffer.from(await resp.arrayBuffer());
+    return { bytes, contentType };
+  } catch {
+    return { error: 'Proxy error', status: 502 };
+  }
+}
+
 export async function streamImmichAsset(
   response: Response,
   userId: number,
@@ -249,12 +271,12 @@ export async function streamImmichAsset(
   const creds = getImmichCredentials(effectiveUserId);
   if (!creds) return { error: 'Not found', status: 404 };
 
-  const path = kind === 'thumbnail' ? 'thumbnail' : 'original';
   const timeout = kind === 'thumbnail' ? 10000 : 30000;
-  const url = `${creds.immich_url}/api/assets/${assetId}/${path}`;
+  const url = kind === 'thumbnail'
+    ? `${creds.immich_url}/api/assets/${assetId}/thumbnail?size=thumbnail`
+    : `${creds.immich_url}/api/assets/${assetId}/thumbnail?size=fullsize`;
 
-  response.set('Cache-Control', 'public, max-age=86400');
-  await pipeAsset(url, response, { 'x-api-key': creds.immich_api_key }, AbortSignal.timeout(timeout));
+  await pipeAsset(url, response, { 'x-api-key': creds.immich_api_key }, AbortSignal.timeout(timeout), 'public, max-age=86400');
 }
 
 // ── Albums ──────────────────────────────────────────────────────────────────
@@ -266,20 +288,62 @@ export async function listAlbums(
   if (!creds) return { error: 'Immich not configured', status: 400 };
 
   try {
-    const resp = await safeFetch(`${creds.immich_url}/api/albums`, {
-      headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000) as any,
+    // Fetch both owned and shared albums
+    const [ownResp, sharedResp] = await Promise.all([
+      safeFetch(`${creds.immich_url}/api/albums`, {
+        headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000) as any,
+      }),
+      safeFetch(`${creds.immich_url}/api/albums?shared=true`, {
+        headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000) as any,
+      }),
+    ]);
+    if (!ownResp.ok) return { error: 'Failed to fetch albums', status: ownResp.status };
+    const ownAlbums = await ownResp.json() as any[];
+    const sharedAlbums = sharedResp.ok ? await sharedResp.json() as any[] : [];
+    const seenIds = new Set<string>();
+    const allAlbums = [...ownAlbums, ...sharedAlbums].filter((a: any) => {
+      if (seenIds.has(a.id)) return false;
+      seenIds.add(a.id);
+      return true;
     });
-    if (!resp.ok) return { error: 'Failed to fetch albums', status: resp.status };
-    const albums = (await resp.json() as any[]).map((a: any) => ({
+    const albums = allAlbums.map((a: any) => ({
       id: a.id,
       albumName: a.albumName,
       assetCount: a.assetCount || 0,
       startDate: a.startDate,
       endDate: a.endDate,
       albumThumbnailAssetId: a.albumThumbnailAssetId,
+      shared: a.shared || a.sharedUsers?.length > 0,
     }));
     return { albums };
+  } catch {
+    return { error: 'Could not reach Immich', status: 502 };
+  }
+}
+
+export async function getAlbumPhotos(
+  userId: number,
+  albumId: string,
+): Promise<{ assets?: any[]; error?: string; status?: number }> {
+  const creds = getImmichCredentials(userId);
+  if (!creds) return { error: 'Immich not configured', status: 400 };
+
+  try {
+    const resp = await safeFetch(`${creds.immich_url}/api/albums/${albumId}`, {
+      headers: { 'x-api-key': creds.immich_api_key, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000) as any,
+    });
+    if (!resp.ok) return { error: 'Failed to fetch album', status: resp.status };
+    const albumData = await resp.json() as { assets?: any[] };
+    const assets = (albumData.assets || []).filter((a: any) => a.type === 'IMAGE').map((a: any) => ({
+      id: a.id,
+      takenAt: a.fileCreatedAt || a.createdAt,
+      city: a.exifInfo?.city || null,
+      country: a.exifInfo?.country || null,
+    }));
+    return { assets };
   } catch {
     return { error: 'Could not reach Immich', status: 502 };
   }
@@ -355,5 +419,65 @@ export async function syncAlbumAssets(
     return { success: true, added: result.data.added, total: assets.length };
   } catch {
     return { error: 'Could not reach Immich', status: 502 };
+  }
+}
+
+// ── Upload to Immich ──────────────────────────────────────────────────────
+
+export async function uploadToImmich(userId: number, filePath: string, fileName: string): Promise<string | null> {
+  const creds = getImmichCredentials(userId);
+  if (!creds) return null;
+
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+
+  const fullPath = path.join(__dirname, '../../../uploads', filePath);
+  if (!fs.existsSync(fullPath)) return null;
+
+  try {
+    const fileBuffer = fs.readFileSync(fullPath);
+    const boundary = '----ImmichUpload' + Date.now();
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.heic': 'image/heic',
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    const now = new Date().toISOString();
+
+    const parts: Buffer[] = [];
+    const addField = (name: string, value: string) => {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+    };
+    addField('deviceAssetId', `trek-${Date.now()}`);
+    addField('deviceId', 'TREK');
+    addField('fileCreatedAt', now);
+    addField('fileModifiedAt', now);
+
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="assetData"; filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`
+    ));
+    parts.push(fileBuffer);
+    parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+    const body = Buffer.concat(parts);
+
+    const res = await safeFetch(`${creds.immich_url}/api/assets`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': creds.immich_api_key,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+      body,
+    });
+
+    if (res.ok) {
+      const data = await res.json() as { id?: string };
+      return data.id || null;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }

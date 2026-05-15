@@ -35,15 +35,6 @@ function initDb(): void {
 
 initDb();
 
-if (process.env.DEMO_MODE === 'true') {
-  try {
-    const { seedDemoData } = require('../demo/demo-seed');
-    seedDemoData(_db);
-  } catch (err: unknown) {
-    console.error('[Demo] Seed error:', err instanceof Error ? err.message : err);
-  }
-}
-
 const db = new Proxy({} as Database.Database, {
   get(_, prop: string | symbol) {
     if (!_db) throw new Error('Database connection is not available (restore in progress?)');
@@ -55,6 +46,15 @@ const db = new Proxy({} as Database.Database, {
     return true;
   },
 });
+
+if (process.env.DEMO_MODE?.toLowerCase() === 'true') {
+  try {
+    const { seedDemoData } = require('../demo/demo-seed');
+    seedDemoData(_db);
+  } catch (err: unknown) {
+    console.error('[Demo] Seed error:', err instanceof Error ? err.message : err);
+  }
+}
 
 function closeDb(): void {
   if (_db) {
@@ -126,6 +126,13 @@ function canAccessTrip(tripId: number | string, userId: number): TripAccess | un
 
 function isOwner(tripId: number | string, userId: number): boolean {
   return !!db.prepare('SELECT id FROM trips WHERE id = ? AND user_id = ?').get(tripId, userId);
+}
+
+try {
+  const { backfillFlightEndpoints } = require('../services/airportService');
+  backfillFlightEndpoints();
+} catch (err) {
+  console.error('[DB] Flight endpoint backfill failed:', err);
 }
 
 export { db, closeDb, reinitialize, getPlaceWithTags, canAccessTrip, isOwner };

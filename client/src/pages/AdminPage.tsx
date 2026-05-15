@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import apiClient, { adminApi, authApi, notificationsApi } from '../api/client'
 import DevNotificationsPanel from '../components/Admin/DevNotificationsPanel'
+import DefaultUserSettingsTab from '../components/Admin/DefaultUserSettingsTab'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useAddonStore } from '../store/addonStore'
@@ -10,6 +11,7 @@ import { getApiErrorMessage } from '../types'
 import Navbar from '../components/Layout/Navbar'
 import Modal from '../components/shared/Modal'
 import { useToast } from '../components/shared/Toast'
+import { useCountUp } from '../hooks/useCountUp'
 import CategoryManager from '../components/Admin/CategoryManager'
 import BackupPanel from '../components/Admin/BackupPanel'
 import GitHubPanel from '../components/Admin/GitHubPanel'
@@ -18,8 +20,9 @@ import PackingTemplateManager from '../components/Admin/PackingTemplateManager'
 import AuditLogPanel from '../components/Admin/AuditLogPanel'
 import AdminMcpTokensPanel from '../components/Admin/AdminMcpTokensPanel'
 import PermissionsPanel from '../components/Admin/PermissionsPanel'
-import { Users, Map, Briefcase, Shield, Trash2, Edit2, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, Sun, Link2, Copy, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Users, Map, Briefcase, Shield, Trash2, Edit2, FileText, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, UserPlus, ArrowUpCircle, ExternalLink, Download, Sun, Link2, Copy, Plus, RefreshCw, AlertTriangle, SlidersHorizontal, UserCog, Puzzle, Settings as SettingsIcon, Bell, Database, ScrollText, KeyRound, GitBranch, Bug } from 'lucide-react'
 import CustomSelect from '../components/shared/CustomSelect'
+import PageSidebar, { type PageSidebarTab } from '../components/Layout/PageSidebar'
 
 interface AdminUser {
   id: number
@@ -30,6 +33,7 @@ interface AdminUser {
   last_login?: string | null
   online?: boolean
   oidc_issuer?: string | null
+  avatar_url?: string | null
 }
 
 interface AdminStats {
@@ -45,7 +49,6 @@ interface OidcConfig {
   client_secret: string
   client_secret_set: boolean
   display_name: string
-  oidc_only: boolean
   discovery_url: string
 }
 
@@ -55,6 +58,7 @@ interface UpdateInfo {
   current: string
   release_url?: string
   is_docker?: boolean
+  is_prerelease?: boolean
 }
 
 const ADMIN_EVENT_LABEL_KEYS: Record<string, string> = {
@@ -65,6 +69,7 @@ const ADMIN_CHANNEL_LABEL_KEYS: Record<string, string> = {
   inapp: 'settings.notificationPreferences.inapp',
   email: 'settings.notificationPreferences.email',
   webhook: 'settings.notificationPreferences.webhook',
+  ntfy: 'settings.notificationPreferences.ntfy',
 }
 
 function AdminNotificationsPanel({ t, toast }: { t: (k: string) => string; toast: ReturnType<typeof useToast> }) {
@@ -77,7 +82,7 @@ function AdminNotificationsPanel({ t, toast }: { t: (k: string) => string; toast
 
   if (!matrix) return <p style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic', padding: 16 }}>Loading…</p>
 
-  const visibleChannels = (['inapp', 'email', 'webhook'] as const).filter(ch => {
+  const visibleChannels = (['inapp', 'email', 'webhook', 'ntfy'] as const).filter(ch => {
     if (!matrix.available_channels[ch]) return false
     return matrix.event_types.some((evt: string) => matrix.implemented_combos[evt]?.includes(ch))
   })
@@ -158,23 +163,39 @@ function AdminNotificationsPanel({ t, toast }: { t: (k: string) => string; toast
   )
 }
 
+function AdminStatCard({ label, value, icon: Icon }: { label: string; value: number; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }): React.ReactElement {
+  const animated = useCountUp(value, 900)
+  return (
+    <div className="rounded-xl border p-4" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
+      <div className="flex items-center gap-4">
+        <Icon className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
+        <div>
+          <p className="text-xl font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{animated}</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPage(): React.ReactElement {
   const { demoMode, serverTimezone } = useAuthStore()
   const { t, locale } = useTranslation()
   const hour12 = useSettingsStore(s => s.settings.time_format) === '12h'
   const mcpEnabled = useAddonStore(s => s.isEnabled('mcp'))
   const devMode = useAuthStore(s => s.devMode)
-  const TABS = [
-    { id: 'users', label: t('admin.tabs.users') },
-    { id: 'config', label: t('admin.tabs.config') },
-    { id: 'addons', label: t('admin.tabs.addons') },
-    { id: 'settings', label: t('admin.tabs.settings') },
-    { id: 'notifications', label: t('admin.tabs.notifications') },
-    { id: 'backup', label: t('admin.tabs.backup') },
-    { id: 'audit', label: t('admin.tabs.audit') },
-    ...(mcpEnabled ? [{ id: 'mcp-tokens', label: t('admin.tabs.mcpTokens') }] : []),
-    { id: 'github', label: t('admin.tabs.github') },
-    ...(devMode ? [{ id: 'dev-notifications', label: 'Dev: Notifications' }] : []),
+  const TABS: PageSidebarTab[] = [
+    { id: 'users', label: t('admin.tabs.users'), icon: Users },
+    { id: 'config', label: t('admin.tabs.config'), icon: SlidersHorizontal },
+    { id: 'defaults', label: t('admin.tabs.defaults'), icon: UserCog },
+    { id: 'addons', label: t('admin.tabs.addons'), icon: Puzzle },
+    { id: 'settings', label: t('admin.tabs.settings'), icon: SettingsIcon },
+    { id: 'notifications', label: t('admin.tabs.notifications'), icon: Bell },
+    { id: 'backup', label: t('admin.tabs.backup'), icon: Database },
+    { id: 'audit', label: t('admin.tabs.audit'), icon: ScrollText },
+    ...(mcpEnabled ? [{ id: 'mcp-tokens', label: t('admin.tabs.mcpTokens'), icon: KeyRound }] : []),
+    { id: 'github', label: t('admin.tabs.github'), icon: GitBranch },
+    ...(devMode ? [{ id: 'dev-notifications', label: 'Dev: Notifications', icon: Bug }] : []),
   ]
 
   const [activeTab, setActiveTab] = useState<string>('users')
@@ -190,12 +211,33 @@ export default function AdminPage(): React.ReactElement {
   const [bagTrackingEnabled, setBagTrackingEnabled] = useState<boolean>(false)
   useEffect(() => { adminApi.getBagTracking().then(d => setBagTrackingEnabled(d.enabled)).catch(() => {}) }, [])
 
+  // Places photos
+  const [placesPhotosEnabled, setPlacesPhotosEnabledState] = useState<boolean>(true)
+  useEffect(() => { adminApi.getPlacesPhotos().then(d => setPlacesPhotosEnabledState(d.enabled)).catch(() => {}) }, [])
+
+  // Places autocomplete
+  const [placesAutocompleteEnabled, setPlacesAutocompleteEnabledState] = useState<boolean>(true)
+  useEffect(() => { adminApi.getPlacesAutocomplete().then(d => setPlacesAutocompleteEnabledState(d.enabled)).catch(() => {}) }, [])
+
+  // Places details
+  const [placesDetailsEnabled, setPlacesDetailsEnabledState] = useState<boolean>(true)
+  useEffect(() => { adminApi.getPlacesDetails().then(d => setPlacesDetailsEnabledState(d.enabled)).catch(() => {}) }, [])
+
+  // Collab features
+  const [collabFeatures, setCollabFeatures] = useState<{ chat: boolean; notes: boolean; polls: boolean; whatsnext: boolean }>({ chat: true, notes: true, polls: true, whatsnext: true })
+  useEffect(() => { adminApi.getCollabFeatures().then(d => setCollabFeatures(d)).catch(() => {}) }, [])
+
   // OIDC config
-  const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', oidc_only: false, discovery_url: '' })
+  const [oidcConfig, setOidcConfig] = useState<OidcConfig>({ issuer: '', client_id: '', client_secret: '', client_secret_set: false, display_name: '', discovery_url: '' })
   const [savingOidc, setSavingOidc] = useState<boolean>(false)
 
-  // Registration toggle
-  const [allowRegistration, setAllowRegistration] = useState<boolean>(true)
+  // Auth toggles
+  const [passwordLogin, setPasswordLogin] = useState<boolean>(true)
+  const [passwordRegistration, setPasswordRegistration] = useState<boolean>(true)
+  const [oidcLogin, setOidcLogin] = useState<boolean>(true)
+  const [oidcRegistration, setOidcRegistration] = useState<boolean>(true)
+  const [envOverrideOidcOnly, setEnvOverrideOidcOnly] = useState<boolean>(false)
+  const [oidcConfigured, setOidcConfigured] = useState<boolean>(false)
   const [requireMfa, setRequireMfa] = useState<boolean>(false)
 
   // Invite links
@@ -229,7 +271,7 @@ export default function AdminPage(): React.ReactElement {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false)
 
-  const { user: currentUser, updateApiKeys, setAppRequireMfa, setTripRemindersEnabled, logout } = useAuthStore()
+  const { user: currentUser, updateApiKeys, setAppRequireMfa, setTripRemindersEnabled, setPlacesPhotosEnabled, setPlacesAutocompleteEnabled, setPlacesDetailsEnabled, logout } = useAuthStore()
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -267,7 +309,12 @@ export default function AdminPage(): React.ReactElement {
   const loadAppConfig = async () => {
     try {
       const config = await authApi.getAppConfig()
-      setAllowRegistration(config.allow_registration)
+      setPasswordLogin(config.password_login ?? true)
+      setPasswordRegistration(config.password_registration ?? config.allow_registration ?? true)
+      setOidcLogin(config.oidc_login ?? true)
+      setOidcRegistration(config.oidc_registration ?? config.allow_registration ?? true)
+      setEnvOverrideOidcOnly(config.env_override_oidc_only ?? false)
+      setOidcConfigured(config.oidc_configured ?? false)
       if (config.require_mfa !== undefined) setRequireMfa(!!config.require_mfa)
       if (config.allowed_file_types) setAllowedFileTypes(config.allowed_file_types)
     } catch (err: unknown) {
@@ -285,12 +332,12 @@ export default function AdminPage(): React.ReactElement {
     }
   }
 
-  const handleToggleRegistration = async (value) => {
-    setAllowRegistration(value)
+  const handleToggleAuthSetting = async (key: string, value: boolean, setter: (v: boolean) => void) => {
+    setter(value)
     try {
-      await authApi.updateAppSettings({ allow_registration: value })
+      await authApi.updateAppSettings({ [key]: value })
     } catch (err: unknown) {
-      setAllowRegistration(!value)
+      setter(!value)
       toast.error(getApiErrorMessage(err, t('common.error')))
     }
   }
@@ -454,7 +501,7 @@ export default function AdminPage(): React.ReactElement {
       <Navbar />
 
       <div style={{ paddingTop: 'var(--nav-h)' }}>
-        <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
@@ -535,37 +582,20 @@ export default function AdminPage(): React.ReactElement {
                 { label: t('admin.stats.places'), value: stats.totalPlaces, icon: Map },
                 { label: t('admin.stats.files'), value: stats.totalFiles || 0, icon: FileText },
               ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="rounded-xl border p-4" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
-                  <div className="flex items-center gap-4">
-                    <Icon className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
-                    <div>
-                      <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</p>
-                    </div>
-                  </div>
-                </div>
+                <AdminStatCard key={label} label={label} value={value} icon={Icon} />
               ))}
             </div>
           )}
 
-          {/* Tabs */}
-          <div className="grid grid-cols-3 sm:flex gap-1 mb-6 rounded-xl p-1" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)' }}>
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Tab content */}
+          {/* Sidebar layout — nav on the left, active panel on the right */}
+          <PageSidebar
+            sidebarLabel={t('admin.title').toUpperCase()}
+            tabs={TABS}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            footer="admin · self-hosted"
+          >
+            {/* Tab content */}
           {activeTab === 'users' && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
@@ -599,15 +629,19 @@ export default function AdminPage(): React.ReactElement {
                         <th className="px-5 py-3 text-right">{t('admin.table.actions')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 trek-stagger">
                       {users.map(u => (
                         <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.id === currentUser?.id ? 'bg-slate-50/60' : ''}`}>
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2">
                               <div className="relative">
-                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-medium text-slate-700">
-                                  {u.username.charAt(0).toUpperCase()}
-                                </div>
+                                {u.avatar_url ? (
+                                  <img src={u.avatar_url} alt={u.username} className="w-8 h-8 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-medium text-slate-700">
+                                    {u.username.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
                                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2" style={{ borderColor: 'var(--bg-card)', background: u.online ? '#22c55e' : '#94a3b8' }} />
                               </div>
                               <div>
@@ -781,34 +815,104 @@ export default function AdminPage(): React.ReactElement {
                 const next = !bagTrackingEnabled
                 setBagTrackingEnabled(next)
                 try { await adminApi.updateBagTracking(next) } catch { setBagTrackingEnabled(!next) }
+              }} collabFeatures={collabFeatures} onToggleCollabFeature={async (key: string) => {
+                const next = { ...collabFeatures, [key]: !collabFeatures[key] }
+                setCollabFeatures(next)
+                try { await adminApi.updateCollabFeatures({ [key]: next[key] }) } catch { setCollabFeatures(collabFeatures) }
               }} />
             </div>
           )}
 
           {activeTab === 'settings' && (
             <div className="space-y-6">
-              {/* Registration Toggle */}
+              {/* Authentication Methods */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100">
-                  <h2 className="font-semibold text-slate-900">{t('admin.allowRegistration')}</h2>
+                  <h2 className="font-semibold text-slate-900">{t('admin.authMethods')}</h2>
                 </div>
-                <div className="p-6">
+                <div className="p-6 space-y-5">
+                  {envOverrideOidcOnly && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      {t('admin.envOverrideHint')}
+                    </p>
+                  )}
+                  {/* Password Login */}
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-slate-700">{t('admin.allowRegistration')}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.allowRegistrationHint')}</p>
+                      <p className="text-sm font-medium text-slate-700">{t('admin.passwordLogin')}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.passwordLoginHint')}</p>
                     </div>
                     <button
-                      onClick={() => handleToggleRegistration(!allowRegistration)}
-                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                      style={{ background: allowRegistration ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                      disabled={envOverrideOidcOnly || (!passwordLogin && !oidcLogin)}
+                      onClick={() => handleToggleAuthSetting('password_login', !passwordLogin, setPasswordLogin)}
+                      title={!passwordLogin && !oidcLogin ? t('admin.lockoutWarning') : undefined}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
+                      style={{ background: passwordLogin ? 'var(--text-primary)' : 'var(--border-primary)' }}
                     >
                       <span
                         className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                        style={{ transform: allowRegistration ? 'translateX(20px)' : 'translateX(0)' }}
+                        style={{ transform: passwordLogin ? 'translateX(20px)' : 'translateX(0)' }}
                       />
                     </button>
                   </div>
+                  {/* Password Registration */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{t('admin.passwordRegistration')}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.passwordRegistrationHint')}</p>
+                    </div>
+                    <button
+                      disabled={envOverrideOidcOnly}
+                      onClick={() => handleToggleAuthSetting('password_registration', !passwordRegistration, setPasswordRegistration)}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
+                      style={{ background: passwordRegistration ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span
+                        className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                        style={{ transform: passwordRegistration ? 'translateX(20px)' : 'translateX(0)' }}
+                      />
+                    </button>
+                  </div>
+                  {/* SSO Login (only when OIDC configured) */}
+                  {oidcConfigured && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{t('admin.oidcLogin')}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{t('admin.oidcLoginHint')}</p>
+                      </div>
+                      <button
+                        disabled={!passwordLogin && oidcLogin}
+                        onClick={() => handleToggleAuthSetting('oidc_login', !oidcLogin, setOidcLogin)}
+                        title={!passwordLogin && oidcLogin ? t('admin.lockoutWarning') : undefined}
+                        className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50"
+                        style={{ background: oidcLogin ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                      >
+                        <span
+                          className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                          style={{ transform: oidcLogin ? 'translateX(20px)' : 'translateX(0)' }}
+                        />
+                      </button>
+                    </div>
+                  )}
+                  {/* SSO Registration (only when OIDC configured) */}
+                  {oidcConfigured && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{t('admin.oidcRegistration')}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{t('admin.oidcRegistrationHint')}</p>
+                      </div>
+                      <button
+                        onClick={() => handleToggleAuthSetting('oidc_registration', !oidcRegistration, setOidcRegistration)}
+                        className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
+                        style={{ background: oidcRegistration ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                      >
+                        <span
+                          className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                          style={{ transform: oidcRegistration ? 'translateX(20px)' : 'translateX(0)' }}
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -826,7 +930,7 @@ export default function AdminPage(): React.ReactElement {
                     <button
                       type="button"
                       onClick={() => handleToggleRequireMfa(!requireMfa)}
-                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                      className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
                       style={{ background: requireMfa ? 'var(--text-primary)' : 'var(--border-primary)' }}
                     >
                       <span
@@ -931,6 +1035,66 @@ export default function AdminPage(): React.ReactElement {
                     )}
                   </div>
 
+                  {/* Place Photos Toggle */}
+                  <div className="flex items-center justify-between gap-4 py-3 border-t border-slate-100">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{t('admin.placesPhotos.title')}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.placesPhotos.subtitle')}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const next = !placesPhotosEnabled
+                        setPlacesPhotosEnabledState(next)
+                        setPlacesPhotosEnabled(next)
+                        try { await adminApi.updatePlacesPhotos(next) } catch { setPlacesPhotosEnabledState(!next); setPlacesPhotosEnabled(!next) }
+                      }}
+                      className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
+                      style={{ background: placesPhotosEnabled ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200" style={{ transform: placesPhotosEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
+                  </div>
+
+                  {/* Place Autocomplete Toggle */}
+                  <div className="flex items-center justify-between gap-4 py-3 border-t border-slate-100">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{t('admin.placesAutocomplete.title')}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.placesAutocomplete.subtitle')}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const next = !placesAutocompleteEnabled
+                        setPlacesAutocompleteEnabledState(next)
+                        setPlacesAutocompleteEnabled(next)
+                        try { await adminApi.updatePlacesAutocomplete(next) } catch { setPlacesAutocompleteEnabledState(!next); setPlacesAutocompleteEnabled(!next) }
+                      }}
+                      className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
+                      style={{ background: placesAutocompleteEnabled ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200" style={{ transform: placesAutocompleteEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
+                  </div>
+
+                  {/* Place Details Toggle */}
+                  <div className="flex items-center justify-between gap-4 py-3 border-t border-slate-100">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{t('admin.placesDetails.title')}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.placesDetails.subtitle')}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const next = !placesDetailsEnabled
+                        setPlacesDetailsEnabledState(next)
+                        setPlacesDetailsEnabled(next)
+                        try { await adminApi.updatePlacesDetails(next) } catch { setPlacesDetailsEnabledState(!next); setPlacesDetailsEnabled(!next) }
+                      }}
+                      className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
+                      style={{ background: placesDetailsEnabled ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200" style={{ transform: placesDetailsEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
+                  </div>
+
                   {/* Open-Meteo Weather Info */}
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800 overflow-hidden">
                     <div className="px-4 py-3 flex items-center justify-between">
@@ -1031,29 +1195,11 @@ export default function AdminPage(): React.ReactElement {
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
                     />
                   </div>
-                  {/* OIDC-only mode toggle */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{t('admin.oidcOnlyMode')}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{t('admin.oidcOnlyModeHint')}</p>
-                    </div>
-                    <button
-                      onClick={() => setOidcConfig(c => ({ ...c, oidc_only: !c.oidc_only }))}
-                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ml-4"
-                      style={{ background: oidcConfig.oidc_only ? 'var(--text-primary)' : 'var(--border-primary)' }}
-                    >
-                      <span
-                        className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                        style={{ transform: oidcConfig.oidc_only ? 'translateX(20px)' : 'translateX(0)' }}
-                      />
-                    </button>
-                  </div>
-
                   <button
                     onClick={async () => {
                       setSavingOidc(true)
                       try {
-                        const payload: Record<string, unknown> = { issuer: oidcConfig.issuer, client_id: oidcConfig.client_id, display_name: oidcConfig.display_name, oidc_only: oidcConfig.oidc_only, discovery_url: oidcConfig.discovery_url }
+                        const payload: Record<string, unknown> = { issuer: oidcConfig.issuer, client_id: oidcConfig.client_id, display_name: oidcConfig.display_name, discovery_url: oidcConfig.discovery_url }
                         if (oidcConfig.client_secret) payload.client_secret = oidcConfig.client_secret
                         await adminApi.updateOidc(payload)
                         toast.success(t('admin.oidcSaved'))
@@ -1105,15 +1251,17 @@ export default function AdminPage(): React.ReactElement {
             const activeChans = rawChannels === 'none' ? [] : rawChannels.split(',').map((c: string) => c.trim())
             const emailActive = activeChans.includes('email')
             const webhookActive = activeChans.includes('webhook')
+            const ntfyActive = activeChans.includes('ntfy')
+            const tripRemindersActive = smtpValues.notify_trip_reminder !== 'false'
 
-            const setChannels = async (email: boolean, webhook: boolean) => {
-              const chans = [email && 'email', webhook && 'webhook'].filter(Boolean).join(',') || 'none'
+            const setChannels = async (email: boolean, webhook: boolean, ntfy: boolean) => {
+              const chans = [email && 'email', webhook && 'webhook', ntfy && 'ntfy'].filter(Boolean).join(',') || 'none'
               setSmtpValues(prev => ({ ...prev, notification_channels: chans }))
               try {
                 await authApi.updateAppSettings({ notification_channels: chans })
               } catch {
                 // Revert state on failure
-                const reverted = [emailActive && 'email', webhookActive && 'webhook'].filter(Boolean).join(',') || 'none'
+                const reverted = [emailActive && 'email', webhookActive && 'webhook', ntfyActive && 'ntfy'].filter(Boolean).join(',') || 'none'
                 setSmtpValues(prev => ({ ...prev, notification_channels: reverted }))
                 toast.error(t('common.error'))
               }
@@ -1144,7 +1292,7 @@ export default function AdminPage(): React.ReactElement {
                       <p className="text-xs text-slate-400 mt-1">{t('admin.smtp.hint')}</p>
                     </div>
                     <button
-                      onClick={() => setChannels(!emailActive, webhookActive)}
+                      onClick={() => setChannels(!emailActive, webhookActive, ntfyActive)}
                       className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
                       style={{ background: emailActive ? 'var(--text-primary)' : 'var(--border-primary)' }}
                     >
@@ -1180,7 +1328,7 @@ export default function AdminPage(): React.ReactElement {
                         const newVal = smtpValues.smtp_skip_tls_verify === 'true' ? 'false' : 'true'
                         setSmtpValues(prev => ({ ...prev, smtp_skip_tls_verify: newVal }))
                       }}
-                        className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                        className="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
                         style={{ background: smtpValues.smtp_skip_tls_verify === 'true' ? 'var(--text-primary)' : 'var(--border-primary)' }}>
                         <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
                           style={{ transform: smtpValues.smtp_skip_tls_verify === 'true' ? 'translateX(20px)' : 'translateX(0)' }} />
@@ -1220,12 +1368,30 @@ export default function AdminPage(): React.ReactElement {
                       <p className="text-xs text-slate-400 mt-1">{t('admin.webhook.hint')}</p>
                     </div>
                     <button
-                      onClick={() => setChannels(emailActive, !webhookActive)}
+                      onClick={() => setChannels(emailActive, !webhookActive, ntfyActive)}
                       className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
                       style={{ background: webhookActive ? 'var(--text-primary)' : 'var(--border-primary)' }}
                     >
                       <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
                         style={{ transform: webhookActive ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Ntfy Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-semibold text-slate-900">{t('admin.notifications.ntfy')}</h2>
+                      <p className="text-xs text-slate-400 mt-1">{t('admin.ntfy.hint') || 'Allow users to configure their own ntfy topics for push notifications.'}</p>
+                    </div>
+                    <button
+                      onClick={() => setChannels(emailActive, webhookActive, !ntfyActive)}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                      style={{ background: ntfyActive ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                        style={{ transform: ntfyActive ? 'translateX(20px)' : 'translateX(0)' }} />
                     </button>
                   </div>
                 </div>
@@ -1242,6 +1408,37 @@ export default function AdminPage(): React.ReactElement {
                       <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
                         style={{ transform: 'translateX(20px)' }} />
                     </div>
+                  </div>
+                </div>
+
+                {/* Trip Reminders Toggle */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 flex items-center justify-between">
+                    <div>
+                      <h2 className="font-semibold text-slate-900">{t('admin.notifications.tripReminders.title')}</h2>
+                      <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.tripReminders.hint')}</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const next = !tripRemindersActive
+                        setSmtpValues(prev => ({ ...prev, notify_trip_reminder: next ? 'true' : 'false' }))
+                        try {
+                          await authApi.updateAppSettings({ notify_trip_reminder: next ? 'true' : 'false' })
+                          toast.success(next ? t('admin.notifications.tripReminders.enabled') : t('admin.notifications.tripReminders.disabled'))
+                          authApi.getAppConfig().then((c: { trip_reminders_enabled?: boolean }) => {
+                            if (c?.trip_reminders_enabled !== undefined) setTripRemindersEnabled(c.trip_reminders_enabled)
+                          }).catch(() => {})
+                        } catch {
+                          setSmtpValues(prev => ({ ...prev, notify_trip_reminder: tripRemindersActive ? 'true' : 'false' }))
+                          toast.error(t('common.error'))
+                        }
+                      }}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                      style={{ background: tripRemindersActive ? 'var(--text-primary)' : 'var(--border-primary)' }}
+                    >
+                      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                        style={{ transform: tripRemindersActive ? 'translateX(20px)' : 'translateX(0)' }} />
+                    </button>
                   </div>
                 </div>
 
@@ -1290,7 +1487,107 @@ export default function AdminPage(): React.ReactElement {
                       disabled={!smtpValues.admin_webhook_url?.trim()}
                       className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-40"
                     >
-                      {t('admin.smtp.testButton')}
+                      {t('admin.notifications.testWebhook')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Admin Ntfy Panel */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100">
+                    <h2 className="font-semibold text-slate-900">{t('admin.notifications.adminNtfyPanel.title')}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.adminNtfyPanel.hint')}</p>
+                  </div>
+                  <div className="p-6 space-y-3">
+                    {smtpLoaded && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">{t('admin.notifications.adminNtfyPanel.serverLabel')}</label>
+                          <input
+                            type="text"
+                            value={smtpValues.admin_ntfy_server || ''}
+                            onChange={e => setSmtpValues(prev => ({ ...prev, admin_ntfy_server: e.target.value }))}
+                            placeholder={t('admin.notifications.adminNtfyPanel.serverPlaceholder')}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                          />
+                          <p className="text-xs text-slate-400 mt-1">{t('admin.notifications.adminNtfyPanel.serverHint')}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">{t('admin.notifications.adminNtfyPanel.topicLabel')}</label>
+                          <input
+                            type="text"
+                            value={smtpValues.admin_ntfy_topic || ''}
+                            onChange={e => setSmtpValues(prev => ({ ...prev, admin_ntfy_topic: e.target.value }))}
+                            placeholder={t('admin.notifications.adminNtfyPanel.topicPlaceholder')}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">{t('admin.notifications.adminNtfyPanel.tokenLabel')}</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              value={smtpValues.admin_ntfy_token === '••••••••' ? '' : smtpValues.admin_ntfy_token || ''}
+                              onChange={e => setSmtpValues(prev => ({ ...prev, admin_ntfy_token: e.target.value }))}
+                              placeholder={smtpValues.admin_ntfy_token === '••••••••' ? '••••••••' : ''}
+                              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+                            />
+                            {smtpValues.admin_ntfy_token === '••••••••' && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await authApi.updateAppSettings({ admin_ntfy_token: '' })
+                                    setSmtpValues(prev => ({ ...prev, admin_ntfy_token: '' }))
+                                    toast.success(t('admin.notifications.adminNtfyPanel.tokenCleared'))
+                                  } catch { toast.error(t('common.error')) }
+                                }}
+                                className="px-3 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
+                              >
+                                {t('common.clear')}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="px-6 pb-4 flex items-center gap-2 border-t border-slate-100 pt-4">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await authApi.updateAppSettings({
+                            admin_ntfy_server: smtpValues.admin_ntfy_server || '',
+                            admin_ntfy_topic: smtpValues.admin_ntfy_topic || '',
+                            ...(smtpValues.admin_ntfy_token && smtpValues.admin_ntfy_token !== '••••••••'
+                              ? { admin_ntfy_token: smtpValues.admin_ntfy_token }
+                              : {}),
+                          })
+                          toast.success(t('admin.notifications.adminNtfyPanel.saved'))
+                        } catch { toast.error(t('common.error')) }
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors">
+                      <Save className="w-4 h-4" />{t('common.save')}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const topic = smtpValues.admin_ntfy_topic?.trim()
+                        if (!topic) return
+                        try {
+                          const token = smtpValues.admin_ntfy_token && smtpValues.admin_ntfy_token !== '••••••••'
+                            ? smtpValues.admin_ntfy_token : null
+                          const result = await notificationsApi.testNtfy({
+                            topic,
+                            server: smtpValues.admin_ntfy_server || null,
+                            token,
+                          })
+                          if (result.success) toast.success(t('admin.notifications.adminNtfyPanel.testSuccess'))
+                          else toast.error(result.error || t('admin.notifications.adminNtfyPanel.testFailed'))
+                        } catch { toast.error(t('admin.notifications.adminNtfyPanel.testFailed')) }
+                      }}
+                      disabled={!smtpValues.admin_ntfy_topic?.trim()}
+                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-40"
+                    >
+                      {t('admin.notifications.adminNtfyPanel.test')}
                     </button>
                   </div>
                 </div>
@@ -1308,9 +1605,12 @@ export default function AdminPage(): React.ReactElement {
 
           {activeTab === 'mcp-tokens' && <AdminMcpTokensPanel />}
 
-          {activeTab === 'github' && <GitHubPanel />}
+          {activeTab === 'github' && <GitHubPanel isPrerelease={updateInfo?.is_prerelease ?? false} />}
+
+          {activeTab === 'defaults' && <DefaultUserSettingsTab />}
 
           {activeTab === 'dev-notifications' && <DevNotificationsPanel />}
+          </PageSidebar>
         </div>
       </div>
 

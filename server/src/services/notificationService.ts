@@ -7,15 +7,20 @@ import {
   isSmtpConfigured,
   ADMIN_SCOPED_EVENTS,
   type NotifEventType,
+  type NotifChannel,
 } from './notificationPreferencesService';
 import {
   getEventText,
   sendEmail,
   sendWebhook,
+  sendNtfy,
   getUserEmail,
   getUserLanguage,
   getUserWebhookUrl,
   getAdminWebhookUrl,
+  getUserNtfyConfig,
+  getAdminNtfyConfig,
+  resolveNtfyUrl,
   getAppUrl,
 } from './notifications';
 import {
@@ -77,6 +82,13 @@ const EVENT_NOTIFICATION_CONFIG: Record<string, EventNotifConfig> = {
     navigateTextKey: 'notif.action.view_trip',
     navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
   },
+  todo_due: {
+    inAppType: 'navigate',
+    titleKey: 'notif.todo_due.title',
+    textKey: 'notif.todo_due.text',
+    navigateTextKey: 'notif.action.view_trip',
+    navigateTarget: p => (p.tripId ? `/trips/${p.tripId}` : null),
+  },
   vacay_invite: {
     inAppType: 'navigate',
     titleKey: 'notif.vacay_invite.title',
@@ -111,6 +123,12 @@ const EVENT_NOTIFICATION_CONFIG: Record<string, EventNotifConfig> = {
     textKey: 'notif.version_available.text',
     navigateTextKey: 'notif.action.view_admin',
     navigateTarget: () => '/admin',
+  },
+  synology_session_cleared: {
+    inAppType: 'simple',
+    titleKey: 'notifications.synologySessionCleared.title',
+    textKey: 'notifications.synologySessionCleared.text',
+    navigateTarget: () => null,
   },
 };
 
@@ -152,7 +170,7 @@ export async function send(payload: NotificationPayload): Promise<void> {
   const configEntry = EVENT_NOTIFICATION_CONFIG[event];
   if (!configEntry) {
     logDebug(`notificationService.send: unknown event type "${event}", using fallback`);
-    if (process.env.NODE_ENV === 'development' && actorId != null) {
+    if (process.env.NODE_ENV?.toLowerCase() === 'development' && actorId != null) {
       const devSender = (db.prepare('SELECT username, avatar FROM users WHERE id = ?').get(actorId) as { username: string; avatar: string | null } | undefined) ?? null;
       createNotificationForRecipient({
         type: 'simple',
@@ -264,6 +282,19 @@ export async function send(payload: NotificationPayload): Promise<void> {
       }
     }
 
+    // ── Ntfy (per-user) — skip for admin-scoped events (handled globally below) ──
+    if (!ADMIN_SCOPED_EVENTS.has(event) && activeChannels.includes('ntfy') && isEnabledForEvent(recipientId, event, 'ntfy' as NotifChannel)) {
+      const userNtfyCfg = getUserNtfyConfig(recipientId);
+      const adminNtfyCfg = getAdminNtfyConfig();
+      const ntfyUrl = resolveNtfyUrl(adminNtfyCfg, userNtfyCfg);
+      if (ntfyUrl) {
+        const lang = getUserLanguage(recipientId);
+        const { title, body } = getEventText(lang, event, params);
+        const token = userNtfyCfg?.token ?? adminNtfyCfg.token;
+        promises.push(sendNtfy(ntfyUrl, token, { event, title, body, link: fullLink }));
+      }
+    }
+
     const results = await Promise.allSettled(promises);
     for (const result of results) {
       if (result.status === 'rejected') {
@@ -279,6 +310,18 @@ export async function send(payload: NotificationPayload): Promise<void> {
       const { title, body } = getEventText('en', event, params);
       await sendWebhook(adminWebhookUrl, { event, title, body, link: fullLink }).catch((err: unknown) => {
         logError(`notificationService.send admin webhook failed event=${event}: ${err instanceof Error ? err.message : err}`);
+      });
+    }
+  }
+
+  // ── Admin ntfy (scope: admin) — global, respects global pref ─────────
+  if (scope === 'admin' && getAdminGlobalPref(event, 'ntfy')) {
+    const adminNtfyCfg = getAdminNtfyConfig();
+    const adminNtfyUrl = resolveNtfyUrl(adminNtfyCfg, null);
+    if (adminNtfyUrl) {
+      const { title, body } = getEventText('en', event, params);
+      await sendNtfy(adminNtfyUrl, adminNtfyCfg.token, { event, title, body, link: fullLink }).catch((err: unknown) => {
+        logError(`notificationService.send admin ntfy failed event=${event}: ${err instanceof Error ? err.message : err}`);
       });
     }
   }

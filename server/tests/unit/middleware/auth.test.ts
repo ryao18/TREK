@@ -1,11 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import jwt from 'jsonwebtoken';
 
 vi.mock('../../../src/db/database', () => ({
-  db: { prepare: () => ({ get: vi.fn(), all: vi.fn() }) },
+  db: { prepare: vi.fn(() => ({ get: vi.fn(), all: vi.fn() })) },
 }));
 vi.mock('../../../src/config', () => ({ JWT_SECRET: 'test-secret' }));
 
 import { extractToken, authenticate, adminOnly } from '../../../src/middleware/auth';
+import { db } from '../../../src/db/database';
 import type { Request, Response, NextFunction } from 'express';
 
 function makeReq(overrides: {
@@ -79,6 +81,56 @@ describe('authenticate', () => {
     const next = vi.fn() as unknown as NextFunction;
     const { res, status } = makeRes();
     authenticate(makeReq({ cookies: { trek_session: 'invalid.jwt.token' } }), res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
+  });
+
+  it('AUTH-MW-003: calls next() and sets req.user for a valid JWT', () => {
+    const mockUser = { id: 1, username: 'alice', email: 'alice@example.com', role: 'user' };
+    vi.mocked(db.prepare).mockReturnValue({ get: vi.fn(() => mockUser), all: vi.fn() } as any);
+
+    const token = jwt.sign({ id: 1 }, 'test-secret', { algorithm: 'HS256' });
+    const req = makeReq({ cookies: { trek_session: token } });
+    const next = vi.fn() as unknown as NextFunction;
+    const { res } = makeRes();
+
+    authenticate(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect((req as any).user).toEqual(mockUser);
+  });
+
+  it('AUTH-MW-004: returns 401 for a valid JWT when user does not exist in DB', () => {
+    vi.mocked(db.prepare).mockReturnValue({ get: vi.fn(() => undefined), all: vi.fn() } as any);
+
+    const token = jwt.sign({ id: 99999 }, 'test-secret', { algorithm: 'HS256' });
+    const next = vi.fn() as unknown as NextFunction;
+    const { res, status } = makeRes();
+
+    authenticate(makeReq({ cookies: { trek_session: token } }), res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
+  });
+
+  it('AUTH-MW-005: returns 401 for an expired JWT', () => {
+    const expiredToken = jwt.sign(
+      { id: 1, exp: Math.floor(Date.now() / 1000) - 3600 },
+      'test-secret',
+      { algorithm: 'HS256' }
+    );
+    const next = vi.fn() as unknown as NextFunction;
+    const { res, status } = makeRes();
+    authenticate(makeReq({ cookies: { trek_session: expiredToken } }), res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
+  });
+
+  it('AUTH-MW-006: returns 401 for a JWT signed with the wrong secret', () => {
+    const tamperedToken = jwt.sign({ id: 1 }, 'wrong-secret', { algorithm: 'HS256' });
+    const next = vi.fn() as unknown as NextFunction;
+    const { res, status } = makeRes();
+    authenticate(makeReq({ cookies: { trek_session: tamperedToken } }), res, next);
     expect(next).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(401);
   });

@@ -101,6 +101,29 @@ export function getActivePlanId(userId: number): number {
   return getActivePlan(userId).id;
 }
 
+export function shiftOwnerEntriesForTripWindow(
+  ownerId: number,
+  oldStart: string,
+  oldEnd: string,
+  newStart: string
+): void {
+  const row = db.prepare(
+    'SELECT CAST(julianday(?) - julianday(?) AS INTEGER) AS days'
+  ).get(newStart, oldStart) as { days: number } | undefined;
+  const offset = row?.days ?? 0;
+  if (offset === 0) return;
+
+  const plan = getOwnPlan(ownerId);
+
+  db.prepare(
+    `UPDATE OR IGNORE vacay_entries
+        SET date = date(date, ? || ' days')
+      WHERE plan_id = ?
+        AND user_id = ?
+        AND date BETWEEN ? AND ?`
+  ).run(`${offset >= 0 ? '+' : ''}${offset}`, plan.id, ownerId, oldStart, oldEnd);
+}
+
 export function getPlanUsers(planId: number): VacayUser[] {
   const plan = db.prepare('SELECT * FROM vacay_plans WHERE id = ?').get(planId) as VacayPlan | undefined;
   if (!plan) return [];
@@ -184,10 +207,11 @@ export interface UpdatePlanBody {
   company_holidays_enabled?: boolean;
   carry_over_enabled?: boolean;
   weekend_days?: string;
+  week_start?: number;
 }
 
 export async function updatePlan(planId: number, body: UpdatePlanBody, socketId: string | undefined) {
-  const { block_weekends, holidays_enabled, holidays_region, company_holidays_enabled, carry_over_enabled, weekend_days } = body;
+  const { block_weekends, holidays_enabled, holidays_region, company_holidays_enabled, carry_over_enabled, weekend_days, week_start } = body;
 
   const updates: string[] = [];
   const params: (string | number)[] = [];
@@ -197,6 +221,7 @@ export async function updatePlan(planId: number, body: UpdatePlanBody, socketId:
   if (company_holidays_enabled !== undefined) { updates.push('company_holidays_enabled = ?'); params.push(company_holidays_enabled ? 1 : 0); }
   if (carry_over_enabled !== undefined) { updates.push('carry_over_enabled = ?'); params.push(carry_over_enabled ? 1 : 0); }
   if (weekend_days !== undefined) { updates.push('weekend_days = ?'); params.push(String(weekend_days)); }
+  if (week_start !== undefined) { updates.push('week_start = ?'); params.push(week_start === 0 ? 0 : 1); }
 
   if (updates.length > 0) {
     params.push(planId);

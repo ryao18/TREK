@@ -19,6 +19,7 @@ import {
   updateSection,
   setParticipants,
 } from '../services/assignmentService';
+import { onPlaceCreated } from '../services/journeyService';
 import { AuthRequest } from '../types';
 
 const router = express.Router({ mergeParams: true });
@@ -46,6 +47,7 @@ router.post('/trips/:tripId/days/:dayId/assignments', authenticate, requireTripA
   const assignment = createAssignment(dayId, place_id, notes);
   res.status(201).json({ assignment });
   broadcast(tripId, 'assignment:created', { assignment }, req.headers['x-socket-id'] as string);
+  try { onPlaceCreated(Number(tripId), Number(place_id)); } catch {}
 });
 
 router.delete('/trips/:tripId/days/:dayId/assignments/:id', authenticate, requireTripAccess, (req: Request, res: Response) => {

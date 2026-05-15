@@ -95,6 +95,7 @@ const WMO_DESCRIPTION_EN: Record<number, string> = {
 // ── Cache management ────────────────────────────────────────────────────
 
 const weatherCache = new Map<string, { data: WeatherResult; expiresAt: number }>();
+const inFlight = new Map<string, Promise<WeatherResult>>();
 const CACHE_MAX_ENTRIES = 1000;
 const CACHE_PRUNE_TARGET = 500;
 const CACHE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
@@ -146,7 +147,7 @@ export function estimateCondition(tempAvg: number, precipMm: number): string {
 
 // ── getWeather ──────────────────────────────────────────────────────────
 
-export async function getWeather(
+async function _getWeatherImpl(
   lat: string,
   lng: string,
   date: string | undefined,
@@ -193,11 +194,45 @@ export async function getWeather(
       }
     }
 
+    // Past date: use archive API for the actual date
+    if (diffDays < -1) {
+      const dateStr = targetDate.toISOString().slice(0, 10);
+      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${dateStr}&end_date=${dateStr}&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_sum&timezone=auto`;
+      const response = await fetch(url);
+      const data = await response.json() as OpenMeteoForecast;
+
+      if (!response.ok || data.error) {
+        throw new ApiError(response.status || 500, data.reason || 'Open-Meteo Archive API error');
+      }
+
+      const daily = data.daily;
+      if (daily && daily.time && daily.time.length > 0 && daily.temperature_2m_max[0] != null) {
+        const code = daily.weathercode?.[0];
+        const descriptions = lang === 'de' ? WMO_DESCRIPTION_DE : WMO_DESCRIPTION_EN;
+        const tMax = daily.temperature_2m_max[0];
+        const tMin = daily.temperature_2m_min[0];
+        const result: WeatherResult = {
+          temp: Math.round((tMax + tMin) / 2),
+          temp_max: Math.round(tMax),
+          temp_min: Math.round(tMin),
+          main: WMO_MAP[code!] || estimateCondition((tMax + tMin) / 2, daily.precipitation_sum?.[0] || 0),
+          description: descriptions[code!] || '',
+          type: 'forecast',
+        };
+        setCache(ck, result, TTL_CLIMATE_MS);
+        return result;
+      }
+      return { temp: 0, main: '', description: '', type: '', error: 'no_forecast' };
+    }
+
     // Climate / archive fallback (far-future dates)
     if (diffDays > -1) {
       const month = targetDate.getMonth() + 1;
       const day = targetDate.getDate();
-      const refYear = targetDate.getFullYear() - 1;
+      let refYear = targetDate.getFullYear() - 1;
+      // Archive API only has data up to yesterday — go back further if needed
+      const yesterday = new Date(now.getTime() - 86400000);
+      if (new Date(refYear, month - 1, day + 2) > yesterday) refYear--;
       const startDate = new Date(refYear, month - 1, day - 2);
       const endDate = new Date(refYear, month - 1, day + 2);
       const startStr = startDate.toISOString().slice(0, 10);
@@ -278,9 +313,27 @@ export async function getWeather(
   return result;
 }
 
+export async function getWeather(
+  lat: string,
+  lng: string,
+  date: string | undefined,
+  lang: string,
+): Promise<WeatherResult> {
+  const ck = cacheKey(lat, lng, date);
+  const cached = getCached(ck);
+  if (cached) return cached;
+
+  const inFlightKey = `${ck}:${lang}`;
+  const existing = inFlight.get(inFlightKey);
+  if (existing) return existing;
+  const promise = _getWeatherImpl(lat, lng, date, lang);
+  inFlight.set(inFlightKey, promise);
+  try { return await promise; } finally { inFlight.delete(inFlightKey); }
+}
+
 // ── getDetailedWeather ──────────────────────────────────────────────────
 
-export async function getDetailedWeather(
+async function _getDetailedWeatherImpl(
   lat: string,
   lng: string,
   date: string,
@@ -299,7 +352,10 @@ export async function getDetailedWeather(
 
   // Climate / archive path (> 16 days out)
   if (diffDays > 16) {
-    const refYear = targetDate.getFullYear() - 1;
+    let refYear = targetDate.getFullYear() - 1;
+    // Archive API only has data up to yesterday — go back further if needed
+    const yesterday = new Date(now.getTime() - 86400000);
+    if (new Date(refYear, targetDate.getMonth(), targetDate.getDate()) > yesterday) refYear--;
     const refDateStr = `${refYear}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
 
     const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}`
@@ -426,6 +482,24 @@ export async function getDetailedWeather(
 
   setCache(ck, result, TTL_FORECAST_MS);
   return result;
+}
+
+export async function getDetailedWeather(
+  lat: string,
+  lng: string,
+  date: string,
+  lang: string,
+): Promise<WeatherResult> {
+  const ck = `detailed_${cacheKey(lat, lng, date)}`;
+  const cached = getCached(ck);
+  if (cached) return cached;
+
+  const inFlightKey = `${ck}:${lang}`;
+  const existing = inFlight.get(inFlightKey);
+  if (existing) return existing;
+  const promise = _getDetailedWeatherImpl(lat, lng, date, lang);
+  inFlight.set(inFlightKey, promise);
+  try { return await promise; } finally { inFlight.delete(inFlightKey); }
 }
 
 // ── ApiError ────────────────────────────────────────────────────────────

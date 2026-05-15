@@ -383,3 +383,27 @@ describe('Mark/unmark region', () => {
     expect(deRegions).toBeUndefined();
   });
 });
+
+describe('Regions geo', () => {
+  it('ATLAS-012 — GET /regions/geo without countries param returns empty FeatureCollection', async () => {
+    const { user } = createUser(testDb);
+
+    const res = await request(app)
+      .get('/api/addons/atlas/regions/geo')
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ type: 'FeatureCollection', features: [] });
+  });
+
+  it('ATLAS-013 — GET /regions/geo?countries=DE,FR returns FeatureCollection', async () => {
+    const { user } = createUser(testDb);
+
+    const res = await request(app)
+      .get('/api/addons/atlas/regions/geo?countries=DE,FR')
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('type', 'FeatureCollection');
+  });
+});

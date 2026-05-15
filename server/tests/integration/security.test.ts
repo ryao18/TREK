@@ -10,6 +10,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import type { Application } from 'express';
+import path from 'path';
+import fs from 'fs';
 
 const { testDb, dbMock } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
@@ -46,29 +48,35 @@ import { createApp } from '../../src/app';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb } from '../helpers/test-db';
-import { createUser } from '../helpers/factories';
-import { authCookie, generateToken } from '../helpers/auth';
+import { createUser, createTrip } from '../helpers/factories';
+import { authCookie, authHeader, generateToken } from '../helpers/auth';
 import { loginAttempts, mfaAttempts } from '../../src/routes/auth';
 
 const app: Application = createApp();
+const FIXTURE_IMG = path.join(__dirname, '../fixtures/small-image.jpg');
+const uploadsDir = path.join(__dirname, '../../uploads/files');
 
 beforeAll(() => {
   createTables(testDb);
   runMigrations(testDb);
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allowed_file_types', '*')").run();
 });
 
 beforeEach(() => {
   resetTestDb(testDb);
   loginAttempts.clear();
   mfaAttempts.clear();
+  testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('allowed_file_types', '*')").run();
 });
 
 afterAll(() => {
+  fs.rmSync(uploadsDir, { recursive: true, force: true });
   testDb.close();
 });
 
 describe('Authentication security', () => {
-  it('SEC-007 — JWT in Authorization Bearer header authenticates user', async () => {
+  it('SEC-007 — invalid JWT in Authorization Bearer header is rejected', async () => {
     const { user } = createUser(testDb);
     const token = generateToken(user.id);
 
@@ -162,12 +170,21 @@ describe('Request body size limit', () => {
 describe('File download path traversal', () => {
   it('SEC-005 — path traversal in file download is blocked', async () => {
     const { user } = createUser(testDb);
-    const trip = { id: 1 };
+    const trip = createTrip(testDb, user.id);
+
+    const upload = await request(app)
+      .post(`/api/trips/${trip.id}/files`)
+      .set('Cookie', authCookie(user.id))
+      .attach('file', FIXTURE_IMG);
+    expect(upload.status).toBe(201);
+    const fileId = upload.body.file.id;
+
+    testDb.prepare('UPDATE trip_files SET filename = ? WHERE id = ?').run('../../etc/passwd', fileId);
 
     const res = await request(app)
-      .get(`/api/trips/${trip.id}/files/1/download`)
-      .set('Authorization', `Bearer ${generateToken(user.id)}`);
-    // Trip 1 does not exist after resetTestDb → 404 before any file path is evaluated
-    expect(res.status).toBe(404);
+      .get(`/api/trips/${trip.id}/files/${fileId}/download`)
+      .set(authHeader(user.id));
+    // resolveFilePath strips traversal via path.basename; normalized file does not exist in uploads
+    expect(res.status).not.toBe(200);
   });
 });

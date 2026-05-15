@@ -214,6 +214,38 @@ const texts: Record<string, DemoTexts> = {
     selfHostLink: 'استضفه بنفسك',
     close: 'فهمت',
   },
+  id: {
+    titleBefore: 'Selamat datang di ',
+    titleAfter: '',
+    title: 'Selamat datang di Demo TREK',
+    description: 'Anda dapat melihat, mengedit, dan membuat perjalanan. Semua perubahan akan diatur ulang secara otomatis setiap jam.',
+    resetIn: 'Atur ulang berikutnya dalam',
+    minutes: 'menit',
+    uploadNote: 'Unggah file (foto, dokumen, sampul) dinonaktifkan dalam mode demo.',
+    fullVersionTitle: 'Selain itu dalam versi lengkap:',
+    features: [
+      'Unggah file (foto, dokumen, sampul)',
+      'Manajemen kunci API (Google Maps, Cuaca)',
+      'Manajemen pengguna & izin',
+      'Pencadangan otomatis',
+      'Manajemen Addon (aktifkan/nonaktifkan)',
+      'OIDC / SSO single sign-on',
+    ],
+    addonsTitle: 'Addon Modular (dapat dinonaktifkan di versi lengkap)',
+    addons: [
+      ['Vacay', 'Perencana liburan dengan kalender, hari libur & penggabungan pengguna'],
+      ['Atlas', 'Peta dunia dengan negara yang dikunjungi & statistik perjalanan'],
+      ['Pengepakan', 'Daftar periksa per perjalanan'],
+      ['Anggaran', 'Pelacakan pengeluaran dengan pemisahan tagihan'],
+      ['Dokumen', 'Lampirkan file ke perjalanan'],
+      ['Widget', 'Konverter mata uang & zona waktu'],
+    ],
+    whatIs: 'Apa itu TREK?',
+    whatIsDesc: 'Perencana perjalanan yang di-host sendiri dengan kolaborasi real-time, peta interaktif, login OIDC, dan mode gelap.',
+    selfHost: 'Buka sumber — ',
+    selfHostLink: 'host mandiri',
+    close: 'Mengerti',
+  },
 }
 
 const featureIcons = [Upload, Key, Users, Database, Puzzle, Shield]
@@ -234,17 +266,22 @@ export default function DemoBanner(): React.ReactElement | null {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
+      position: 'fixed', inset: 0, zIndex: 99999,
       background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 16, overflow: 'auto',
+      paddingTop: 'max(16px, env(safe-area-inset-top))',
+      paddingBottom: 'max(16px, calc(env(safe-area-inset-bottom) + 80px))',
+      paddingLeft: 16, paddingRight: 16,
+      overflow: 'auto',
       fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
     }} onClick={() => setDismissed(true)}>
       <div style={{
-        background: 'white', borderRadius: 20, padding: '28px 24px 20px',
+        background: 'white', borderRadius: 20, padding: '28px 24px 0',
         maxWidth: 480, width: '100%',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        maxHeight: '90vh', overflow: 'auto',
+        maxHeight: 'min(90vh, calc(100dvh - 96px))',
+        overflow: 'auto',
+        display: 'flex', flexDirection: 'column',
       }} onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
 
         {/* Header */}
@@ -335,8 +372,10 @@ export default function DemoBanner(): React.ReactElement | null {
 
         {/* Footer */}
         <div style={{
-          paddingTop: 14, borderTop: '1px solid #e5e7eb',
+          padding: '14px 0 20px', borderTop: '1px solid #e5e7eb',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          position: 'sticky', bottom: 0, background: 'white',
+          marginTop: 'auto',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#9ca3af' }}>
             <Github size={13} />

@@ -1,13 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Capture Agent constructor options so we can test the lookup callback
+const { agentCapture } = vi.hoisted(() => ({ agentCapture: { options: null as any } }));
+
 // Mock dns/promises to avoid real DNS lookups in unit tests
 vi.mock('dns/promises', () => ({
   default: { lookup: vi.fn() },
   lookup: vi.fn(),
 }));
 
+// Mock undici Agent so we can inspect the connect.lookup option
+vi.mock('undici', () => ({
+  Agent: class MockAgent {
+    options: any;
+    constructor(opts: any) {
+      this.options = opts;
+      agentCapture.options = opts;
+    }
+  },
+}));
+
 import dns from 'dns/promises';
-import { checkSsrf } from '../../../src/utils/ssrfGuard';
+import { checkSsrf, SsrfBlockedError, safeFetch, createPinnedDispatcher } from '../../../src/utils/ssrfGuard';
 
 const mockLookup = vi.mocked(dns.lookup);
 
@@ -141,5 +155,95 @@ describe('checkSsrf', () => {
       const result = await checkSsrf('http://service.internal');
       expect(result.allowed).toBe(false);
     });
+  });
+
+  describe('DNS resolution failure', () => {
+    it('returns allowed:false when dns.lookup throws', async () => {
+      mockLookup.mockRejectedValue(new Error('ENOTFOUND nxdomain.example'));
+      const result = await checkSsrf('http://nxdomain.example.com');
+      expect(result.allowed).toBe(false);
+      expect(result.isPrivate).toBe(false);
+      expect(result.error).toBe('Could not resolve hostname');
+    });
+  });
+
+});
+
+describe('SsrfBlockedError', () => {
+  it('is an instance of Error', () => {
+    const err = new SsrfBlockedError('blocked');
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it('has name SsrfBlockedError', () => {
+    const err = new SsrfBlockedError('test message');
+    expect(err.name).toBe('SsrfBlockedError');
+  });
+
+  it('has the correct message', () => {
+    const err = new SsrfBlockedError('my message');
+    expect(err.message).toBe('my message');
+  });
+});
+
+describe('safeFetch', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('throws SsrfBlockedError for a blocked URL (invalid URL)', async () => {
+    await expect(safeFetch('not-a-valid-url')).rejects.toThrow(SsrfBlockedError);
+  });
+
+  it('throws SsrfBlockedError for a loopback URL', async () => {
+    mockLookup.mockResolvedValue({ address: '127.0.0.1', family: 4 });
+    await expect(safeFetch('http://localhost')).rejects.toThrow(SsrfBlockedError);
+  });
+
+  it('calls fetch with the resolved URL when allowed', async () => {
+    mockLookup.mockResolvedValue({ address: '93.184.216.34', family: 4 });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', mockFetch);
+    const result = await safeFetch('https://example.com');
+    expect(mockFetch).toHaveBeenCalledOnce();
+    expect(result.status).toBe(200);
+  });
+
+  it('throws SsrfBlockedError with fallback message when error is undefined', async () => {
+    // non-http protocol → error:'Only HTTP and HTTPS URLs are allowed'
+    await expect(safeFetch('ftp://example.com')).rejects.toThrow(SsrfBlockedError);
+  });
+});
+
+describe('createPinnedDispatcher', () => {
+  it('returns an object (Agent instance)', () => {
+    const dispatcher = createPinnedDispatcher('93.184.216.34');
+    expect(dispatcher).toBeDefined();
+    expect(typeof dispatcher).toBe('object');
+  });
+
+  it('pinned lookup callback calls back with the resolved IPv4 address', () => {
+    createPinnedDispatcher('93.184.216.34');
+    const lookup = agentCapture.options?.connect?.lookup;
+    expect(typeof lookup).toBe('function');
+    const cb = vi.fn();
+    lookup('example.com', {}, cb);
+    expect(cb).toHaveBeenCalledWith(null, '93.184.216.34', 4);
+  });
+
+  it('pinned lookup callback uses family 6 for IPv6 address', () => {
+    createPinnedDispatcher('2001:4860:4860::8888');
+    const lookup = agentCapture.options?.connect?.lookup;
+    const cb = vi.fn();
+    lookup('example.com', {}, cb);
+    expect(cb).toHaveBeenCalledWith(null, '2001:4860:4860::8888', 6);
+  });
+
+  it('returns array format when opts.all is true', () => {
+    createPinnedDispatcher('93.184.216.34');
+    const lookup = agentCapture.options?.connect?.lookup;
+    const cb = vi.fn();
+    lookup('example.com', { all: true }, cb);
+    expect(cb).toHaveBeenCalledWith(null, [{ address: '93.184.216.34', family: 4 }]);
   });
 });

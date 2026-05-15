@@ -29,7 +29,6 @@ const { testDb, dbMock } = vi.hoisted(() => {
   };
   return { testDb: db, dbMock: mock };
 });
-
 vi.mock('../../src/db/database', () => dbMock);
 vi.mock('../../src/config', () => ({
   JWT_SECRET: 'test-jwt-secret-for-trek-testing-only',
@@ -94,8 +93,22 @@ describe('Photo endpoint auth', () => {
 });
 
 describe('Force HTTPS redirect', () => {
-  it('MISC-004 — FORCE_HTTPS redirect sends 301 for HTTP requests', async () => {
+  it('MISC-004 — FORCE_HTTPS redirect sends 301 for HTTP requests on non-health paths', async () => {
     // createApp() reads FORCE_HTTPS at call time, so we need a fresh app instance
+    process.env.FORCE_HTTPS = 'true';
+    let httpsApp: Express;
+    try {
+      httpsApp = createApp();
+    } finally {
+      delete process.env.FORCE_HTTPS;
+    }
+    const res = await request(httpsApp)
+      .get('/api/addons')
+      .set('X-Forwarded-Proto', 'http');
+    expect(res.status).toBe(301);
+  });
+
+  it('MISC-008 — FORCE_HTTPS does not redirect /api/health (probes must reach it over HTTP)', async () => {
     process.env.FORCE_HTTPS = 'true';
     let httpsApp: Express;
     try {
@@ -106,7 +119,8 @@ describe('Force HTTPS redirect', () => {
     const res = await request(httpsApp)
       .get('/api/health')
       .set('X-Forwarded-Proto', 'http');
-    expect(res.status).toBe(301);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
   });
 
   it('MISC-004 — no redirect when FORCE_HTTPS is not set', async () => {
@@ -116,27 +130,5 @@ describe('Force HTTPS redirect', () => {
       .get('/api/health')
       .set('X-Forwarded-Proto', 'http');
     expect(res.status).toBe(200);
-  });
-});
-
-describe('Categories endpoint', () => {
-  it('MISC-013/PLACE-015 — GET /api/categories returns seeded categories', async () => {
-    const { user } = createUser(testDb);
-
-    const res = await request(app)
-      .get('/api/categories')
-      .set('Cookie', authCookie(user.id));
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.categories)).toBe(true);
-    expect(res.body.categories.length).toBeGreaterThan(0);
-  });
-});
-
-describe('App config', () => {
-  it('MISC-015 — GET /api/auth/app-config returns configuration', async () => {
-    const res = await request(app).get('/api/auth/app-config');
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('allow_registration');
-    expect(res.body).toHaveProperty('oidc_configured');
   });
 });

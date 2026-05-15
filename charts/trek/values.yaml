@@ -19,6 +19,10 @@ env:
   # Timezone for logs, reminders, and cron jobs (e.g. Europe/Berlin).
   # LOG_LEVEL: "info"
   # "info" = concise user actions, "debug" = verbose details.
+  # DEFAULT_LANGUAGE: "en"
+  # Default language on the login page for users with no saved preference.
+  # Browser/OS language is auto-detected first; this is the fallback when no match is found.
+  # Supported: de, en, es, fr, hu, nl, br, cs, pl, ru, zh, zh-TW, it, ar
   # ALLOWED_ORIGINS: ""
   # NOTE: If using ingress, ensure env.ALLOWED_ORIGINS matches the domains in ingress.hosts for proper CORS configuration.
   # APP_URL: "https://trek.example.com"
@@ -26,6 +30,8 @@ env:
   # Also used as the base URL for links in email notifications and other external links.
   # FORCE_HTTPS: "false"
   # Optional. When "true": HTTPS redirect, HSTS, CSP upgrade-insecure-requests, secure cookies. Only behind a TLS proxy. Requires TRUST_PROXY.
+  # HSTS_INCLUDE_SUBDOMAINS: "false"
+  # When "true": adds includeSubDomains to the HSTS header. Only effective when HSTS is active. Leave "false" if sibling subdomains still run over plain HTTP.
   # COOKIE_SECURE: "true"
   # Auto-derived (true in production or when FORCE_HTTPS=true). Set "false" to force cookies over plain HTTP. Not recommended for production.
   # TRUST_PROXY: "1"
@@ -40,7 +46,9 @@ env:
   # OIDC_DISPLAY_NAME: "SSO"
   # Label shown on the SSO login button.
   # OIDC_ONLY: "false"
-  # Set to "true" to disable local password auth entirely (first SSO login becomes admin).
+  # Set to "true" to force SSO-only mode: disables password login and password registration.
+  # Overrides the granular toggles in Admin > Settings and cannot be changed at runtime.
+  # First SSO login becomes admin on a fresh instance.
   # OIDC_ADMIN_CLAIM: ""
   # OIDC claim used to identify admin users.
   # OIDC_ADMIN_VALUE: ""
@@ -51,10 +59,10 @@ env:
   # Override the OIDC discovery endpoint for providers with non-standard paths (e.g. Authentik).
   # DEMO_MODE: "false"
   # Enable demo mode (hourly data resets).
-  # MCP_RATE_LIMIT: "60"
-  # Max MCP API requests per user per minute. Defaults to 60.
-  # MCP_MAX_SESSION_PER_USER: "5"
-  # Max concurrent MCP sessions per user. Defaults to 5.
+  # MCP_RATE_LIMIT: "300"
+  # Max MCP API requests per user per minute. Defaults to 300.
+  # MCP_MAX_SESSION_PER_USER: "20"
+  # Max concurrent MCP sessions per user. Defaults to 20.
 
 
 # Secret environment variables stored in a Kubernetes Secret.

@@ -3,9 +3,11 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DOM from 'react-dom'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { Plus, Trash2, Pin, PinOff, Pencil, X, Check, StickyNote, Settings, ExternalLink, Maximize2, Loader2 } from 'lucide-react'
 import { collabApi } from '../../api/client'
 import { getAuthUrl } from '../../api/authUrl'
+import { openFile } from '../../utils/fileDownload'
 import { useCanDo } from '../../store/permissionsStore'
 import { useTripStore } from '../../store/tripStore'
 import { addListener, removeListener } from '../../api/websocket'
@@ -110,10 +112,7 @@ function FilePreviewPortal({ file, onClose }: FilePreviewPortalProps) {
   const isPdf = file.mime_type === 'application/pdf'
   const isTxt = file.mime_type?.startsWith('text/')
 
-  const openInNewTab = async () => {
-    const u = await getAuthUrl(rawUrl, 'download')
-    window.open(u, '_blank', 'noreferrer')
-  }
+  const openInNewTab = () => openFile(rawUrl).catch(() => {})
 
   return ReactDOM.createPortal(
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
@@ -313,7 +312,6 @@ function NoteFormModal({ onClose, onSubmit, onDeleteFile, existingCategories, ca
         padding: 16,
         fontFamily: FONT,
       }}
-      onClick={onClose}
     >
       <form
         style={{
@@ -846,7 +844,7 @@ function NoteCard({ note, currentUser, canEdit, onUpdate, onDelete, onEdit, onVi
                 maxHeight: '4.5em', overflow: 'hidden',
                 wordBreak: 'break-word', fontFamily: FONT,
               }}>
-                <Markdown remarkPlugins={[remarkGfm]}>{note.content}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{note.content}</Markdown>
               </div>
             )}
           </div>
@@ -1353,7 +1351,7 @@ export default function CollabNotes({ tripId, currentUser }: CollabNotesProps) {
               </div>
             </div>
             <div className="collab-note-md-full" style={{ padding: '16px 20px', overflowY: 'auto', fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.7 }}>
-              <Markdown remarkPlugins={[remarkGfm]}>{viewingNote.content || ''}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{viewingNote.content || ''}</Markdown>
               {(viewingNote.attachments || []).length > 0 && (
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-primary)' }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>{t('files.title')}</div>

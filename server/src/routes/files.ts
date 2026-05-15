@@ -77,15 +77,11 @@ const upload = multer({
 // Routes
 // ---------------------------------------------------------------------------
 
-// Authenticated file download (supports Bearer header or ?token= query param)
+// Authenticated file download (supports cookie, Bearer header, or ?token= query param)
 router.get('/:id/download', (req: Request, res: Response) => {
   const { tripId, id } = req.params;
 
-  const authHeader = req.headers['authorization'];
-  const bearerToken = authHeader && authHeader.split(' ')[1];
-  const queryToken = req.query.token as string | undefined;
-
-  const auth = authenticateDownload(bearerToken, queryToken);
+  const auth = authenticateDownload(req);
   if ('error' in auth) return res.status(auth.status).json({ error: auth.error });
 
   const trip = verifyTripAccess(tripId, auth.userId);
@@ -97,6 +93,13 @@ router.get('/:id/download', (req: Request, res: Response) => {
   const { resolved, safe } = resolveFilePath(file.filename);
   if (!safe) return res.status(403).json({ error: 'Forbidden' });
   if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'File not found' });
+
+  // Serve Apple Wallet passes inline with the canonical MIME type so Safari
+  // (iOS/macOS) hands them off to Wallet instead of downloading as a blob.
+  if (path.extname(resolved).toLowerCase() === '.pkpass') {
+    res.setHeader('Content-Type', 'application/vnd.apple.pkpass');
+    res.setHeader('Content-Disposition', `inline; filename="${path.basename(file.original_name || resolved)}"`);
+  }
 
   res.sendFile(resolved);
 });
@@ -203,7 +206,7 @@ router.post('/:id/restore', authenticate, (req: Request, res: Response) => {
 });
 
 // Permanently delete from trash
-router.delete('/:id/permanent', authenticate, (req: Request, res: Response) => {
+router.delete('/:id/permanent', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId, id } = req.params;
 
@@ -215,13 +218,13 @@ router.delete('/:id/permanent', authenticate, (req: Request, res: Response) => {
   const file = getDeletedFile(id, tripId);
   if (!file) return res.status(404).json({ error: 'File not found in trash' });
 
-  permanentDeleteFile(file);
+  await permanentDeleteFile(file);
   res.json({ success: true });
   broadcast(tripId, 'file:deleted', { fileId: Number(id) }, req.headers['x-socket-id'] as string);
 });
 
 // Empty entire trash
-router.delete('/trash/empty', authenticate, (req: Request, res: Response) => {
+router.delete('/trash/empty', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
   const { tripId } = req.params;
 
@@ -230,7 +233,7 @@ router.delete('/trash/empty', authenticate, (req: Request, res: Response) => {
   if (!checkPermission('file_delete', authReq.user.role, trip.user_id, authReq.user.id, trip.user_id !== authReq.user.id))
     return res.status(403).json({ error: 'No permission' });
 
-  const deleted = emptyTrash(tripId);
+  const deleted = await emptyTrash(tripId);
   res.json({ success: true, deleted });
 });
 

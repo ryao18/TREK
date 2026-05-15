@@ -42,6 +42,15 @@ vi.mock('../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
+// Partially mock collabService to make fetchLinkPreview controllable
+vi.mock('../../src/services/collabService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/collabService')>();
+  return {
+    ...actual,
+    fetchLinkPreview: vi.fn().mockResolvedValue({ title: null, description: null, image: null, url: '' }),
+  };
+});
+
 import { createApp } from '../../src/app';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
@@ -49,6 +58,7 @@ import { resetTestDb } from '../helpers/test-db';
 import { createUser, createTrip, addTripMember } from '../helpers/factories';
 import { authCookie, generateToken } from '../helpers/auth';
 import { loginAttempts, mfaAttempts } from '../../src/routes/auth';
+import * as collabService from '../../src/services/collabService';
 
 const app: Application = createApp();
 const FIXTURE_PDF = path.join(__dirname, '../fixtures/test.pdf');
@@ -636,5 +646,141 @@ describe('Collab validation', () => {
       .set('Cookie', authCookie(user.id))
       .send({ text: 'A'.repeat(5001) });
     expect(res.status).toBe(400);
+  });
+
+  it('COLLAB-008 — poll with fewer than 2 options returns 400', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/collab/polls`)
+      .set('Cookie', authCookie(user.id))
+      .send({ question: 'Only one option?', options: ['Option A'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/2 options/i);
+  });
+});
+
+describe('Link preview', () => {
+  it('COLLAB-025 — GET /collab/link-preview without url returns 400', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/collab/link-preview`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/url/i);
+  });
+
+  it('COLLAB-025 — GET /collab/link-preview returns preview for valid URL', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    vi.mocked(collabService.fetchLinkPreview).mockResolvedValueOnce({
+      title: 'Example Domain',
+      description: 'A test page',
+      image: null,
+      url: 'https://example.com',
+    });
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/collab/link-preview?url=https://example.com`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('Example Domain');
+  });
+
+  it('COLLAB-026 — GET /collab/link-preview returns 400 when fetchLinkPreview returns error', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    vi.mocked(collabService.fetchLinkPreview).mockResolvedValueOnce({
+      title: null,
+      description: null,
+      image: null,
+      url: 'http://127.0.0.1',
+      error: 'Requests to loopback and link-local addresses are not allowed',
+    } as any);
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/collab/link-preview?url=http://127.0.0.1`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('COLLAB-027 — GET /collab/link-preview catches thrown errors and returns fallback', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    vi.mocked(collabService.fetchLinkPreview).mockRejectedValueOnce(new Error('Unexpected error'));
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/collab/link-preview?url=https://example.com`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBeNull();
+  });
+});
+
+describe('Message reactions toggle', () => {
+  it('COLLAB-028 — POST /collab/messages/:msgId/react adds a reaction', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const msgRes = await request(app)
+      .post(`/api/trips/${trip.id}/collab/messages`)
+      .set('Cookie', authCookie(user.id))
+      .send({ text: 'Hello!' });
+    expect(msgRes.status).toBe(201);
+    const messageId = msgRes.body.message.id;
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/collab/messages/${messageId}/react`)
+      .set('Cookie', authCookie(user.id))
+      .send({ emoji: '👍' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reactions).toBeDefined();
+    const thumbsUp = res.body.reactions.find((r: any) => r.emoji === '👍');
+    expect(thumbsUp).toBeDefined();
+    expect(thumbsUp.users.some((u: any) => u.user_id === user.id || u === user.id)).toBe(true);
+  });
+
+  it('COLLAB-029 — POST /collab/messages/:msgId/react on same emoji removes it (toggle)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const msgRes = await request(app)
+      .post(`/api/trips/${trip.id}/collab/messages`)
+      .set('Cookie', authCookie(user.id))
+      .send({ text: 'Toggle me!' });
+    expect(msgRes.status).toBe(201);
+    const messageId = msgRes.body.message.id;
+
+    // First call — adds the reaction
+    await request(app)
+      .post(`/api/trips/${trip.id}/collab/messages/${messageId}/react`)
+      .set('Cookie', authCookie(user.id))
+      .send({ emoji: '👍' });
+
+    // Second call with same emoji — should toggle it off
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/collab/messages/${messageId}/react`)
+      .set('Cookie', authCookie(user.id))
+      .send({ emoji: '👍' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.reactions).toBeDefined();
+    const thumbsUp = res.body.reactions.find((r: any) => r.emoji === '👍');
+    // After toggling off, either the entry is absent or the user is no longer in it
+    const userStillReacted = thumbsUp && thumbsUp.users && thumbsUp.users.some((u: any) => u.user_id === user.id || u === user.id);
+    expect(userStillReacted).toBeFalsy();
   });
 });

@@ -109,10 +109,14 @@ function useCountryNames(language: string): (code: string) => string {
   return resolver
 }
 
-// Map visited country codes to ISO-3166 alpha3 (GeoJSON uses alpha3)
-// Built dynamically from GeoJSON + hardcoded fallbacks
-const A2_TO_A3_BASE: Record<string, string> = {"AF":"AFG","AL":"ALB","DZ":"DZA","AD":"AND","AO":"AGO","AG":"ATG","AR":"ARG","AM":"ARM","AU":"AUS","AT":"AUT","AZ":"AZE","BS":"BHS","BH":"BHR","BD":"BGD","BB":"BRB","BY":"BLR","BE":"BEL","BZ":"BLZ","BJ":"BEN","BT":"BTN","BO":"BOL","BA":"BIH","BW":"BWA","BR":"BRA","BN":"BRN","BG":"BGR","BF":"BFA","BI":"BDI","CV":"CPV","KH":"KHM","CM":"CMR","CA":"CAN","CF":"CAF","TD":"TCD","CL":"CHL","CN":"CHN","CO":"COL","KM":"COM","CG":"COG","CD":"COD","CR":"CRI","CI":"CIV","HR":"HRV","CU":"CUB","CY":"CYP","CZ":"CZE","DK":"DNK","DJ":"DJI","DM":"DMA","DO":"DOM","EC":"ECU","EG":"EGY","SV":"SLV","GQ":"GNQ","ER":"ERI","EE":"EST","SZ":"SWZ","ET":"ETH","FJ":"FJI","FI":"FIN","FR":"FRA","GA":"GAB","GM":"GMB","GE":"GEO","DE":"DEU","GH":"GHA","GR":"GRC","GD":"GRD","GT":"GTM","GN":"GIN","GW":"GNB","GY":"GUY","HT":"HTI","HN":"HND","HU":"HUN","IS":"ISL","IN":"IND","ID":"IDN","IR":"IRN","IQ":"IRQ","IE":"IRL","IL":"ISR","IT":"ITA","JM":"JAM","JP":"JPN","JO":"JOR","KZ":"KAZ","KE":"KEN","KI":"KIR","KP":"PRK","KR":"KOR","KW":"KWT","KG":"KGZ","LA":"LAO","LV":"LVA","LB":"LBN","LS":"LSO","LR":"LBR","LY":"LBY","LI":"LIE","LT":"LTU","LU":"LUX","MG":"MDG","MW":"MWI","MY":"MYS","MV":"MDV","ML":"MLI","MT":"MLT","MR":"MRT","MU":"MUS","MX":"MEX","MD":"MDA","MN":"MNG","ME":"MNE","MA":"MAR","MZ":"MOZ","MM":"MMR","NA":"NAM","NP":"NPL","NL":"NLD","NZ":"NZL","NI":"NIC","NE":"NER","NG":"NGA","MK":"MKD","NO":"NOR","OM":"OMN","PK":"PAK","PA":"PAN","PG":"PNG","PY":"PRY","PE":"PER","PH":"PHL","PL":"POL","PT":"PRT","QA":"QAT","RO":"ROU","RU":"RUS","RW":"RWA","SA":"SAU","SN":"SEN","RS":"SRB","SL":"SLE","SG":"SGP","SK":"SVK","SI":"SVN","SB":"SLB","SO":"SOM","ZA":"ZAF","SS":"SSD","ES":"ESP","LK":"LKA","SD":"SDN","SR":"SUR","SE":"SWE","CH":"CHE","SY":"SYR","TW":"TWN","TJ":"TJK","TZ":"TZA","TH":"THA","TL":"TLS","TG":"TGO","TT":"TTO","TN":"TUN","TR":"TUR","TM":"TKM","UG":"UGA","UA":"UKR","AE":"ARE","GB":"GBR","US":"USA","UY":"URY","UZ":"UZB","VU":"VUT","VE":"VEN","VN":"VNM","YE":"YEM","ZM":"ZMB","ZW":"ZWE"}
-let A2_TO_A3: Record<string, string> = { ...A2_TO_A3_BASE }
+// ISO-3166-1 alpha-2 → alpha-3 mapping. Two sources feed this table:
+//   1. Hardcoded entries below — REQUIRED for any country whose Natural Earth GeoJSON record
+//      has ISO_A2='-99' (e.g. France=FRA, Norway=NOR). The runtime augmentation loop
+//      (see geoData useEffect below) skips '-99' features, so those countries MUST be
+//      listed here or the atlas_country_options A3-fallback will silently fail.
+//   2. Runtime augmentation — the geoData load effect adds entries for every feature
+//      that has a valid ISO_A2, covering territories not present below.
+const A2_TO_A3: Record<string, string> = {"AF":"AFG","AL":"ALB","DZ":"DZA","AD":"AND","AO":"AGO","AG":"ATG","AR":"ARG","AM":"ARM","AU":"AUS","AT":"AUT","AZ":"AZE","BS":"BHS","BH":"BHR","BD":"BGD","BB":"BRB","BY":"BLR","BE":"BEL","BZ":"BLZ","BJ":"BEN","BT":"BTN","BO":"BOL","BA":"BIH","BW":"BWA","BR":"BRA","BN":"BRN","BG":"BGR","BF":"BFA","BI":"BDI","CV":"CPV","KH":"KHM","CM":"CMR","CA":"CAN","CF":"CAF","TD":"TCD","CL":"CHL","CN":"CHN","CO":"COL","KM":"COM","CG":"COG","CD":"COD","CR":"CRI","CI":"CIV","HR":"HRV","CU":"CUB","CY":"CYP","CZ":"CZE","DK":"DNK","DJ":"DJI","DM":"DMA","DO":"DOM","EC":"ECU","EG":"EGY","SV":"SLV","GQ":"GNQ","ER":"ERI","EE":"EST","SZ":"SWZ","ET":"ETH","FJ":"FJI","FI":"FIN","FR":"FRA","GA":"GAB","GM":"GMB","GE":"GEO","DE":"DEU","GH":"GHA","GR":"GRC","GD":"GRD","GT":"GTM","GN":"GIN","GW":"GNB","GY":"GUY","HT":"HTI","HN":"HND","HU":"HUN","IS":"ISL","IN":"IND","ID":"IDN","IR":"IRN","IQ":"IRQ","IE":"IRL","IL":"ISR","IT":"ITA","JM":"JAM","JP":"JPN","JO":"JOR","KZ":"KAZ","KE":"KEN","KI":"KIR","KP":"PRK","KR":"KOR","KW":"KWT","KG":"KGZ","LA":"LAO","LV":"LVA","LB":"LBN","LS":"LSO","LR":"LBR","LY":"LBY","LI":"LIE","LT":"LTU","LU":"LUX","MG":"MDG","MW":"MWI","MY":"MYS","MV":"MDV","ML":"MLI","MT":"MLT","MR":"MRT","MU":"MUS","MX":"MEX","MD":"MDA","MN":"MNG","ME":"MNE","MA":"MAR","MZ":"MOZ","MM":"MMR","NA":"NAM","NP":"NPL","NL":"NLD","NZ":"NZL","NI":"NIC","NE":"NER","NG":"NGA","MK":"MKD","NO":"NOR","OM":"OMN","PK":"PAK","PA":"PAN","PG":"PNG","PY":"PRY","PE":"PER","PH":"PHL","PL":"POL","PT":"PRT","QA":"QAT","RO":"ROU","RU":"RUS","RW":"RWA","SA":"SAU","SN":"SEN","RS":"SRB","SL":"SLE","SG":"SGP","SK":"SVK","SI":"SVN","SB":"SLB","SO":"SOM","ZA":"ZAF","SS":"SSD","ES":"ESP","LK":"LKA","SD":"SDN","SR":"SUR","SE":"SWE","CH":"CHE","SY":"SYR","TW":"TWN","TJ":"TJK","TZ":"TZA","TH":"THA","TL":"TLS","TG":"TGO","TT":"TTO","TN":"TUN","TR":"TUR","TM":"TKM","UG":"UGA","UA":"UKR","AE":"ARE","GB":"GBR","US":"USA","UY":"URY","UZ":"UZB","VU":"VUT","VE":"VEN","VN":"VNM","YE":"YEM","ZM":"ZMB","ZW":"ZWE"}
 
 export default function AtlasPage(): React.ReactElement {
   const { t, language } = useTranslation()
@@ -186,15 +190,24 @@ export default function AtlasPage(): React.ReactElement {
 
   const atlas_country_options = useMemo(() => {
     if (!geoData) return []
+    // Precompute A3 → A2 reverse lookup once per geoData change instead of
+    // scanning A2_TO_A3 for every feature that needs the fallback.
+    const a3ToA2 = new Map<string, string>()
+    for (const [a2Key, a3Val] of Object.entries(A2_TO_A3)) a3ToA2.set(a3Val, a2Key)
+
     const opts: { code: string; label: string }[] = []
     const seen = new Set<string>()
     for (const f of (geoData as any).features || []) {
-      const a2 = f?.properties?.ISO_A2
-      if (!a2 || a2 === '-99' || typeof a2 !== 'string' || a2.length !== 2) continue
-      if (seen.has(a2)) continue
-      seen.add(a2)
-      const label = String(resolveName(a2) || f?.properties?.NAME || f?.properties?.ADMIN || a2)
-      opts.push({ code: a2, label })
+      const rawA2 = f?.properties?.ISO_A2
+      let resolvedA2: string | null = (typeof rawA2 === 'string' && rawA2.length === 2 && rawA2 !== '-99') ? rawA2 : null
+      if (!resolvedA2) {
+        const a3 = f?.properties?.ADM0_A3 || f?.properties?.ISO_A3 || f?.properties?.['ISO3166-1-Alpha-3'] || null
+        if (a3 && a3 !== '-99') resolvedA2 = a3ToA2.get(a3) ?? null
+      }
+      if (!resolvedA2 || seen.has(resolvedA2)) continue
+      seen.add(resolvedA2)
+      const label = String(resolveName(resolvedA2) || f?.properties?.NAME || f?.properties?.ADMIN || resolvedA2)
+      opts.push({ code: resolvedA2, label })
     }
     opts.sort((a, b) => a.label.localeCompare(b.label))
     return opts
@@ -296,8 +309,9 @@ export default function AtlasPage(): React.ReactElement {
       updateWhenIdle: false,
       tileSize: 256,
       zoomOffset: 0,
-      crossOrigin: true
-    }).addTo(map)
+      crossOrigin: true,
+      referrerPolicy: 'strict-origin-when-cross-origin',
+    } as any).addTo(map)
 
     // Preload adjacent zoom level tiles
     L.tileLayer(tileUrl, {
@@ -306,6 +320,7 @@ export default function AtlasPage(): React.ReactElement {
       opacity: 0,
       tileSize: 256,
       crossOrigin: true,
+      referrerPolicy: 'strict-origin-when-cross-origin',
     }).addTo(map)
 
     // Custom pane for region layer — above overlay (z-index 400)
@@ -467,26 +482,31 @@ export default function AtlasPage(): React.ReactElement {
 
     if (Object.keys(regionGeoCache.current).length === 0) return
 
-    // Build set of visited region codes first
+    // Build set of visited region codes and per-country name sets
     const visitedRegionCodes = new Set<string>()
-    const visitedRegionNames = new Set<string>()
+    const visitedRegionNamesByCountry = new Map<string, Set<string>>()
     const regionPlaceCounts: Record<string, number> = {}
-    for (const [, regions] of Object.entries(visitedRegions)) {
+    for (const [countryCode, regions] of Object.entries(visitedRegions)) {
+      const names = new Set<string>()
       for (const r of regions) {
         visitedRegionCodes.add(r.code)
-        visitedRegionNames.add(r.name.toLowerCase())
+        names.add(r.name.toLowerCase())
         regionPlaceCounts[r.code] = r.placeCount
-        regionPlaceCounts[r.name.toLowerCase()] = r.placeCount
+        regionPlaceCounts[`${countryCode}:${r.name.toLowerCase()}`] = r.placeCount
       }
+      visitedRegionNamesByCountry.set(countryCode, names)
     }
 
-    // Match feature by ISO code OR region name (native or English)
+    // Match feature by ISO code OR region name scoped to the feature's country
     const isVisitedFeature = (f: any) => {
       if (visitedRegionCodes.has(f.properties?.iso_3166_2)) return true
+      const countryA2 = (f.properties?.iso_a2 || '').toUpperCase()
+      const countryNames = visitedRegionNamesByCountry.get(countryA2)
+      if (!countryNames) return false
       const name = (f.properties?.name || '').toLowerCase()
-      if (visitedRegionNames.has(name)) return true
+      if (countryNames.has(name)) return true
       const nameEn = (f.properties?.name_en || '').toLowerCase()
-      if (nameEn && visitedRegionNames.has(nameEn)) return true
+      if (nameEn && countryNames.has(nameEn)) return true
       return false
     }
 
@@ -538,7 +558,7 @@ export default function AtlasPage(): React.ReactElement {
         const regionCode = feature?.properties?.iso_3166_2 || ''
         const countryA2 = (feature?.properties?.iso_a2 || '').toUpperCase()
         const visited = isVisitedFeature(feature)
-        const count = regionPlaceCounts[regionCode] || regionPlaceCounts[regionName.toLowerCase()] || regionPlaceCounts[regionNameEn.toLowerCase()] || 0
+        const count = regionPlaceCounts[regionCode] || regionPlaceCounts[`${countryA2}:${regionName.toLowerCase()}`] || regionPlaceCounts[`${countryA2}:${regionNameEn.toLowerCase()}`] || 0
         layer.on('click', () => {
           if (!countryA2) return
           if (visited) {
@@ -754,9 +774,9 @@ export default function AtlasPage(): React.ReactElement {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div className="h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <Navbar />
-      <div style={{ position: 'fixed', top: 'var(--nav-h)', left: 0, right: 0, bottom: 0 }}>
+      <div style={{ position: 'fixed', top: 'var(--nav-h)', left: 0, right: 0, bottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {/* Map */}
         <div ref={mapRef} style={{ position: 'absolute', inset: 0, zIndex: 1, background: dark ? '#1a1a2e' : '#f0f0f0' }} />
 
@@ -773,7 +793,7 @@ export default function AtlasPage(): React.ReactElement {
         }} />
         <div
           className="absolute z-20 flex justify-center"
-          style={{ top: 14, left: 0, right: 0, pointerEvents: 'none' }}
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 0, right: 0, pointerEvents: 'none' }}
         >
           <div style={{ width: 'min(520px, calc(100vw - 28px))', pointerEvents: 'auto' }}>
             <div style={{
@@ -896,7 +916,7 @@ export default function AtlasPage(): React.ReactElement {
         </div>
 
         {/* Mobile: Bottom bar */}
-        <div className="md:hidden absolute bottom-3 left-0 right-0 z-10 flex justify-center" style={{ touchAction: 'manipulation' }}>
+        <div className="md:hidden absolute left-0 right-0 z-10 flex justify-center" style={{ bottom: 'calc(84px + env(safe-area-inset-bottom, 0px) + 8px)', touchAction: 'manipulation' }}>
           <div className="flex items-center gap-4 px-5 py-4 rounded-2xl"
             style={{ background: dark ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.5)', backdropFilter: 'blur(16px)' }}>
             {/* Countries highlighted */}
@@ -918,7 +938,7 @@ export default function AtlasPage(): React.ReactElement {
           ref={panelRef}
           onMouseMove={handlePanelMouseMove}
           onMouseLeave={handlePanelMouseLeave}
-          className="hidden md:flex flex-col absolute z-10 overflow-hidden transition-all duration-300"
+          className="hidden md:flex flex-col absolute z-10 overflow-hidden transition-[width,height,transform,box-shadow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
           style={{
             bottom: 16,
             left: '50%',
@@ -1220,6 +1240,15 @@ interface SidebarContentProps {
 
 function SidebarContent({ data, stats, countries, selectedCountry, countryDetail, resolveName, onTripClick, onUnmarkCountry, bucketList, bucketTab, setBucketTab, showBucketAdd, setShowBucketAdd, bucketForm, setBucketForm, onAddBucket, onDeleteBucket, onSearchBucket, onSelectBucketPoi, bucketSearchResults, setBucketSearchResults, bucketPoiMonth, setBucketPoiMonth, bucketPoiYear, setBucketPoiYear, bucketSearching, bucketSearch, setBucketSearch, t, dark }: SidebarContentProps): React.ReactElement {
   const { language } = useTranslation()
+  const statsContentRef = useRef<HTMLDivElement>(null)
+  const [statsWidth, setStatsWidth] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    const el = statsContentRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setStatsWidth(el.offsetWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const bg = (o) => dark ? `rgba(255,255,255,${o})` : `rgba(0,0,0,${o})`
   const tp = dark ? '#f1f5f9' : '#0f172a'
   const tm = dark ? '#94a3b8' : '#64748b'
@@ -1270,7 +1299,7 @@ function SidebarContent({ data, stats, countries, selectedCountry, countryDetail
   // Bucket list content
   const bucketContent = (
     <>
-    <div className="flex items-stretch" style={{ overflowX: 'auto', padding: '0 8px' }}>
+    <div className="flex items-stretch" style={{ overflowX: 'auto', padding: '0 8px', maxWidth: statsWidth, width: '100%' }}>
       {bucketList.map(item => (
         <div key={item.id} className="group flex flex-col items-center justify-center shrink-0" style={{ padding: '8px 14px', position: 'relative', minWidth: 80 }}>
           {(() => {
@@ -1380,7 +1409,7 @@ function SidebarContent({ data, stats, countries, selectedCountry, countryDetail
     {/* Both tabs always rendered so the wider one sets the panel width */}
     <div style={{ display: 'grid' }}>
     <div style={bucketTab === 'bucket' ? { visibility: 'hidden' as const, gridArea: '1/1' } : { gridArea: '1/1' }}>
-    <div className="flex items-stretch justify-center">
+    <div ref={statsContentRef} className="flex items-stretch justify-center">
 
       {/* ═══ SECTION 1: Numbers ═══ */}
       {/* Countries hero */}

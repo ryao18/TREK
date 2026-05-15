@@ -41,7 +41,7 @@ import { createApp } from '../../src/app';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb } from '../helpers/test-db';
-import { createUser, createTrip, createDay, createReservation, addTripMember } from '../helpers/factories';
+import { createUser, createTrip, createDay, createPlace, createReservation, addTripMember } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
 import { loginAttempts, mfaAttempts } from '../../src/routes/auth';
 
@@ -187,6 +187,43 @@ describe('Update reservation', () => {
       .send({ title: 'Updated' });
     expect(res.status).toBe(404);
   });
+
+  it('RESV-010 — PUT syncs check-in/out times to linked accommodation', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day1 = createDay(testDb, trip.id, { date: '2025-08-01' });
+    const day2 = createDay(testDb, trip.id, { date: '2025-08-03' });
+    const place = createPlace(testDb, trip.id, { name: 'Sync Hotel' });
+
+    // Create reservation with linked accommodation
+    const createRes = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Hotel Booking',
+        type: 'hotel',
+        day_id: day1.id,
+        create_accommodation: { place_id: place.id, start_day_id: day1.id, end_day_id: day2.id },
+      });
+    expect(createRes.status).toBe(201);
+    const resvId = createRes.body.reservation.id;
+
+    // Update with metadata containing check-in/out times and confirmation_number
+    const updateRes = await request(app)
+      .put(`/api/trips/${trip.id}/reservations/${resvId}`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        metadata: { check_in_time: '15:00', check_out_time: '11:00' },
+        confirmation_number: 'HTL-XYZ-999',
+      });
+    expect(updateRes.status).toBe(200);
+
+    // Verify accommodation was updated with check-in/out
+    const accom = testDb.prepare('SELECT * FROM day_accommodations WHERE trip_id = ?').get(trip.id) as any;
+    expect(accom.check_in).toBe('15:00');
+    expect(accom.check_out).toBe('11:00');
+    expect(accom.confirmation).toBe('HTL-XYZ-999');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,5 +276,217 @@ describe('Batch update positions', () => {
       .send({ positions: [{ id: r2.id, position: 0 }, { id: r1.id, position: 1 }] });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget entry auto-create / auto-update
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Reservation budget entry integration', () => {
+  it('RESV-011 — POST with create_budget_entry auto-creates a linked budget item', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Flight to Paris',
+        type: 'flight',
+        create_budget_entry: { total_price: 250, category: 'Transport' },
+      });
+    expect(res.status).toBe(201);
+
+    const budgetItem = testDb
+      .prepare('SELECT * FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
+      .get(trip.id, res.body.reservation.id) as any;
+    expect(budgetItem).toBeDefined();
+    expect(budgetItem.total_price).toBe(250);
+    expect(budgetItem.name).toBe('Flight to Paris');
+  });
+
+  it('RESV-011b — POST with create_budget_entry.total_price = 0 skips budget creation', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Free Entry',
+        type: 'activity',
+        create_budget_entry: { total_price: 0 },
+      });
+    expect(res.status).toBe(201);
+
+    const budgetItems = testDb
+      .prepare('SELECT * FROM budget_items WHERE trip_id = ?')
+      .all(trip.id) as any[];
+    expect(budgetItems).toHaveLength(0);
+  });
+
+  it('RESV-012 — PUT with create_budget_entry creates a new budget item when none exists', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const resv = createReservation(testDb, trip.id, { title: 'Hotel Stay', type: 'hotel' });
+
+    const res = await request(app)
+      .put(`/api/trips/${trip.id}/reservations/${resv.id}`)
+      .set('Cookie', authCookie(user.id))
+      .send({ create_budget_entry: { total_price: 300, category: 'Accommodation' } });
+    expect(res.status).toBe(200);
+
+    const budgetItem = testDb
+      .prepare('SELECT * FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
+      .get(trip.id, resv.id) as any;
+    expect(budgetItem).toBeDefined();
+    expect(budgetItem.total_price).toBe(300);
+  });
+
+  it('RESV-013 — PUT with create_budget_entry updates existing linked budget item', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    // Create reservation with budget entry via POST
+    const createRes = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Car Rental',
+        type: 'transport',
+        create_budget_entry: { total_price: 100, category: 'Transport' },
+      });
+    expect(createRes.status).toBe(201);
+    const resvId = createRes.body.reservation.id;
+
+    // Update with a new price — should update the existing budget item
+    const updateRes = await request(app)
+      .put(`/api/trips/${trip.id}/reservations/${resvId}`)
+      .set('Cookie', authCookie(user.id))
+      .send({ create_budget_entry: { total_price: 150, category: 'Transport' } });
+    expect(updateRes.status).toBe(200);
+
+    const items = testDb
+      .prepare('SELECT * FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
+      .all(trip.id, resvId) as any[];
+    expect(items).toHaveLength(1);
+    expect(items[0].total_price).toBe(150);
+  });
+
+  it('RESV-014 — PUT without create_budget_entry removes existing linked budget item', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    // Create with budget entry
+    const createRes = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Taxi',
+        type: 'transport',
+        create_budget_entry: { total_price: 50, category: 'Transport' },
+      });
+    expect(createRes.status).toBe(201);
+    const resvId = createRes.body.reservation.id;
+
+    // Verify budget item exists
+    const before = testDb
+      .prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
+      .get(trip.id, resvId);
+    expect(before).toBeDefined();
+
+    // Update without create_budget_entry — should delete the linked budget item
+    const updateRes = await request(app)
+      .put(`/api/trips/${trip.id}/reservations/${resvId}`)
+      .set('Cookie', authCookie(user.id))
+      .send({ title: 'Taxi Updated' });
+    expect(updateRes.status).toBe(200);
+
+    const after = testDb
+      .prepare('SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?')
+      .get(trip.id, resvId);
+    expect(after).toBeUndefined();
+  });
+});
+
+describe('Reservation accommodation delete', () => {
+  it('RESV-009 — DELETE reservation linked to accommodation also removes the accommodation', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day1 = createDay(testDb, trip.id, { date: '2025-07-01' });
+    const day2 = createDay(testDb, trip.id, { date: '2025-07-03' });
+    const place = createPlace(testDb, trip.id, { name: 'Hotel Belle' });
+
+    // Create a reservation via API with create_accommodation as an object
+    const createRes = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Hotel Belle Stay',
+        type: 'hotel',
+        day_id: day1.id,
+        create_accommodation: {
+          place_id: place.id,
+          start_day_id: day1.id,
+          end_day_id: day2.id,
+        },
+      });
+    expect(createRes.status).toBe(201);
+    const reservationId = createRes.body.reservation.id;
+
+    // Verify accommodation was created
+    const accom = testDb.prepare(
+      'SELECT id FROM day_accommodations WHERE trip_id = ?'
+    ).get(trip.id) as any;
+    expect(accom).toBeDefined();
+
+    // Delete reservation — should also remove the accommodation
+    const delRes = await request(app)
+      .delete(`/api/trips/${trip.id}/reservations/${reservationId}`)
+      .set('Cookie', authCookie(user.id));
+    expect(delRes.status).toBe(200);
+
+    const accomAfter = testDb.prepare(
+      'SELECT id FROM day_accommodations WHERE id = ?'
+    ).get(accom.id);
+    expect(accomAfter).toBeUndefined();
+  });
+
+  it('RESV-009b — DELETE reservation linked to accommodation also removes its linked budget item (issue #933)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day1 = createDay(testDb, trip.id, { date: '2025-08-01' });
+    const day2 = createDay(testDb, trip.id, { date: '2025-08-03' });
+    const place = createPlace(testDb, trip.id, { name: 'Seaside Resort' });
+
+    const createRes = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Seaside Resort Stay',
+        type: 'hotel',
+        day_id: day1.id,
+        create_accommodation: { place_id: place.id, start_day_id: day1.id, end_day_id: day2.id },
+        create_budget_entry: { total_price: 320, category: 'Accommodation' },
+      });
+    expect(createRes.status).toBe(201);
+    const reservationId = createRes.body.reservation.id;
+
+    const budgetBefore = testDb.prepare(
+      'SELECT id FROM budget_items WHERE trip_id = ? AND reservation_id = ?'
+    ).get(trip.id, reservationId);
+    expect(budgetBefore).toBeDefined();
+
+    // Delete via the reservation endpoint
+    const delRes = await request(app)
+      .delete(`/api/trips/${trip.id}/reservations/${reservationId}`)
+      .set('Cookie', authCookie(user.id));
+    expect(delRes.status).toBe(200);
+
+    const budgetAfter = testDb.prepare(
+      'SELECT id FROM budget_items WHERE trip_id = ?'
+    ).get(trip.id);
+    expect(budgetAfter).toBeUndefined();
   });
 });

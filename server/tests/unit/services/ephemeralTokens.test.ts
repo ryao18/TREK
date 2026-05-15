@@ -68,4 +68,49 @@ describe('ephemeralTokens', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('startTokenCleanup / stopTokenCleanup', () => {
+    it('startTokenCleanup starts the interval (second call is no-op)', async () => {
+      vi.useFakeTimers();
+      const { createEphemeralToken, consumeEphemeralToken, startTokenCleanup, stopTokenCleanup } = await getModule();
+      startTokenCleanup();
+      startTokenCleanup(); // should be no-op, not throw
+      // Token created while cleanup is running should still be consumable (interval hasn't fired)
+      const token = createEphemeralToken(1, 'ws')!;
+      expect(consumeEphemeralToken(token, 'ws')).toBe(1);
+      stopTokenCleanup();
+      vi.useRealTimers();
+    });
+
+    it('stopTokenCleanup clears the interval and allows restart', async () => {
+      vi.useFakeTimers();
+      const { createEphemeralToken, consumeEphemeralToken, startTokenCleanup, stopTokenCleanup } = await getModule();
+      startTokenCleanup();
+      stopTokenCleanup();
+      stopTokenCleanup(); // calling stop twice should not throw
+      startTokenCleanup(); // should be able to start again after stop
+      stopTokenCleanup();
+      // After stop, tokens should still be consumable (cleanup didn't run)
+      const token = createEphemeralToken(2, 'download')!;
+      expect(consumeEphemeralToken(token, 'download')).toBe(2);
+      vi.useRealTimers();
+    });
+
+    it('cleanup interval removes expired tokens', async () => {
+      vi.useFakeTimers();
+      const { createEphemeralToken, consumeEphemeralToken, startTokenCleanup, stopTokenCleanup } = await getModule();
+      startTokenCleanup();
+      const token = createEphemeralToken(1, 'ws')!; // 30s TTL
+
+      // Advance past TTL AND past cleanup interval (60s)
+      vi.advanceTimersByTime(65_000);
+
+      // Token should have been cleaned up by the interval
+      const result = consumeEphemeralToken(token, 'ws');
+      expect(result).toBeNull();
+
+      stopTokenCleanup();
+      vi.useRealTimers();
+    });
+  });
 });

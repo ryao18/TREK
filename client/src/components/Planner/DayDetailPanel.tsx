@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom'
-import { X, Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudLightning, Wind, Droplets, Sunrise, Sunset, Hotel, Calendar, MapPin, LogIn, LogOut, Hash, Pencil, Plane, Utensils, Train, Car, Ship, Ticket, FileText, Users } from 'lucide-react'
+import { X, Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudLightning, Wind, Droplets, Sunrise, Sunset, Hotel, Calendar, MapPin, LogIn, LogOut, Hash, Pencil, Plane, Utensils, Train, Car, Ship, Ticket, FileText, Users, ChevronsDown, ChevronsUp } from 'lucide-react'
 
 const RES_TYPE_ICONS = { flight: Plane, hotel: Hotel, restaurant: Utensils, train: Train, car: Car, cruise: Ship, event: Ticket, tour: Users, other: FileText }
 const RES_TYPE_COLORS = { flight: '#3b82f6', hotel: '#8b5cf6', restaurant: '#ef4444', train: '#06b6d4', car: '#6b7280', cruise: '#0ea5e9', event: '#f59e0b', tour: '#10b981', other: '#6b7280' }
@@ -12,6 +12,7 @@ import CustomTimePicker from '../shared/CustomTimePicker'
 import { useSettingsStore } from '../../store/settingsStore'
 import { getLocaleForLanguage, useTranslation } from '../../i18n'
 import type { Day, Place, Category, Reservation, AssignmentsMap } from '../../types'
+import { isDayInAccommodationRange } from '../../utils/dayOrder'
 
 const WEATHER_ICON_MAP = {
   Clear: Sun, Clouds: Cloud, Rain: CloudRain, Drizzle: CloudDrizzle,
@@ -54,9 +55,11 @@ interface DayDetailPanelProps {
   onAccommodationChange: () => void
   leftWidth?: number
   rightWidth?: number
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-export default function DayDetailPanel({ day, days, places, categories = [], tripId, assignments, reservations = [], lat, lng, onClose, onAccommodationChange, leftWidth = 0, rightWidth = 0 }: DayDetailPanelProps) {
+export default function DayDetailPanel({ day, days, places, categories = [], tripId, assignments, reservations = [], lat, lng, onClose, onAccommodationChange, leftWidth = 0, rightWidth = 0, collapsed: collapsedProp = false, onToggleCollapse }: DayDetailPanelProps) {
   const { t, language, locale } = useTranslation()
   const can = useCanDo()
   const tripObj = useTripStore((s) => s.trip)
@@ -64,8 +67,14 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
   const isFahrenheit = useSettingsStore(s => s.settings.temperature_unit) === 'fahrenheit'
   const is12h = useSettingsStore(s => s.settings.time_format) === '12h'
   const blurCodes = useSettingsStore(s => s.settings.blur_booking_codes)
-  const fmtTime = (v) => formatTime12(v, is12h)
+  const fmtTime = (v) => {
+    if (!v) return v
+    if (v.includes('T')) return new Date(v).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: is12h })
+    return formatTime12(v, is12h)
+  }
   const unit = isFahrenheit ? '°F' : '°C'
+  const collapsed = collapsedProp
+  const toggleCollapse = () => onToggleCollapse?.()
   const [weather, setWeather] = useState(null)
   const [loading, setLoading] = useState(false)
   const [accommodation, setAccommodation] = useState(null)
@@ -74,7 +83,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
   const [showHotelPicker, setShowHotelPicker] = useState(false)
   const [hotelDayRange, setHotelDayRange] = useState({ start: day?.id, end: day?.id })
   const [hotelCategoryFilter, setHotelCategoryFilter] = useState('')
-  const [hotelForm, setHotelForm] = useState({ check_in: '', check_out: '', confirmation: '', place_id: null })
+  const [hotelForm, setHotelForm] = useState({ check_in: '', check_in_end: '', check_out: '', confirmation: '', place_id: null })
 
   useEffect(() => {
     if (!day?.date || !lat || !lng) { setWeather(null); return }
@@ -91,7 +100,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
       .then(data => {
         setAccommodations(data.accommodations || [])
         const allForDay = (data.accommodations || []).filter(a =>
-          days.some(d => d.id >= a.start_day_id && d.id <= a.end_day_id && d.id === day?.id)
+          day ? isDayInAccommodationRange(day, a.start_day_id, a.end_day_id, days) : false
         )
         setDayAccommodations(allForDay)
         setAccommodation(allForDay[0] || null)
@@ -113,6 +122,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
         start_day_id: hotelDayRange.start,
         end_day_id: hotelDayRange.end,
         check_in: hotelForm.check_in || null,
+        check_in_end: hotelForm.check_in_end || null,
         check_out: hotelForm.check_out || null,
         confirmation: hotelForm.confirmation || null,
       })
@@ -121,10 +131,10 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
       setAccommodations(updated)
       setAccommodation(newAcc)
       setDayAccommodations(updated.filter(a =>
-        days.some(d => d.id >= a.start_day_id && d.id <= a.end_day_id && d.id === day?.id)
+        day ? isDayInAccommodationRange(day, a.start_day_id, a.end_day_id, days) : false
       ))
       setShowHotelPicker(false)
-      setHotelForm({ check_in: '', check_out: '', confirmation: '', place_id: null })
+      setHotelForm({ check_in: '', check_in_end: '', check_out: '', confirmation: '', place_id: null })
       onAccommodationChange?.()
     } catch {}
   }
@@ -145,7 +155,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
       const updated = accommodations.filter(a => a.id !== accommodation.id)
       setAccommodations(updated)
       setDayAccommodations(updated.filter(a =>
-        days.some(d => d.id >= a.start_day_id && d.id <= a.end_day_id && d.id === day?.id)
+        day ? isDayInAccommodationRange(day, a.start_day_id, a.end_day_id, days) : false
       ))
       setAccommodation(null)
       onAccommodationChange?.()
@@ -163,33 +173,43 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
   const font = { fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif" }
 
   return (
-    <div style={{ position: 'fixed', bottom: 20, left: `calc(${leftWidth}px + (100vw - ${leftWidth}px - ${rightWidth}px) / 2)`, transform: 'translateX(-50%)', width: `min(800px, calc(100vw - ${leftWidth}px - ${rightWidth}px - 32px))`, zIndex: 50, ...font }}>
+    <div className="fixed z-50" style={{ bottom: 'calc(var(--bottom-nav-h) + 20px)', left: `calc(${leftWidth}px + (100vw - ${leftWidth}px - ${rightWidth}px) / 2)`, transform: 'translateX(-50%)', width: `min(800px, calc(100vw - ${leftWidth}px - ${rightWidth}px - 32px))`, ...font }}>
       <div style={{
         background: 'var(--bg-elevated)',
         backdropFilter: 'blur(40px) saturate(180%)',
         WebkitBackdropFilter: 'blur(40px) saturate(180%)',
         borderRadius: 20,
         boxShadow: '0 8px 40px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06)',
-        overflow: 'hidden', maxHeight: '60vh', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden', maxHeight: collapsed ? 'none' : '60vh', display: 'flex', flexDirection: 'column',
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 16px 14px 20px', borderBottom: '1px solid var(--border-faint)' }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Calendar size={20} style={{ color: 'var(--text-primary)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: collapsed ? '12px 16px 12px 20px' : '18px 16px 14px 20px', borderBottom: collapsed ? 'none' : '1px solid var(--border-faint)', cursor: 'pointer' }}
+          onClick={() => toggleCollapse()}>
+          <div style={{ width: collapsed ? 36 : 44, height: collapsed ? 36 : 44, borderRadius: 12, background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s ease' }}>
+            <Calendar size={collapsed ? 16 : 20} style={{ color: 'var(--text-primary)' }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+            <div style={{ fontSize: collapsed ? 13 : 15, fontWeight: 700, color: 'var(--text-primary)', transition: 'font-size 0.15s ease' }}>
               {day.title || t('planner.dayN', { n: (days.indexOf(day) + 1) || '?' })}
+              {collapsed && formattedDate && <span style={{ fontWeight: 500, color: 'var(--text-muted)', marginLeft: 8 }}>{formattedDate}</span>}
             </div>
-            {formattedDate && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{formattedDate}</div>}
+            {!collapsed && formattedDate && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{formattedDate}</div>}
           </div>
-          <button onClick={onClose} style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={(e) => { e.stopPropagation(); toggleCollapse() }} title={collapsed ? t('common.expand') : t('common.collapse')}
+            style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s ease' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-secondary)'}>
+            {collapsed ? <ChevronsUp size={14} style={{ color: 'var(--text-muted)' }} /> : <ChevronsDown size={14} style={{ color: 'var(--text-muted)' }} />}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-secondary)'}>
             <X size={14} style={{ color: 'var(--text-muted)' }} />
           </button>
         </div>
 
         {/* Scrollable content */}
-        <div style={{ overflowY: 'auto', padding: '14px 20px 18px' }}>
+        <div style={{ overflowY: 'auto', padding: '14px 20px 18px', display: collapsed ? 'none' : 'block' }}>
 
           {/* ── Weather ── */}
           {day.date && lat && lng && (
@@ -342,7 +362,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.place_name}</div>
                           {acc.place_address && <div style={{ fontSize: 10, color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.place_address}</div>}
                         </div>
-                        {canEditDays && <button onClick={() => { setAccommodation(acc); setHotelForm({ check_in: acc.check_in || '', check_out: acc.check_out || '', confirmation: acc.confirmation || '', place_id: acc.place_id }); setHotelDayRange({ start: acc.start_day_id, end: acc.end_day_id }); setShowHotelPicker('edit') }}
+                        {canEditDays && <button onClick={() => { setAccommodation(acc); setHotelForm({ check_in: acc.check_in || '', check_in_end: acc.check_in_end || '', check_out: acc.check_out || '', confirmation: acc.confirmation || '', place_id: acc.place_id }); setHotelDayRange({ start: acc.start_day_id, end: acc.end_day_id }); setShowHotelPicker('edit') }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, flexShrink: 0 }}>
                           <Pencil size={12} style={{ color: 'var(--text-faint)' }} />
                         </button>}
@@ -354,7 +374,9 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                       <div style={{ display: 'flex', gap: 0, margin: '0 12px 8px', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-faint)' }}>
                         {acc.check_in && (
                           <div style={{ flex: 1, padding: '8px 10px', borderRight: '1px solid var(--border-faint)', textAlign: 'center' }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>{fmtTime(acc.check_in)}</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                              {fmtTime(acc.check_in)}{acc.check_in_end ? ` – ${fmtTime(acc.check_in_end)}` : ''}
+                            </div>
                             <div style={{ fontSize: 9, color: 'var(--text-faint)', fontWeight: 500, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
                               <LogIn size={8} /> {t('day.checkIn')}
                             </div>
@@ -442,10 +464,13 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <CustomSelect
                           value={hotelDayRange.start}
-                          onChange={v => setHotelDayRange(prev => ({ start: v, end: Math.max(v, prev.end) }))}
+                          onChange={v => setHotelDayRange(prev => ({ start: v, end: days.findIndex(d => d.id === v) > days.findIndex(d => d.id === prev.end) ? v : prev.end }))}
                           options={days.map((d, i) => ({
                             value: d.id,
-                            label: `${d.title || t('planner.dayN', { n: i + 1 })}${d.date ? ` — ${new Date(d.date + 'T00:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })}` : ''}`,
+                            label: d.title || t('planner.dayN', { n: i + 1 }),
+                            badge: d.date
+                              ? new Date(d.date + 'T00:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+                              : (d.title ? t('planner.dayN', { n: i + 1 }) : undefined),
                           }))}
                           size="sm"
                         />
@@ -454,10 +479,13 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <CustomSelect
                           value={hotelDayRange.end}
-                          onChange={v => setHotelDayRange(prev => ({ start: Math.min(prev.start, v), end: v }))}
+                          onChange={v => setHotelDayRange(prev => ({ start: days.findIndex(d => d.id === v) < days.findIndex(d => d.id === prev.start) ? v : prev.start, end: v }))}
                           options={days.map((d, i) => ({
                             value: d.id,
-                            label: `${d.title || t('planner.dayN', { n: i + 1 })}${d.date ? ` — ${new Date(d.date + 'T00:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })}` : ''}`,
+                            label: d.title || t('planner.dayN', { n: i + 1 }),
+                            badge: d.date
+                              ? new Date(d.date + 'T00:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+                              : (d.title ? t('planner.dayN', { n: i + 1 }) : undefined),
                           }))}
                           size="sm"
                         />
@@ -474,11 +502,15 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
 
                   {/* Check-in / Check-out / Confirmation */}
                   <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border-faint)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 100 }}>
+                    <div style={{ flex: 1, minWidth: 80 }}>
                       <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 3 }}>{t('day.checkIn')}</label>
                       <CustomTimePicker value={hotelForm.check_in} onChange={v => setHotelForm(f => ({ ...f, check_in: v }))} placeholder="14:00" />
                     </div>
-                    <div style={{ flex: 1, minWidth: 100 }}>
+                    <div style={{ flex: 1, minWidth: 80 }}>
+                      <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 3 }}>{t('day.checkInUntil')}</label>
+                      <CustomTimePicker value={hotelForm.check_in_end} onChange={v => setHotelForm(f => ({ ...f, check_in_end: v }))} placeholder="22:00" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 80 }}>
                       <label style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 3 }}>{t('day.checkOut')}</label>
                       <CustomTimePicker value={hotelForm.check_out} onChange={v => setHotelForm(f => ({ ...f, check_out: v }))} placeholder="11:00" />
                     </div>
@@ -556,19 +588,20 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                         start_day_id: hotelDayRange.start,
                         end_day_id: hotelDayRange.end,
                         check_in: hotelForm.check_in || null,
+                        check_in_end: hotelForm.check_in_end || null,
                         check_out: hotelForm.check_out || null,
                         confirmation: hotelForm.confirmation || null,
                       })
                       setShowHotelPicker(false)
-                      setHotelForm({ check_in: '', check_out: '', confirmation: '', place_id: null })
+                      setHotelForm({ check_in: '', check_in_end: '', check_out: '', confirmation: '', place_id: null })
                       // Reload
                       accommodationsApi.list(tripId).then(d => {
                         const all = d.accommodations || []
                         setAccommodations(all)
                         setDayAccommodations(all.filter(a =>
-                          days.some(dd => dd.id >= a.start_day_id && dd.id <= a.end_day_id && dd.id === day?.id)
+                          day ? isDayInAccommodationRange(day, a.start_day_id, a.end_day_id, days) : false
                         ))
-                        const acc = all.find(a => days.some(dd => dd.id >= a.start_day_id && dd.id <= a.end_day_id && dd.id === day?.id))
+                        const acc = all.find(a => day ? isDayInAccommodationRange(day, a.start_day_id, a.end_day_id, days) : false)
                         setAccommodation(acc || null)
                       })
                       onAccommodationChange?.()

@@ -8,6 +8,8 @@ import {
   mapDbError,
   Selection,
 } from './helpersService';
+import { getOrCreateTrekPhoto, deleteTrekPhotoIfOrphan } from './photoResolverService';
+import { encrypt_api_key } from '../apiKeyCrypto';
 
 
 function _providers(): Array<{id: string; enabled: boolean}> {
@@ -45,13 +47,14 @@ export function listTripPhotos(tripId: string, userId: number): ServiceResult<an
     }
 
     const photos = db.prepare(`
-      SELECT tp.asset_id, tp.provider, tp.user_id, tp.shared, tp.added_at,
+      SELECT tp.photo_id, tkp.asset_id, tkp.provider, tp.user_id, tp.shared, tp.added_at,
              u.username, u.avatar
       FROM trip_photos tp
+      JOIN trek_photos tkp ON tkp.id = tp.photo_id
       JOIN users u ON tp.user_id = u.id
       WHERE tp.trip_id = ?
         AND (tp.user_id = ? OR tp.shared = 1)
-        AND tp.provider IN (${enabledProviders.map(() => '?').join(',')})
+        AND tkp.provider IN (${enabledProviders.map(() => '?').join(',')})
       ORDER BY tp.added_at ASC
     `).all(tripId, userId, ...enabledProviders);
 
@@ -102,15 +105,16 @@ export function listTripAlbumLinks(tripId: string, userId: number): ServiceResul
 //-----------------------------------------------
 // managing photos in trip
 
-function _addTripPhoto(tripId: string, userId: number, provider: string, assetId: string, shared: boolean, albumLinkId?: string): ServiceResult<boolean> {
+function _addTripPhoto(tripId: string, userId: number, provider: string, assetId: string, shared: boolean, albumLinkId?: string, passphrase?: string): ServiceResult<boolean> {
   const providerResult = _validProvider(provider);
   if (!providerResult.success) {
     return providerResult as ServiceResult<boolean>;
   }
   try {
+    const photoId = getOrCreateTrekPhoto(provider, assetId, userId, passphrase);
     const result = db.prepare(
-      'INSERT OR IGNORE INTO trip_photos (trip_id, user_id, asset_id, provider, shared, album_link_id) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(tripId, userId, assetId, provider, shared ? 1 : 0, albumLinkId || null);
+      'INSERT OR IGNORE INTO trip_photos (trip_id, user_id, photo_id, shared, album_link_id) VALUES (?, ?, ?, ?, ?)'
+    ).run(tripId, userId, photoId, shared ? 1 : 0, albumLinkId || null);
     return success(result.changes > 0);
   }
   catch (error) {
@@ -144,7 +148,7 @@ export async function addTripPhotos(
     for (const raw of selection.asset_ids) {
       const assetId = String(raw || '').trim();
       if (!assetId) continue;
-      const result = _addTripPhoto(tripId, userId, selection.provider, assetId, shared, albumLinkId);
+      const result = _addTripPhoto(tripId, userId, selection.provider, assetId, shared, albumLinkId, selection.passphrase);
       if (!result.success) {
         return result as ServiceResult<{ added: number; shared: boolean }>;
       }
@@ -163,8 +167,7 @@ export async function addTripPhotos(
 export async function setTripPhotoSharing(
   tripId: string,
   userId: number,
-  provider: string,
-  assetId: string,
+  photoId: number,
   shared: boolean,
   sid?: string,
 ): Promise<ServiceResult<true>> {
@@ -179,9 +182,8 @@ export async function setTripPhotoSharing(
       SET shared = ?
       WHERE trip_id = ?
         AND user_id = ?
-        AND asset_id = ?
-        AND provider = ?
-    `).run(shared ? 1 : 0, tripId, userId, assetId, provider);
+        AND photo_id = ?
+    `).run(shared ? 1 : 0, tripId, userId, photoId);
 
     await _notifySharedTripPhotos(tripId, userId, 1);
     broadcast(tripId, 'memories:updated', { userId }, sid);
@@ -194,8 +196,7 @@ export async function setTripPhotoSharing(
 export function removeTripPhoto(
   tripId: string,
   userId: number,
-  provider: string,
-  assetId: string,
+  photoId: number,
   sid?: string,
 ): ServiceResult<true> {
   const access = canAccessTrip(tripId, userId);
@@ -208,10 +209,10 @@ export function removeTripPhoto(
       DELETE FROM trip_photos
       WHERE trip_id = ?
         AND user_id = ?
-        AND asset_id = ?
-        AND provider = ?
-    `).run(tripId, userId, assetId, provider);
+        AND photo_id = ?
+    `).run(tripId, userId, photoId);
 
+    deleteTrekPhotoIfOrphan(photoId);
     broadcast(tripId, 'memories:updated', { userId }, sid);
 
     return success(true);
@@ -223,7 +224,7 @@ export function removeTripPhoto(
 // ----------------------------------------------
 // managing album links in trip
 
-export function createTripAlbumLink(tripId: string, userId: number, providerRaw: unknown, albumIdRaw: unknown, albumNameRaw: unknown): ServiceResult<true> {
+export function createTripAlbumLink(tripId: string, userId: number, providerRaw: unknown, albumIdRaw: unknown, albumNameRaw: unknown, passphrase?: string): ServiceResult<true> {
   const access = canAccessTrip(tripId, userId);
   if (!access) {
     return fail('Trip not found or access denied', 404);
@@ -247,9 +248,10 @@ export function createTripAlbumLink(tripId: string, userId: number, providerRaw:
   }
 
   try {
+    const encryptedPassphrase = passphrase ? encrypt_api_key(passphrase) : null;
     const result = db.prepare(
-      'INSERT OR IGNORE INTO trip_album_links (trip_id, user_id, provider, album_id, album_name) VALUES (?, ?, ?, ?, ?)'
-    ).run(tripId, userId, provider, albumId, albumName);
+      'INSERT OR IGNORE INTO trip_album_links (trip_id, user_id, provider, album_id, album_name, passphrase) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(tripId, userId, provider, albumId, albumName, encryptedPassphrase);
 
     if (result.changes === 0) {
       return fail('Album already linked', 409);
@@ -268,13 +270,20 @@ export function removeAlbumLink(tripId: string, linkId: string, userId: number):
   }
 
   try {
+    const linkedPhotos = db.prepare('SELECT photo_id FROM trip_photos WHERE trip_id = ? AND album_link_id = ?')
+      .all(tripId, linkId) as Array<{ photo_id: number }>;
+
     db.transaction(() => {
       db.prepare('DELETE FROM trip_photos WHERE trip_id = ? AND album_link_id = ?')
         .run(tripId, linkId);
       db.prepare('DELETE FROM trip_album_links WHERE id = ? AND trip_id = ? AND user_id = ?')
         .run(linkId, tripId, userId);
     })();
-    
+
+    for (const { photo_id } of linkedPhotos) {
+      deleteTrekPhotoIfOrphan(photo_id);
+    }
+
     return success(true);
   } catch (error) {
     return mapDbError(error, 'Failed to remove album link');

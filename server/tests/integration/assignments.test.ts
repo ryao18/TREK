@@ -41,7 +41,7 @@ import { createApp } from '../../src/app';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb } from '../helpers/test-db';
-import { createUser, createTrip, createDay, createPlace, addTripMember } from '../helpers/factories';
+import { createUser, createTrip, createDay, createPlace, addTripMember, createTag } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
 import { loginAttempts, mfaAttempts } from '../../src/routes/auth';
 
@@ -261,6 +261,12 @@ describe('Reorder assignments', () => {
       .send({ orderedIds: [a2.body.assignment.id, a1.body.assignment.id] });
     expect(reorder.status).toBe(200);
     expect(reorder.body.success).toBe(true);
+
+    const rows = testDb
+      .prepare('SELECT id, order_index FROM day_assignments WHERE day_id = ? ORDER BY order_index')
+      .all(day.id) as Array<{ id: number; order_index: number }>;
+    expect(rows[0].id).toBe(a2.body.assignment.id);
+    expect(rows[1].id).toBe(a1.body.assignment.id);
   });
 });
 
@@ -319,6 +325,41 @@ describe('Assignment participants', () => {
       .set('Cookie', authCookie(user.id));
     expect(getParticipants.status).toBe(200);
     expect(getParticipants.body.participants).toHaveLength(2);
+  });
+
+  it('ASSIGN-010 — GET /assignments includes tags and participants when present', async () => {
+    const { user } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const { trip, day, place } = setupAssignmentFixtures(user.id);
+    addTripMember(testDb, trip.id, member.id);
+
+    // Attach a tag to the place
+    const tag = createTag(testDb, user.id, { name: 'Must See' });
+    testDb.prepare('INSERT INTO place_tags (place_id, tag_id) VALUES (?, ?)').run(place.id, tag.id);
+
+    // Create the assignment via API
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: place.id });
+    expect(create.status).toBe(201);
+    const assignmentId = create.body.assignment.id;
+
+    // Add participants to the assignment
+    await request(app)
+      .put(`/api/trips/${trip.id}/assignments/${assignmentId}/participants`)
+      .set('Cookie', authCookie(user.id))
+      .send({ user_ids: [user.id, member.id] });
+
+    // List assignments — should include tags (compact) and participants
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id));
+    expect(res.status).toBe(200);
+    const found = (res.body.assignments as any[]).find((a: any) => a.id === assignmentId);
+    expect(found).toBeDefined();
+    expect(found.place.tags).toHaveLength(1);
+    expect(found.participants).toHaveLength(2);
   });
 
   it('ASSIGN-009 — PUT /time updates assignment time fields', async () => {

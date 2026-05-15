@@ -7,12 +7,14 @@ import { getClientIp } from '../../services/auditLog';
 import {
   getConnectionSettings,
   saveImmichSettings,
+  setImmichAutoUpload,
   testConnection,
   getConnectionStatus,
   browseTimeline,
   searchPhotos,
   streamImmichAsset,
   listAlbums,
+  getAlbumPhotos,
   syncAlbumAssets,
   getAssetInfo,
   isValidAssetId,
@@ -30,9 +32,12 @@ router.get('/settings', authenticate, (req: Request, res: Response) => {
 
 router.put('/settings', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const { immich_url, immich_api_key } = req.body;
+  const { immich_url, immich_api_key, auto_upload } = req.body;
   const result = await saveImmichSettings(authReq.user.id, immich_url, immich_api_key, getClientIp(req));
   if (!result.success) return res.status(400).json({ error: result.error });
+  if (typeof auto_upload === 'boolean') {
+    setImmichAutoUpload(authReq.user.id, auto_upload);
+  }
   if (result.warning) return res.json({ success: true, warning: result.warning });
   res.json({ success: true });
 });
@@ -59,10 +64,12 @@ router.get('/browse', authenticate, async (req: Request, res: Response) => {
 
 router.post('/search', authenticate, async (req: Request, res: Response) => {
   const authReq = req as AuthRequest;
-  const { from, to } = req.body;
-  const result = await searchPhotos(authReq.user.id, from, to);
+  const { from, to, size, page } = req.body;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(Number(size) || 50, 200);
+  const result = await searchPhotos(authReq.user.id, from, to, pageNum, pageSize);
   if (result.error) return res.status(result.status!).json({ error: result.error });
-  res.json({ assets: result.assets });
+  res.json({ assets: result.assets || [], hasMore: !!result.hasMore });
 });
 
 // ── Asset Details ──────────────────────────────────────────────────────────
@@ -111,6 +118,13 @@ router.get('/albums', authenticate, async (req: Request, res: Response) => {
   const result = await listAlbums(authReq.user.id);
   if (result.error) return res.status(result.status!).json({ error: result.error });
   res.json({ albums: result.albums });
+});
+
+router.get('/albums/:albumId/photos', authenticate, async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const result = await getAlbumPhotos(authReq.user.id, req.params.albumId);
+  if (result.error) return res.status(result.status!).json({ error: result.error });
+  res.json({ assets: result.assets });
 });
 
 router.post('/trips/:tripId/album-links/:linkId/sync', authenticate, async (req: Request, res: Response) => {

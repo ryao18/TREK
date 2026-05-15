@@ -1,7 +1,7 @@
 name: Enforce PR Target Branch
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened, edited, synchronize]
 
 jobs:
@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+      issues: write
+      contents: read
 
     steps:
       - name: Flag or clear wrong base branch
@@ -18,6 +20,39 @@ jobs:
             const base = context.payload.pull_request.base.ref;
             const labels = context.payload.pull_request.labels.map(l => l.name);
             const prNumber = context.payload.pull_request.number;
+
+            // bypass-branch-check label skips all enforcement
+            if (labels.includes('bypass-branch-check')) {
+              console.log('bypass-branch-check label present, skipping enforcement.');
+              return;
+            }
+
+            // Wiki-only PRs are exempt from branch enforcement
+            const files = [];
+            for (let page = 1; ; page++) {
+              const { data } = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                per_page: 100,
+                page,
+              });
+              files.push(...data);
+              if (data.length < 100) break;
+            }
+            const allWiki = files.length > 0 && files.every(f => f.filename.startsWith('wiki/'));
+            if (allWiki) {
+              console.log('All changed files are under wiki/ — skipping enforcement.');
+              if (labels.includes('wrong-base-branch')) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  name: 'wrong-base-branch',
+                });
+              }
+              return;
+            }
 
             // If the base was fixed, remove the label and let it through
             if (base !== 'main') {
@@ -63,14 +98,16 @@ jobs:
                 repo: context.repo.repo,
                 name: 'wrong-base-branch',
               });
-            } catch {
-              await github.rest.issues.createLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'wrong-base-branch',
-                color: 'd73a4a',
-                description: 'PR is targeting the wrong base branch',
-              });
+            } catch (err) {
+              if (err.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'wrong-base-branch',
+                  color: 'd73a4a',
+                  description: 'PR is targeting the wrong base branch',
+                });
+              }
             }
 
             await github.rest.issues.addLabels({

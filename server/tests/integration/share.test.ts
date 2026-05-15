@@ -41,7 +41,7 @@ import { createApp } from '../../src/app';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb } from '../helpers/test-db';
-import { createUser, createTrip, addTripMember } from '../helpers/factories';
+import { createUser, createTrip, addTripMember, createDay, createPlace, createDayAssignment, createDayNote } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
 import { loginAttempts, mfaAttempts } from '../../src/routes/auth';
 
@@ -203,5 +203,143 @@ describe('Shared trip access', () => {
       .set('Cookie', authCookie(other.id))
       .send({});
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Shared trip — day assignments and notes', () => {
+  it('SHARE-010 — shared trip with days and assignments includes place data in assignments', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Rome Trip' });
+    const day = createDay(testDb, trip.id, { date: '2025-06-01' });
+    const place = createPlace(testDb, trip.id, { name: 'Colosseum', lat: 41.89, lng: 12.49 });
+    createDayAssignment(testDb, day.id, place.id, { notes: 'Amazing site' });
+
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/share-link`)
+      .set('Cookie', authCookie(user.id))
+      .send({});
+    const token = create.body.token;
+
+    const res = await request(app).get(`/api/shared/${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.days).toHaveLength(1);
+    const dayAssignments = res.body.assignments[day.id];
+    expect(Array.isArray(dayAssignments)).toBe(true);
+    expect(dayAssignments).toHaveLength(1);
+    expect(dayAssignments[0].place.name).toBe('Colosseum');
+    expect(dayAssignments[0].place.lat).toBe(41.89);
+  });
+
+  it('SHARE-011 — shared trip with day notes includes notes in response', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Notes Trip' });
+    const day = createDay(testDb, trip.id, { date: '2025-07-01' });
+    createDayNote(testDb, day.id, trip.id, { text: 'Meet at the station' });
+
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/share-link`)
+      .set('Cookie', authCookie(user.id))
+      .send({});
+    const token = create.body.token;
+
+    const res = await request(app).get(`/api/shared/${token}`);
+    expect(res.status).toBe(200);
+    const dayNotes = res.body.dayNotes[day.id];
+    expect(Array.isArray(dayNotes)).toBe(true);
+    expect(dayNotes).toHaveLength(1);
+    expect(dayNotes[0].text).toBe('Meet at the station');
+  });
+
+  it('SHARE-012 — share_collab=true includes collab messages in response', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    testDb.prepare('INSERT INTO collab_messages (trip_id, user_id, text, deleted) VALUES (?, ?, ?, 0)').run(trip.id, user.id, 'Hello team!');
+
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/share-link`)
+      .set('Cookie', authCookie(user.id))
+      .send({ share_collab: true });
+    const token = create.body.token;
+
+    const res = await request(app).get(`/api/shared/${token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.collab)).toBe(true);
+    expect(res.body.collab).toHaveLength(1);
+    expect(res.body.collab[0].text).toBe('Hello team!');
+  });
+
+  it('SHARE-013 — assignments empty when days have no assignments', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    createDay(testDb, trip.id, { date: '2025-08-01' });
+
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/share-link`)
+      .set('Cookie', authCookie(user.id))
+      .send({});
+    const token = create.body.token;
+
+    const res = await request(app).get(`/api/shared/${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.days).toHaveLength(1);
+    expect(res.body.assignments).toEqual({});
+  });
+});
+
+describe('Shared trip — ordering parity (issue #981)', () => {
+  it('SHARE-014 — assignments with same order_index are ordered by created_at (tiebreaker)', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2025-09-01' });
+    const place1 = createPlace(testDb, trip.id, { name: 'First Created' });
+    const place2 = createPlace(testDb, trip.id, { name: 'Second Created' });
+
+    // Both with order_index = 0 (schema default) but different created_at
+    testDb.prepare(
+      "INSERT INTO day_assignments (day_id, place_id, order_index, created_at) VALUES (?, ?, 0, '2025-01-01T10:00:00')"
+    ).run(day.id, place1.id);
+    testDb.prepare(
+      "INSERT INTO day_assignments (day_id, place_id, order_index, created_at) VALUES (?, ?, 0, '2025-01-01T11:00:00')"
+    ).run(day.id, place2.id);
+
+    const { body: { token } } = await request(app)
+      .post(`/api/trips/${trip.id}/share-link`)
+      .set('Cookie', authCookie(user.id))
+      .send({});
+
+    const res = await request(app).get(`/api/shared/${token}`);
+    expect(res.status).toBe(200);
+    const assignments = res.body.assignments[day.id];
+    expect(assignments).toHaveLength(2);
+    expect(assignments[0].place.name).toBe('First Created');
+    expect(assignments[1].place.name).toBe('Second Created');
+  });
+
+  it('SHARE-015 — reservations include day_positions map from reservation_day_positions table', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2025-09-01' });
+
+    const res1 = testDb.prepare(
+      "INSERT INTO reservations (trip_id, title, type, day_id, reservation_time) VALUES (?, ?, ?, ?, ?)"
+    ).run(trip.id, 'Test Flight', 'flight', day.id, '2025-09-01T09:00:00');
+    const reservationId = Number(res1.lastInsertRowid);
+
+    // Insert a per-day position
+    testDb.prepare(
+      'INSERT INTO reservation_day_positions (reservation_id, day_id, position) VALUES (?, ?, ?)'
+    ).run(reservationId, day.id, 1.5);
+
+    const { body: { token } } = await request(app)
+      .post(`/api/trips/${trip.id}/share-link`)
+      .set('Cookie', authCookie(user.id))
+      .send({ share_bookings: true });
+
+    const shareRes = await request(app).get(`/api/shared/${token}`);
+    expect(shareRes.status).toBe(200);
+    const reservation = shareRes.body.reservations.find((r: any) => r.id === reservationId);
+    expect(reservation).toBeDefined();
+    expect(reservation.day_positions).toBeDefined();
+    expect(reservation.day_positions[day.id]).toBe(1.5);
   });
 });

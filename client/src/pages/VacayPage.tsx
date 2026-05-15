@@ -92,7 +92,7 @@ export default function VacayPage(): React.ReactElement {
         <div className="grid grid-cols-4 gap-1">
           {years.map(y => (
             <div key={y} onClick={() => setSelectedYear(y)}
-              className="group relative py-1.5 rounded-lg text-xs font-medium transition-all text-center cursor-pointer"
+              className="group relative py-1.5 rounded-lg text-xs font-medium transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] text-center cursor-pointer"
               style={{
                 background: y === selectedYear ? 'var(--text-primary)' : 'var(--bg-secondary)',
                 color: y === selectedYear ? 'var(--bg-card)' : 'var(--text-muted)',
@@ -138,19 +138,15 @@ export default function VacayPage(): React.ReactElement {
 
       <div style={{ paddingTop: 'var(--nav-h)' }}>
         <div className="max-w-[1800px] mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4 sm:mb-5">
+          {/* Mobile + tablet header (filter toggle lives here) */}
+          <div className="lg:hidden flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'var(--bg-secondary)' }}>
                 <CalendarDays size={18} style={{ color: 'var(--text-primary)' }} />
               </div>
-              <div>
-                <h1 className="text-lg sm:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{t('admin.addons.catalog.vacay.name')}</h1>
-                <p className="text-xs hidden sm:block" style={{ color: 'var(--text-muted)' }}>{t('vacay.subtitle')}</p>
-              </div>
+              <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('admin.addons.catalog.vacay.name')}</h1>
             </div>
             <div className="flex items-center gap-2">
-              {/* Mobile sidebar toggle */}
               <button
                 onClick={() => setShowMobileSidebar(true)}
                 className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors"
@@ -164,8 +160,43 @@ export default function VacayPage(): React.ReactElement {
                 style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
               >
                 <Settings size={14} />
-                <span className="hidden sm:inline">{t('vacay.settings')}</span>
               </button>
+            </div>
+          </div>
+
+          {/* Desktop header — unified toolbar (sidebar is always visible at this width) */}
+          <div className="hidden lg:block" style={{ marginBottom: 20 }}>
+            <div style={{
+              background: 'var(--bg-tertiary)', borderRadius: 18,
+              border: '1px solid var(--border-primary)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+              padding: '14px 16px 14px 22px',
+              display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+            }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em', flexShrink: 0 }}>
+                {t('admin.addons.catalog.vacay.name')}
+              </h2>
+              <div style={{ width: 1, height: 22, background: 'var(--border-faint)', flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                {t('vacay.subtitle')}
+              </span>
+              <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginLeft: 'auto', flexShrink: 0 }}>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  style={{
+                    appearance: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '9px 14px', borderRadius: 10, fontSize: 13, fontWeight: 500,
+                    background: 'var(--accent)', color: 'var(--accent-text)', flexShrink: 0,
+                    marginLeft: 2,
+                    transition: 'opacity 0.15s ease',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  <Settings size={14} strokeWidth={2.5} /> {t('vacay.settings')}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -231,8 +262,8 @@ export default function VacayPage(): React.ReactElement {
         <div className="fixed inset-0 flex items-center justify-center px-4"
           style={{ zIndex: 99995, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
           {incomingInvites.map(inv => (
-            <div key={inv.id} className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-              style={{ background: 'var(--bg-card)', animation: 'modalIn 0.25s ease-out' }}>
+            <div key={inv.id} className="trek-modal-enter w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+              style={{ background: 'var(--bg-card)' }}>
               <div className="px-6 pt-6 pb-4 text-center">
                 <div className="w-14 h-14 rounded-full mx-auto mb-4 flex items-center justify-center text-lg font-bold"
                   style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>

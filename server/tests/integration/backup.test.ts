@@ -60,6 +60,12 @@ vi.mock('../../src/services/backupService', async () => {
       day_of_week: 0,
       day_of_month: 1,
     }),
+    restoreFromZip: vi.fn().mockResolvedValue({ success: true }),
+    deleteBackup: vi.fn().mockReturnValue(undefined),
+    backupFileExists: vi.fn().mockReturnValue(false),
+    backupFilePath: vi.fn().mockReturnValue('/tmp/test-backup.zip'),
+    // Keep checkRateLimit from actual so rate-limit tests work correctly
+    checkRateLimit: vi.fn().mockReturnValue(true),
   };
 });
 
@@ -70,6 +76,10 @@ import { resetTestDb } from '../helpers/test-db';
 import { createAdmin, createUser } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
 import { loginAttempts, mfaAttempts } from '../../src/routes/auth';
+import * as backupService from '../../src/services/backupService';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const app: Application = createApp();
 
@@ -171,5 +181,259 @@ describe('Backup security', () => {
       .set('Cookie', authCookie(admin.id));
     // Express normalises the URL, stripping traversal → no route match → 404
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Download
+// ---------------------------------------------------------------------------
+
+describe('Backup download', () => {
+  let tmpFile: string;
+
+  beforeEach(() => {
+    // Create a real temporary file that Express can stream back
+    tmpFile = path.join(os.tmpdir(), `test-backup-${Date.now()}.zip`);
+    fs.writeFileSync(tmpFile, 'fake zip content');
+    vi.mocked(backupService.backupFileExists).mockReturnValue(true);
+    vi.mocked(backupService.backupFilePath).mockReturnValue(tmpFile);
+  });
+
+  afterAll(() => {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  });
+
+  it('BACKUP-INT-001 — GET /backup/download/:filename returns 200 with content-disposition', async () => {
+    const { user: admin } = createAdmin(testDb);
+    const filename = 'backup-2026-04-06T12-00-00.zip';
+
+    const res = await request(app)
+      .get(`/api/backup/download/${filename}`)
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toMatch(/attachment/i);
+    expect(res.headers['content-disposition']).toContain(filename);
+  });
+
+  it('BACKUP-INT-002 — GET /backup/download/:filename returns 400 for invalid filename', async () => {
+    const { user: admin } = createAdmin(testDb);
+    vi.mocked(backupService.backupFileExists).mockReturnValue(false);
+
+    const res = await request(app)
+      .get('/api/backup/download/not-a-valid-name.tar.gz')
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid filename/i);
+  });
+
+  it('BACKUP-INT-003 — GET /backup/download/:filename returns 404 when file not found', async () => {
+    const { user: admin } = createAdmin(testDb);
+    vi.mocked(backupService.backupFileExists).mockReturnValue(false);
+
+    const res = await request(app)
+      .get('/api/backup/download/backup-2026-04-06T12-00-00.zip')
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Restore from existing backup
+// ---------------------------------------------------------------------------
+
+describe('Backup restore', () => {
+  it('BACKUP-INT-004 — POST /backup/restore/:filename returns 200 on success', async () => {
+    const { user: admin } = createAdmin(testDb);
+    const filename = 'backup-2026-04-06T12-00-00.zip';
+
+    vi.mocked(backupService.backupFileExists).mockReturnValue(true);
+    vi.mocked(backupService.restoreFromZip).mockResolvedValue({ success: true });
+
+    const res = await request(app)
+      .post(`/api/backup/restore/${filename}`)
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('BACKUP-INT-005 — POST /backup/restore/:filename returns 404 when backup not found', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    vi.mocked(backupService.backupFileExists).mockReturnValue(false);
+
+    const res = await request(app)
+      .post('/api/backup/restore/backup-2026-04-06T12-00-00.zip')
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it('BACKUP-INT-006 — POST /backup/restore/:filename returns 400 for invalid filename', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    const res = await request(app)
+      .post('/api/backup/restore/../../evil.zip')
+      .set('Cookie', authCookie(admin.id));
+
+    // Express resolves path traversal → no route or invalid filename check
+    expect([400, 404]).toContain(res.status);
+  });
+
+  it('BACKUP-INT-007 — POST /backup/restore/:filename returns 400 when restoreFromZip reports failure', async () => {
+    const { user: admin } = createAdmin(testDb);
+    const filename = 'backup-2026-04-06T12-00-00.zip';
+
+    vi.mocked(backupService.backupFileExists).mockReturnValue(true);
+    vi.mocked(backupService.restoreFromZip).mockResolvedValue({
+      success: false,
+      error: 'Invalid backup: travel.db not found',
+      status: 400,
+    });
+
+    const res = await request(app)
+      .post(`/api/backup/restore/${filename}`)
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/travel\.db not found/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delete backup
+// ---------------------------------------------------------------------------
+
+describe('Backup delete', () => {
+  it('BACKUP-INT-008 — DELETE /backup/:filename returns 200 on success', async () => {
+    const { user: admin } = createAdmin(testDb);
+    const filename = 'backup-2026-04-06T12-00-00.zip';
+
+    vi.mocked(backupService.backupFileExists).mockReturnValue(true);
+    vi.mocked(backupService.deleteBackup).mockReturnValue(undefined);
+
+    const res = await request(app)
+      .delete(`/api/backup/${filename}`)
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(vi.mocked(backupService.deleteBackup)).toHaveBeenCalledWith(filename);
+  });
+
+  it('BACKUP-INT-009 — DELETE /backup/:filename returns 404 when not found', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    vi.mocked(backupService.backupFileExists).mockReturnValue(false);
+
+    const res = await request(app)
+      .delete('/api/backup/backup-2026-04-06T12-00-00.zip')
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it('BACKUP-INT-010 — DELETE /backup/:filename returns 400 for invalid filename', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    const res = await request(app)
+      .delete('/api/backup/not-a-backup.tar.gz')
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid filename/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiter on POST /create
+// ---------------------------------------------------------------------------
+
+describe('Backup rate limiter', () => {
+  it('BACKUP-INT-011 — POST /backup/create returns 429 after 3 requests', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    // Allow first 3 calls, then block
+    let callCount = 0;
+    vi.mocked(backupService.checkRateLimit).mockImplementation(() => {
+      callCount++;
+      return callCount <= 3;
+    });
+
+    // First 3 succeed
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app)
+        .post('/api/backup/create')
+        .set('Cookie', authCookie(admin.id));
+      expect(res.status).toBe(200);
+    }
+
+    // 4th is rate-limited
+    const res = await request(app)
+      .post('/api/backup/create')
+      .set('Cookie', authCookie(admin.id));
+    expect(res.status).toBe(429);
+    expect(res.body.error).toMatch(/too many/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Upload-restore
+// ---------------------------------------------------------------------------
+
+describe('Backup upload-restore', () => {
+  it('BACKUP-INT-012 — POST /backup/upload-restore with zip file returns 200', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    vi.mocked(backupService.restoreFromZip).mockResolvedValue({ success: true });
+
+    // Create a minimal fake zip buffer (just needs to pass multer's file filter)
+    const fakeZipBuffer = Buffer.from('PK\x03\x04'); // ZIP magic bytes
+
+    const res = await request(app)
+      .post('/api/backup/upload-restore')
+      .set('Cookie', authCookie(admin.id))
+      .attach('backup', fakeZipBuffer, { filename: 'test-restore.zip', contentType: 'application/zip' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(vi.mocked(backupService.restoreFromZip)).toHaveBeenCalled();
+  });
+
+  it('BACKUP-INT-013 — POST /backup/upload-restore with no file returns 400', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    const res = await request(app)
+      .post('/api/backup/upload-restore')
+      .set('Cookie', authCookie(admin.id));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no file/i);
+  });
+
+  it('BACKUP-INT-014 — POST /backup/upload-restore returns 400 when restore fails', async () => {
+    const { user: admin } = createAdmin(testDb);
+
+    vi.mocked(backupService.restoreFromZip).mockResolvedValue({
+      success: false,
+      error: 'Uploaded file is not a valid SQLite database',
+      status: 400,
+    });
+
+    const fakeZipBuffer = Buffer.from('PK\x03\x04');
+
+    const res = await request(app)
+      .post('/api/backup/upload-restore')
+      .set('Cookie', authCookie(admin.id))
+      .attach('backup', fakeZipBuffer, { filename: 'bad-restore.zip', contentType: 'application/zip' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not a valid SQLite/i);
   });
 });

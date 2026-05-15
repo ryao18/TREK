@@ -3,6 +3,8 @@ import { authenticate, adminOnly } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { writeAudit, getClientIp, logInfo } from '../services/auditLog';
 import * as svc from '../services/adminService';
+import { getAdminUserDefaults, setAdminUserDefaults } from '../services/settingsService';
+import { invalidateMcpSessions } from '../mcp';
 import { getPreferencesMatrix, setAdminPreferences } from '../services/notificationPreferencesService';
 
 const router = express.Router();
@@ -101,13 +103,16 @@ router.get('/oidc', (_req: Request, res: Response) => {
 });
 
 router.put('/oidc', (req: Request, res: Response) => {
-  svc.updateOidcSettings(req.body);
+  const result = svc.updateOidcSettings(req.body);
+  if (result.error) {
+    return res.status(result.status || 400).json({ error: result.error });
+  }
   const authReq = req as AuthRequest;
   writeAudit({
     userId: authReq.user.id,
     action: 'admin.oidc_update',
     ip: getClientIp(req),
-    details: { oidc_only: !!req.body.oidc_only, issuer_set: !!req.body.issuer },
+    details: { issuer_set: !!req.body.issuer },
   });
   res.json({ success: true });
 });
@@ -192,6 +197,82 @@ router.put('/bag-tracking', (req: Request, res: Response) => {
     action: 'admin.bag_tracking',
     ip: getClientIp(req),
     details: { enabled: result.enabled },
+  });
+  res.json(result);
+});
+
+// ── Places Photos ───────────────────────────────────────────────────────
+
+router.get('/places-photos', (_req: Request, res: Response) => {
+  res.json(svc.getPlacesPhotos());
+});
+
+router.put('/places-photos', (req: Request, res: Response) => {
+  if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+  const result = svc.updatePlacesPhotos(req.body.enabled);
+  const authReq = req as AuthRequest;
+  writeAudit({
+    userId: authReq.user.id,
+    action: 'admin.places_photos',
+    ip: getClientIp(req),
+    details: { enabled: result.enabled },
+  });
+  res.json(result);
+});
+
+// ── Places Autocomplete ──────────────────────────────────────────────────
+
+router.get('/places-autocomplete', (_req: Request, res: Response) => {
+  res.json(svc.getPlacesAutocomplete());
+});
+
+router.put('/places-autocomplete', (req: Request, res: Response) => {
+  if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+  const result = svc.updatePlacesAutocomplete(req.body.enabled);
+  const authReq = req as AuthRequest;
+  writeAudit({
+    userId: authReq.user.id,
+    action: 'admin.places_autocomplete',
+    ip: getClientIp(req),
+    details: { enabled: result.enabled },
+  });
+  res.json(result);
+});
+
+// ── Places Details ───────────────────────────────────────────────────────
+
+router.get('/places-details', (_req: Request, res: Response) => {
+  res.json(svc.getPlacesDetails());
+});
+
+router.put('/places-details', (req: Request, res: Response) => {
+  if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+  const result = svc.updatePlacesDetails(req.body.enabled);
+  const authReq = req as AuthRequest;
+  writeAudit({
+    userId: authReq.user.id,
+    action: 'admin.places_details',
+    ip: getClientIp(req),
+    details: { enabled: result.enabled },
+  });
+  res.json(result);
+});
+
+// ── Collab Features ───────────────────────────────────────────────────────
+
+router.get('/collab-features', (_req: Request, res: Response) => {
+  res.json(svc.getCollabFeatures());
+});
+
+router.put('/collab-features', (req: Request, res: Response) => {
+  const result = svc.updateCollabFeatures(req.body);
+  invalidateMcpSessions();
+  const authReq = req as AuthRequest;
+  writeAudit({
+    userId: authReq.user.id,
+    action: 'admin.collab_features',
+    ip: getClientIp(req),
+    details: result,
   });
   res.json(result);
 });
@@ -292,6 +373,8 @@ router.put('/addons/:id', (req: Request, res: Response) => {
     ip: getClientIp(req),
     details: result.auditDetails,
   });
+  // Invalidate all MCP sessions so they re-create with the updated addon tool set
+  invalidateMcpSessions();
   res.json({ addon: result.addon });
 });
 
@@ -307,6 +390,25 @@ router.delete('/mcp-tokens/:id', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// ── OAuth Sessions ─────────────────────────────────────────────────────────
+
+router.get('/oauth-sessions', (_req: Request, res: Response) => {
+  res.json({ sessions: svc.listOAuthSessions() });
+});
+
+router.delete('/oauth-sessions/:id', (req: Request, res: Response) => {
+  const result = svc.revokeOAuthSession(req.params.id);
+  if ('error' in result) return res.status(result.status!).json({ error: result.error });
+  const authReq = req as AuthRequest;
+  writeAudit({
+    userId: authReq.user.id,
+    action: 'admin.oauth_session.revoke',
+    resource: String(req.params.id),
+    ip: getClientIp(req),
+  });
+  res.json({ success: true });
+});
+
 // ── JWT Rotation ───────────────────────────────────────────────────────────
 
 router.post('/rotate-jwt-secret', (req: Request, res: Response) => {
@@ -314,19 +416,40 @@ router.post('/rotate-jwt-secret', (req: Request, res: Response) => {
   if (result.error) return res.status(result.status!).json({ error: result.error });
   const authReq = req as AuthRequest;
   writeAudit({
-    user_id: authReq.user?.id ?? null,
-    username: authReq.user?.username ?? 'unknown',
+    userId: authReq.user.id,
     action: 'admin.rotate_jwt_secret',
-    target_type: 'system',
-    target_id: null,
-    details: null,
     ip: getClientIp(req),
   });
   res.json({ success: true });
 });
 
+// ── Default User Settings ──────────────────────────────────────────────────────
+
+router.get('/default-user-settings', (_req: Request, res: Response) => {
+  res.json(getAdminUserDefaults());
+});
+
+router.put('/default-user-settings', (req: Request, res: Response) => {
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'Object body required' });
+  }
+  try {
+    setAdminUserDefaults(req.body);
+    const authReq = req as AuthRequest;
+    writeAudit({
+      userId: authReq.user.id,
+      action: 'admin.default_user_settings_update',
+      ip: getClientIp(req),
+      details: req.body,
+    });
+    res.json(getAdminUserDefaults());
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── Dev-only: test notification endpoints ──────────────────────────────────────
-if (process.env.NODE_ENV === 'development') {
+if (process.env.NODE_ENV?.toLowerCase() === 'development') {
   const { send } = require('../services/notificationService');
 
   router.post('/dev/test-notification', async (req: Request, res: Response) => {

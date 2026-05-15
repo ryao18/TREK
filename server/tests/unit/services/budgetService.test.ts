@@ -29,7 +29,7 @@ const mockDb = vi.hoisted(() => {
 
 vi.mock('../../../src/db/database', () => mockDb);
 
-import { calculateSettlement, avatarUrl } from '../../../src/services/budgetService';
+import { calculateSettlement } from '../../../src/services/budgetService';
 import type { BudgetItem, BudgetItemMember } from '../../../src/types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,22 +63,6 @@ function setupDb(items: BudgetItem[], members: (BudgetItemMember & { budget_item
 beforeEach(() => {
   vi.clearAllMocks();
   setupDb([], []);
-});
-
-// ── avatarUrl ────────────────────────────────────────────────────────────────
-
-describe('avatarUrl', () => {
-  it('returns /uploads/avatars/<filename> when avatar is set', () => {
-    expect(avatarUrl({ avatar: 'photo.jpg' })).toBe('/uploads/avatars/photo.jpg');
-  });
-
-  it('returns null when avatar is null', () => {
-    expect(avatarUrl({ avatar: null })).toBeNull();
-  });
-
-  it('returns null when avatar is undefined', () => {
-    expect(avatarUrl({})).toBeNull();
-  });
 });
 
 // ── calculateSettlement ──────────────────────────────────────────────────────

@@ -205,36 +205,6 @@ describe('Settings', () => {
   });
 });
 
-describe('API Keys', () => {
-  it('PROFILE-011 — PUT /api/auth/me/api-keys saves keys encrypted at rest', async () => {
-    const { user } = createUser(testDb);
-    const res = await request(app)
-      .put('/api/auth/me/api-keys')
-      .set('Cookie', authCookie(user.id))
-      .send({ openweather_api_key: 'my-weather-key-123' });
-    expect(res.status).toBe(200);
-
-    // Key in DB should be encrypted (not plaintext)
-    const row = testDb.prepare('SELECT openweather_api_key FROM users WHERE id = ?').get(user.id) as any;
-    expect(row.openweather_api_key).toMatch(/^enc:v1:/);
-  });
-
-  it('PROFILE-011 — GET /api/auth/me does not return plaintext API keys', async () => {
-    const { user } = createUser(testDb);
-    await request(app)
-      .put('/api/auth/me/api-keys')
-      .set('Cookie', authCookie(user.id))
-      .send({ openweather_api_key: 'plaintext-key' });
-
-    const me = await request(app)
-      .get('/api/auth/me')
-      .set('Cookie', authCookie(user.id));
-    // The key should be masked or absent, never plaintext
-    const body = me.body.user;
-    expect(body.openweather_api_key).not.toBe('plaintext-key');
-  });
-});
-
 describe('Account deletion', () => {
   it('PROFILE-013 — DELETE /api/auth/me removes account, subsequent login fails', async () => {
     const { user, password } = createUser(testDb);

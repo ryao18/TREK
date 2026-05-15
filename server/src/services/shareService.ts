@@ -44,9 +44,14 @@ export function createOrUpdateShareLink(
     return { token: existing.token, created: false };
   }
 
+  // New share links default to a 90-day TTL. Existing tokens that were
+  // created before the expires_at migration keep NULL here and remain
+  // valid indefinitely until the owner rotates them; that preserves
+  // behaviour for anyone who's already sharing a link.
   const token = crypto.randomBytes(24).toString('base64url');
-  db.prepare('INSERT INTO share_tokens (trip_id, token, created_by, share_map, share_bookings, share_packing, share_budget, share_collab) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(tripId, token, createdBy, share_map ? 1 : 0, share_bookings ? 1 : 0, share_packing ? 1 : 0, share_budget ? 1 : 0, share_collab ? 1 : 0);
+  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('INSERT INTO share_tokens (trip_id, token, created_by, share_map, share_bookings, share_packing, share_budget, share_collab, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(tripId, token, createdBy, share_map ? 1 : 0, share_bookings ? 1 : 0, share_packing ? 1 : 0, share_budget ? 1 : 0, share_collab ? 1 : 0, expiresAt);
   return { token, created: true };
 }
 
@@ -79,7 +84,9 @@ export function deleteShareLink(tripId: string): void {
  * permission flags. Returns null if the token is invalid or the trip is gone.
  */
 export function getSharedTripData(token: string): Record<string, any> | null {
-  const shareRow = db.prepare('SELECT * FROM share_tokens WHERE token = ?').get(token) as any;
+  const shareRow = db.prepare(
+    "SELECT * FROM share_tokens WHERE token = ? AND (expires_at IS NULL OR expires_at > datetime('now'))"
+  ).get(token) as any;
   if (!shareRow) return null;
 
   const tripId = shareRow.trip_id;
@@ -107,7 +114,7 @@ export function getSharedTripData(token: string): Record<string, any> | null {
       JOIN places p ON da.place_id = p.id
       LEFT JOIN categories c ON p.category_id = c.id
       WHERE da.day_id IN (${ph})
-      ORDER BY da.order_index ASC
+      ORDER BY da.order_index ASC, da.created_at ASC
     `).all(...dayIds);
 
     const placeIds = [...new Set(allAssignments.map((a: any) => a.place_id))];
@@ -130,7 +137,7 @@ export function getSharedTripData(token: string): Record<string, any> | null {
     }
     assignments = byDay;
 
-    const allNotes = db.prepare(`SELECT * FROM day_notes WHERE day_id IN (${ph}) ORDER BY sort_order ASC`).all(...dayIds);
+    const allNotes = db.prepare(`SELECT * FROM day_notes WHERE day_id IN (${ph}) ORDER BY sort_order ASC, created_at ASC`).all(...dayIds);
     const notesByDay: Record<number, any[]> = {};
     for (const n of allNotes as any[]) {
       if (!notesByDay[n.day_id]) notesByDay[n.day_id] = [];
@@ -146,8 +153,24 @@ export function getSharedTripData(token: string): Record<string, any> | null {
     WHERE p.trip_id = ? ORDER BY p.created_at DESC
   `).all(tripId);
 
-  // Reservations
-  const reservations = db.prepare('SELECT * FROM reservations WHERE trip_id = ? ORDER BY reservation_time ASC').all(tripId);
+  // Reservations — include per-day positions so the client can render the same order as the planner
+  const reservations = db.prepare('SELECT * FROM reservations WHERE trip_id = ? ORDER BY reservation_time ASC').all(tripId) as any[];
+
+  const dayPositions = db.prepare(`
+    SELECT rdp.reservation_id, rdp.day_id, rdp.position
+    FROM reservation_day_positions rdp
+    JOIN reservations r ON rdp.reservation_id = r.id
+    WHERE r.trip_id = ?
+  `).all(tripId) as { reservation_id: number; day_id: number; position: number }[];
+
+  const posMap = new Map<number, Record<number, number>>();
+  for (const dp of dayPositions) {
+    if (!posMap.has(dp.reservation_id)) posMap.set(dp.reservation_id, {});
+    posMap.get(dp.reservation_id)![dp.day_id] = dp.position;
+  }
+  for (const r of reservations) {
+    r.day_positions = posMap.get(r.id) || null;
+  }
 
   // Accommodations
   const accommodations = db.prepare(`

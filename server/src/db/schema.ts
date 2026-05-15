@@ -25,9 +25,22 @@ function createTables(db: Database.Database): void {
       synology_password TEXT,
       synology_sid TEXT,
       must_change_password INTEGER DEFAULT 0,
+      password_version INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at DATETIME NOT NULL,
+      consumed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_ip TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_prt_hash ON password_reset_tokens(token_hash);
 
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,6 +182,7 @@ function createTables(db: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       day_id INTEGER REFERENCES days(id) ON DELETE SET NULL,
+      end_day_id INTEGER REFERENCES days(id) ON DELETE SET NULL,
       place_id INTEGER REFERENCES places(id) ON DELETE SET NULL,
       assignment_id INTEGER REFERENCES day_assignments(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
@@ -250,6 +264,7 @@ function createTables(db: Database.Database): void {
       label TEXT NOT NULL,
       input_type TEXT NOT NULL DEFAULT 'text',
       placeholder TEXT,
+      hint TEXT,
       required INTEGER DEFAULT 0,
       secret INTEGER DEFAULT 0,
       settings_key TEXT,
@@ -335,10 +350,11 @@ function createTables(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS day_accommodations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,
+      place_id INTEGER REFERENCES places(id) ON DELETE SET NULL,
       start_day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
       end_day_id INTEGER NOT NULL REFERENCES days(id) ON DELETE CASCADE,
       check_in TEXT,
+      check_in_end TEXT,
       check_out TEXT,
       confirmation TEXT,
       notes TEXT,
@@ -496,6 +512,8 @@ function createTables(db: Database.Database): void {
       PRIMARY KEY (user_id, event_type, channel)
     );
     CREATE INDEX IF NOT EXISTS idx_ncp_user ON notification_channel_preferences(user_id);
+
+    CREATE TABLE IF NOT EXISTS migrations (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, timestamp bigint NOT NULL, name varchar NOT NULL);
   `);
 }
 

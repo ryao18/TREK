@@ -7,6 +7,7 @@ import { listBudgetItems } from './budgetService';
 import { listItems as listPackingItems } from './packingService';
 import { listReservations } from './reservationService';
 import { listNotes as listCollabNotes } from './collabService';
+import { shiftOwnerEntriesForTripWindow } from './vacayService';
 
 export const MS_PER_DAY = 86400000;
 export const MAX_TRIP_DAYS = 365;
@@ -34,27 +35,44 @@ export { isOwner };
 
 export function generateDays(tripId: number | bigint | string, startDate: string | null, endDate: string | null, maxDays?: number, dayCount?: number) {
   const existing = db.prepare('SELECT id, day_number, date FROM days WHERE trip_id = ?').all(tripId) as { id: number; day_number: number; date: string | null }[];
+  const setDayNumber = db.prepare('UPDATE days SET day_number = ? WHERE id = ?');
+
+  // Helper: two-phase renumber to avoid UNIQUE(trip_id, day_number) collisions
+  function renumber(days: { id: number }[]) {
+    days.forEach((d, i) => setDayNumber.run(-(i + 1), d.id));
+    days.forEach((d, i) => setDayNumber.run(i + 1, d.id));
+  }
 
   if (!startDate || !endDate) {
-    const datelessExisting = existing.filter(d => !d.date).sort((a, b) => a.day_number - b.day_number);
+    // Nullify all dated days instead of deleting them — preserves assignments/notes/accommodations
     const withDates = existing.filter(d => d.date);
     if (withDates.length > 0) {
-      db.prepare(`DELETE FROM days WHERE trip_id = ? AND date IS NOT NULL`).run(tripId);
+      const nullify = db.prepare('UPDATE days SET date = NULL WHERE id = ?');
+      for (const d of withDates) nullify.run(d.id);
     }
-    const targetCount = Math.min(Math.max(dayCount ?? (datelessExisting.length || 7), 1), MAX_TRIP_DAYS);
-    const needed = targetCount - datelessExisting.length;
+    // Now all days are dateless — adjust count toward dayCount target
+    const allDays = db.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number').all(tripId) as { id: number }[];
+    const targetCount = Math.min(Math.max(dayCount ?? (allDays.length || 7), 1), MAX_TRIP_DAYS);
+    const needed = targetCount - allDays.length;
     if (needed > 0) {
       const insert = db.prepare('INSERT INTO days (trip_id, day_number, date) VALUES (?, ?, NULL)');
-      for (let i = 0; i < needed; i++) insert.run(tripId, datelessExisting.length + i + 1);
+      for (let i = 0; i < needed; i++) insert.run(tripId, allDays.length + i + 1);
     } else if (needed < 0) {
-      const toRemove = datelessExisting.slice(targetCount);
+      // Only trim trailing empty days to avoid destroying content
+      const candidates = db.prepare(
+        `SELECT d.id FROM days d
+         WHERE d.trip_id = ?
+           AND NOT EXISTS (SELECT 1 FROM day_assignments da WHERE da.day_id = d.id)
+           AND NOT EXISTS (SELECT 1 FROM day_notes dn WHERE dn.day_id = d.id)
+           AND NOT EXISTS (SELECT 1 FROM day_accommodations dac WHERE dac.start_day_id = d.id OR dac.end_day_id = d.id)
+         ORDER BY d.day_number DESC
+         LIMIT ?`
+      ).all(tripId, -needed) as { id: number }[];
       const del = db.prepare('DELETE FROM days WHERE id = ?');
-      for (const d of toRemove) del.run(d.id);
+      for (const d of candidates) del.run(d.id);
     }
     const remaining = db.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number').all(tripId) as { id: number }[];
-    const tmpUpd = db.prepare('UPDATE days SET day_number = ? WHERE id = ?');
-    remaining.forEach((d, i) => tmpUpd.run(-(i + 1), d.id));
-    remaining.forEach((d, i) => tmpUpd.run(i + 1, d.id));
+    renumber(remaining);
     return;
   }
 
@@ -73,45 +91,51 @@ export function generateDays(tripId: number | bigint | string, startDate: string
     targetDates.push(`${yyyy}-${mm}-${dd}`);
   }
 
-  const existingByDate = new Map<string, { id: number; day_number: number; date: string | null }>();
-  for (const d of existing) {
-    if (d.date) existingByDate.set(d.date, d);
-  }
-
-  const targetDateSet = new Set(targetDates);
-
-  const toDelete = existing.filter(d => d.date && !targetDateSet.has(d.date));
+  // Split into dated (sorted by day_number = position) and dateless (spare pool)
+  const dated = existing.filter(d => d.date).sort((a, b) => a.day_number - b.day_number);
   const dateless = existing.filter(d => !d.date).sort((a, b) => a.day_number - b.day_number);
-  const del = db.prepare('DELETE FROM days WHERE id = ?');
-  for (const d of toDelete) del.run(d.id);
 
-  // Reassign dateless days to the first unmatched target dates (preserves content)
-  const assignDate = db.prepare('UPDATE days SET date = ?, day_number = ? WHERE id = ?');
-  let datelessIdx = 0;
+  // Phase 1: stamp all existing days with negative day_numbers to free up slots
+  const allExisting = [...dated, ...dateless];
+  allExisting.forEach((d, i) => setDayNumber.run(-(i + 1), d.id));
 
-  const setTemp = db.prepare('UPDATE days SET day_number = ? WHERE id = ?');
-  const kept = existing.filter(d => d.date && targetDateSet.has(d.date));
-  for (let i = 0; i < kept.length; i++) setTemp.run(-(i + 1), kept[i].id);
-
+  const assignDay = db.prepare('UPDATE days SET date = ?, day_number = ? WHERE id = ?');
   const insert = db.prepare('INSERT INTO days (trip_id, day_number, date) VALUES (?, ?, ?)');
-  const update = db.prepare('UPDATE days SET day_number = ? WHERE id = ?');
+
+  let datelessIdx = 0;
 
   for (let i = 0; i < targetDates.length; i++) {
     const date = targetDates[i];
-    const ex = existingByDate.get(date);
-    if (ex) {
-      update.run(i + 1, ex.id);
+    if (i < dated.length) {
+      // Positional remap: existing dated day i gets new date — keeps all children
+      assignDay.run(date, i + 1, dated[i].id);
     } else if (datelessIdx < dateless.length) {
       // Reuse a dateless day — keeps its assignments, notes, etc.
-      assignDate.run(date, i + 1, dateless[datelessIdx].id);
+      assignDay.run(date, i + 1, dateless[datelessIdx].id);
       datelessIdx++;
     } else {
       insert.run(tripId, i + 1, date);
     }
   }
 
-  // Delete any remaining unused dateless days
-  for (let i = datelessIdx; i < dateless.length; i++) del.run(dateless[i].id);
+  // Overflow dated days (trip shrunk): delete them (issue #909).
+  // Cascade removes their assignments, notes, and accommodations.
+  const del = db.prepare('DELETE FROM days WHERE id = ?');
+  for (let i = targetDates.length; i < dated.length; i++) {
+    del.run(dated[i].id);
+  }
+
+  // Any remaining unused dateless days: keep as dateless, just renumber.
+  // Base must be max(targetDates.length, dated.length) to avoid colliding with
+  // positives already assigned by the main loop or the overflow loop above.
+  const maxAssigned = Math.max(targetDates.length, dated.length);
+  for (let i = datelessIdx; i < dateless.length; i++) {
+    setDayNumber.run(maxAssigned + (i - datelessIdx) + 1, dateless[i].id);
+  }
+
+  // Final renumber to compact and eliminate any gaps/negatives
+  const remaining = db.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number').all(tripId) as { id: number }[];
+  renumber(remaining);
 }
 
 // ── Trip CRUD ─────────────────────────────────────────────────────────────
@@ -217,6 +241,9 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
     WHERE id=?
   `).run(newTitle, newDesc, newStart || null, newEnd || null, newCurrency, newArchived, newCover, newReminder, tripId);
 
+  if (trip.start_date && trip.end_date && newStart && newStart !== trip.start_date)
+    shiftOwnerEntriesForTripWindow(trip.user_id, trip.start_date, trip.end_date, newStart);
+
   const dayCount = data.day_count ? Math.min(Math.max(Number(data.day_count) || 7, 1), MAX_TRIP_DAYS) : undefined;
   if (newStart !== trip.start_date || newEnd !== trip.end_date || dayCount)
     generateDays(tripId, newStart || null, newEnd || null, undefined, dayCount);
@@ -258,6 +285,18 @@ export function deleteTrip(tripId: string | number, userId: number, userRole: st
   if (isAdminDelete) {
     ownerEmail = (db.prepare('SELECT email FROM users WHERE id = ?').get(trip.user_id) as { email: string } | undefined)?.email;
   }
+
+  // Clean up journey entries synced from this trip before deleting
+  // Delete skeleton entries (unfilled synced places)
+  db.prepare(`
+    DELETE FROM journey_entries
+    WHERE source_trip_id = ? AND type = 'skeleton'
+  `).run(tripId);
+  // Detach filled entries (keep user's written content, just remove trip link)
+  db.prepare(`
+    UPDATE journey_entries SET source_trip_id = NULL, source_place_id = NULL
+    WHERE source_trip_id = ?
+  `).run(tripId);
 
   db.prepare('DELETE FROM trips WHERE id = ?').run(tripId);
 
@@ -394,6 +433,76 @@ export function exportICS(tripId: string | number): { ics: string; filename: str
     ics += `END:VEVENT\r\n`;
   }
 
+  // Days with assignments and notes
+  const days = db.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number ASC').all(tripId) as any[];
+  for (const day of days) {
+    if (!day.date) continue;
+
+    const assignments = db.prepare(`
+      SELECT da.*, p.name as place_name, p.address as place_address,
+        COALESCE(da.assignment_time, p.place_time) as effective_time,
+        COALESCE(da.assignment_end_time, p.end_time) as effective_end_time
+      FROM day_assignments da
+      JOIN places p ON da.place_id = p.id
+      WHERE da.day_id = ?
+      ORDER BY da.order_index ASC, da.created_at ASC
+    `).all(day.id) as any[];
+
+    const notes = db.prepare(
+      'SELECT * FROM day_notes WHERE day_id = ? ORDER BY sort_order ASC, created_at ASC'
+    ).all(day.id) as any[];
+
+    const timed = assignments.filter(a => a.effective_time);
+    const untimed = assignments.filter(a => !a.effective_time);
+
+    // Timed assignments → individual events
+    for (const a of timed) {
+      ics += `BEGIN:VEVENT\r\nUID:${uid(a.id, 'assign')}\r\nDTSTAMP:${now}\r\n`;
+      ics += `DTSTART:${fmtDateTime(a.effective_time, day.date + 'T00:00')}\r\n`;
+      if (a.effective_end_time) {
+        ics += `DTEND:${fmtDateTime(a.effective_end_time, day.date + 'T00:00')}\r\n`;
+      }
+      ics += `SUMMARY:${esc(a.place_name)}\r\n`;
+      let desc = '';
+      if (a.notes) desc += a.notes;
+      if (a.place_address) desc += (desc ? '\n' : '') + a.place_address;
+      if (desc) ics += `DESCRIPTION:${esc(desc)}\r\n`;
+      if (a.place_address) ics += `LOCATION:${esc(a.place_address)}\r\n`;
+      ics += `END:VEVENT\r\n`;
+    }
+
+    // Build all-day summary event if there are untimed activities or notes
+    if (untimed.length > 0 || notes.length > 0) {
+      const dayTitle = day.title || `Day ${day.day_number}`;
+      const endNext = new Date(day.date + 'T00:00:00');
+      endNext.setDate(endNext.getDate() + 1);
+      const endStr = endNext.toISOString().split('T')[0].replace(/-/g, '');
+
+      ics += `BEGIN:VEVENT\r\nUID:${uid(day.id, 'day')}\r\nDTSTAMP:${now}\r\n`;
+      ics += `DTSTART;VALUE=DATE:${fmtDate(day.date)}\r\nDTEND;VALUE=DATE:${endStr}\r\n`;
+      ics += `SUMMARY:${esc(dayTitle)}\r\n`;
+
+      let desc = '';
+      if (untimed.length > 0) {
+        desc += untimed.map(a => {
+          let line = `• ${a.place_name}`;
+          if (a.place_address) line += ` (${a.place_address})`;
+          if (a.notes) line += ` — ${a.notes}`;
+          return line;
+        }).join('\n');
+      }
+      if (notes.length > 0) {
+        if (desc) desc += '\n\n';
+        desc += 'Notes:\n' + notes.map(n => {
+          let line = n.time ? `${n.time} — ${n.text}` : `• ${n.text}`;
+          return line;
+        }).join('\n');
+      }
+      if (desc) ics += `DESCRIPTION:${esc(desc)}\r\n`;
+      ics += `END:VEVENT\r\n`;
+    }
+  }
+
   // Reservations as events
   for (const r of reservations) {
     if (!r.reservation_time) continue;
@@ -431,6 +540,176 @@ export function exportICS(tripId: string | number): { ics: string; filename: str
   return { ics, filename: `${safeFilename}.ics` };
 }
 
+// ── Copy / duplicate ─────────────────────────────────────────────────────
+
+/**
+ * Duplicates a trip (all days, places, assignments, accommodations, reservations,
+ * budget, packing bags/items, day notes) into a new trip owned by `newOwnerId`.
+ * Packing items are reset to unchecked. Budget paid status is cleared.
+ * Returns the new trip's ID.
+ */
+export function copyTripById(sourceTripId: string | number, newOwnerId: number, title?: string): number {
+  const src = db.prepare('SELECT * FROM trips WHERE id = ?').get(sourceTripId) as any;
+  if (!src) throw new NotFoundError('Trip not found');
+
+  const newTitle = title || src.title;
+
+  const fn = db.transaction(() => {
+    const tripResult = db.prepare(`
+      INSERT INTO trips (user_id, title, description, start_date, end_date, currency, cover_image, is_archived, reminder_days)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(newOwnerId, newTitle, src.description, src.start_date, src.end_date, src.currency, src.cover_image, src.reminder_days ?? 3);
+    const newTripId = tripResult.lastInsertRowid;
+
+    const oldDays = db.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').all(sourceTripId) as any[];
+    const dayMap = new Map<number, number | bigint>();
+    const insertDay = db.prepare('INSERT INTO days (trip_id, day_number, date, notes, title) VALUES (?, ?, ?, ?, ?)');
+    for (const d of oldDays) {
+      const r = insertDay.run(newTripId, d.day_number, d.date, d.notes, d.title);
+      dayMap.set(d.id, r.lastInsertRowid);
+    }
+
+    const oldPlaces = db.prepare('SELECT * FROM places WHERE trip_id = ?').all(sourceTripId) as any[];
+    const placeMap = new Map<number, number | bigint>();
+    const insertPlace = db.prepare(`
+      INSERT INTO places (trip_id, name, description, lat, lng, address, category_id, price, currency,
+        reservation_status, reservation_notes, reservation_datetime, place_time, end_time,
+        duration_minutes, notes, image_url, google_place_id, website, phone, transport_mode, osm_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const p of oldPlaces) {
+      const r = insertPlace.run(newTripId, p.name, p.description, p.lat, p.lng, p.address, p.category_id,
+        p.price, p.currency, p.reservation_status, p.reservation_notes, p.reservation_datetime,
+        p.place_time, p.end_time, p.duration_minutes, p.notes, p.image_url, p.google_place_id,
+        p.website, p.phone, p.transport_mode, p.osm_id);
+      placeMap.set(p.id, r.lastInsertRowid);
+    }
+
+    const oldTags = db.prepare(`
+      SELECT pt.* FROM place_tags pt JOIN places p ON p.id = pt.place_id WHERE p.trip_id = ?
+    `).all(sourceTripId) as any[];
+    const insertTag = db.prepare('INSERT OR IGNORE INTO place_tags (place_id, tag_id) VALUES (?, ?)');
+    for (const t of oldTags) {
+      const newPlaceId = placeMap.get(t.place_id);
+      if (newPlaceId) insertTag.run(newPlaceId, t.tag_id);
+    }
+
+    const oldAssignments = db.prepare(`
+      SELECT da.* FROM day_assignments da JOIN days d ON d.id = da.day_id WHERE d.trip_id = ?
+    `).all(sourceTripId) as any[];
+    const assignmentMap = new Map<number, number | bigint>();
+    const insertAssignment = db.prepare(`
+      INSERT INTO day_assignments (day_id, place_id, order_index, notes, reservation_status, reservation_notes, reservation_datetime, assignment_time, assignment_end_time, day_section)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const a of oldAssignments) {
+      const newDayId = dayMap.get(a.day_id);
+      const newPlaceId = placeMap.get(a.place_id);
+      if (newDayId && newPlaceId) {
+        const r = insertAssignment.run(newDayId, newPlaceId, a.order_index, a.notes,
+          a.reservation_status, a.reservation_notes, a.reservation_datetime,
+          a.assignment_time, a.assignment_end_time, a.day_section ?? null);
+        assignmentMap.set(a.id, r.lastInsertRowid);
+      }
+    }
+
+    const oldAccom = db.prepare('SELECT * FROM day_accommodations WHERE trip_id = ?').all(sourceTripId) as any[];
+    const accomMap = new Map<number, number | bigint>();
+    const insertAccom = db.prepare(`
+      INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out, confirmation, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const a of oldAccom) {
+      const newPlaceId = placeMap.get(a.place_id);
+      const newStartDay = dayMap.get(a.start_day_id);
+      const newEndDay = dayMap.get(a.end_day_id);
+      if (newPlaceId && newStartDay && newEndDay) {
+        const r = insertAccom.run(newTripId, newPlaceId, newStartDay, newEndDay, a.check_in, a.check_out, a.confirmation, a.notes);
+        accomMap.set(a.id, r.lastInsertRowid);
+      }
+    }
+
+    const oldReservations = db.prepare('SELECT * FROM reservations WHERE trip_id = ?').all(sourceTripId) as any[];
+    const insertReservation = db.prepare(`
+      INSERT INTO reservations (trip_id, day_id, place_id, assignment_id, accommodation_id, title, reservation_time, reservation_end_time,
+        location, confirmation_number, notes, status, type, metadata, day_plan_position)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const r of oldReservations) {
+      insertReservation.run(newTripId,
+        r.day_id ? (dayMap.get(r.day_id) ?? null) : null,
+        r.place_id ? (placeMap.get(r.place_id) ?? null) : null,
+        r.assignment_id ? (assignmentMap.get(r.assignment_id) ?? null) : null,
+        r.accommodation_id ? (accomMap.get(r.accommodation_id) ?? null) : null,
+        r.title, r.reservation_time, r.reservation_end_time,
+        r.location, r.confirmation_number, r.notes, r.status, r.type,
+        r.metadata, r.day_plan_position);
+    }
+
+    const oldBudget = db.prepare('SELECT * FROM budget_items WHERE trip_id = ?').all(sourceTripId) as any[];
+    const insertBudget = db.prepare(`
+      INSERT INTO budget_items (trip_id, category, name, total_price, persons, days, note, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const b of oldBudget) {
+      insertBudget.run(newTripId, b.category, b.name, b.total_price, b.persons, b.days, b.note, b.sort_order);
+    }
+
+    const oldBags = db.prepare('SELECT * FROM packing_bags WHERE trip_id = ?').all(sourceTripId) as any[];
+    const bagMap = new Map<number, number | bigint>();
+    const insertBag = db.prepare(`
+      INSERT INTO packing_bags (trip_id, user_id, name, color, weight_limit_grams, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const bag of oldBags) {
+      const r = insertBag.run(newTripId, newOwnerId, bag.name, bag.color, bag.weight_limit_grams, bag.sort_order);
+      bagMap.set(bag.id, r.lastInsertRowid);
+    }
+
+    const oldPacking = db.prepare('SELECT * FROM packing_items WHERE trip_id = ?').all(sourceTripId) as any[];
+    const insertPacking = db.prepare(`
+      INSERT INTO packing_items (trip_id, user_id, name, checked, category, quantity, sort_order, weight_grams, bag_id)
+      VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)
+    `);
+    for (const p of oldPacking) {
+      insertPacking.run(newTripId, newOwnerId, p.name, p.category, p.quantity ?? 1, p.sort_order, p.weight_grams,
+        p.bag_id ? (bagMap.get(p.bag_id) ?? null) : null);
+    }
+
+    const oldNotes = db.prepare('SELECT * FROM day_notes WHERE trip_id = ?').all(sourceTripId) as any[];
+    const insertNote = db.prepare(`
+      INSERT INTO day_notes (day_id, trip_id, text, time, icon, day_section, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const n of oldNotes) {
+      const newDayId = dayMap.get(n.day_id);
+      if (newDayId) insertNote.run(newDayId, newTripId, n.text, n.time, n.icon, n.day_section ?? null, n.sort_order);
+    }
+
+    const oldTodos = db.prepare('SELECT * FROM todo_items WHERE trip_id = ?').all(sourceTripId) as any[];
+    const insertTodo = db.prepare(`
+      INSERT INTO todo_items (trip_id, name, checked, category, sort_order, due_date, description, assigned_user_id, priority)
+      VALUES (?, ?, 0, ?, ?, ?, ?, NULL, ?)
+    `);
+    for (const t of oldTodos) {
+      insertTodo.run(newTripId, t.name, t.category, t.sort_order, t.due_date, t.description, t.priority);
+    }
+
+    const oldCategoryOrder = db.prepare('SELECT category, sort_order FROM budget_category_order WHERE trip_id = ?').all(sourceTripId) as any[];
+    const insertCategoryOrder = db.prepare(`
+      INSERT INTO budget_category_order (trip_id, category, sort_order)
+      VALUES (?, ?, ?)
+    `);
+    for (const o of oldCategoryOrder) {
+      insertCategoryOrder.run(newTripId, o.category, o.sort_order);
+    }
+
+    return Number(newTripId);
+  });
+
+  return fn();
+}
+
 // ── Trip summary (used by MCP get_trip_summary tool) ──────────────────────
 
 export function getTripSummary(tripId: number) {
@@ -448,6 +727,7 @@ export function getTripSummary(tripId: number) {
 
   const budgetItems = listBudgetItems(tripId);
   const budget = {
+    items: budgetItems,
     item_count: budgetItems.length,
     total: budgetItems.reduce((sum, i) => sum + (i.total_price || 0), 0),
     currency: trip.currency,
@@ -455,6 +735,7 @@ export function getTripSummary(tripId: number) {
 
   const packingItems = listPackingItems(tripId);
   const packing = {
+    items: packingItems,
     total: packingItems.length,
     checked: (packingItems as { checked: number }[]).filter(i => i.checked).length,
   };

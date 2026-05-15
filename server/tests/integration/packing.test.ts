@@ -244,6 +244,12 @@ describe('Reorder packing items', () => {
       .send({ orderedIds: [i2.id, i1.id] });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+
+    const rows = testDb
+      .prepare('SELECT id, sort_order FROM packing_items WHERE trip_id = ? ORDER BY sort_order')
+      .all(trip.id) as Array<{ id: number; sort_order: number }>;
+    expect(rows[0].id).toBe(i2.id);
+    expect(rows[1].id).toBe(i1.id);
   });
 });
 
@@ -358,5 +364,122 @@ describe('Category assignees', () => {
       .set('Cookie', authCookie(user.id));
     expect(res.status).toBe(200);
     expect(res.body.assignees).toBeDefined();
+  });
+});
+
+describe('Packing — apply-template, bag members, save-as-template', () => {
+  it('PACK-015 — POST /apply-template/:templateId applies template items to trip', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const tpl = testDb.prepare("INSERT INTO packing_templates (name, created_by) VALUES ('Beach', ?)").run(user.id);
+    const cat = testDb.prepare("INSERT INTO packing_template_categories (template_id, name, sort_order) VALUES (?, 'Essentials', 0)").run(tpl.lastInsertRowid);
+    testDb.prepare("INSERT INTO packing_template_items (category_id, name, sort_order) VALUES (?, 'Sunscreen', 0)").run(cat.lastInsertRowid);
+    const templateId = tpl.lastInsertRowid;
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/packing/apply-template/${templateId}`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(res.body.items.length).toBeGreaterThan(0);
+    expect(res.body.count).toBeGreaterThan(0);
+  });
+
+  it('PACK-015b — POST /apply-template/:id for empty template returns 404', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    // Template with no items
+    const tpl = testDb.prepare("INSERT INTO packing_templates (name, created_by) VALUES ('Empty', ?)").run(user.id);
+    const emptyTemplateId = tpl.lastInsertRowid;
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/packing/apply-template/${emptyTemplateId}`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('PACK-016 — PUT /bags/:bagId/members sets bag members', async () => {
+    const { user } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    addTripMember(testDb, trip.id, member.id);
+
+    // Create a bag first
+    const bagRes = await request(app)
+      .post(`/api/trips/${trip.id}/packing/bags`)
+      .set('Cookie', authCookie(user.id))
+      .send({ name: 'Carry-on' });
+    expect(bagRes.status).toBe(201);
+    const bagId = bagRes.body.bag.id;
+
+    const res = await request(app)
+      .put(`/api/trips/${trip.id}/packing/bags/${bagId}/members`)
+      .set('Cookie', authCookie(user.id))
+      .send({ user_ids: [user.id, member.id] });
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.members)).toBe(true);
+    expect(res.body.members.length).toBe(2);
+  });
+
+  it('PACK-016b — PUT /bags/:bagId/members for non-existent bag returns 404', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .put(`/api/trips/${trip.id}/packing/bags/999999/members`)
+      .set('Cookie', authCookie(user.id))
+      .send({ user_ids: [user.id] });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('PACK-017 — POST /save-as-template saves packing list as a template', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    // Add an item so the trip has something to save
+    createPackingItem(testDb, trip.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/packing/save-as-template`)
+      .set('Cookie', authCookie(user.id))
+      .send({ name: 'My Summer Template' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.template).toBeDefined();
+    expect(res.body.template.name).toBe('My Summer Template');
+  });
+
+  it('PACK-017b — POST /save-as-template without name returns 400', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/packing/save-as-template`)
+      .set('Cookie', authCookie(user.id))
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('PACK-017c — POST /save-as-template when trip has no items returns 400', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/packing/save-as-template`)
+      .set('Cookie', authCookie(user.id))
+      .send({ name: 'Empty Trip Template' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
   });
 });
